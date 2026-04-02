@@ -1,12 +1,13 @@
-import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/material.dart';
+
+import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/app_logo.dart';
 import '../../widgets/auth_text_field.dart';
 import '../../widgets/gradient_button.dart';
 import '../../widgets/wave_header.dart';
 import 'register_screen.dart';
-import '../../services/post_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -17,55 +18,85 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _usernameController = TextEditingController();
-  final _senhaController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _authService = AuthService();
 
-  bool _senhaVisivel = false;
-  bool _carregando = false;
-
-  @override
-  void dispose() {
-    _usernameController.dispose();
-    _senhaController.dispose();
-    super.dispose();
-  }
-
-  String? _validarUsername(String? value) {
-    if (value == null || value.trim().isEmpty) return 'Informe seu nome de usuário';
-    return null;
-  }
-
-  String? _validarSenha(String? value) {
-    if (value == null || value.isEmpty) return 'Informe sua senha';
-    if (value.length < 6) return 'Senha muito curta';
-    return null;
-  }
-
-  Future<void> _entrar() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    setState(() => _carregando = true);
-    await Future.delayed(const Duration(seconds: 2));
-
-    if (mounted) {
-      setState(() => _carregando = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Login realizado com sucesso!'),
-          backgroundColor: AppColors.primary,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          margin: const EdgeInsets.all(16),
-        ),
-      );
-    }
-  }
+  bool _isPasswordVisible = false;
+  bool _isLoading = false;
 
   static const double _maxContentWidth = 400;
   static const double _spacingLogoTitle = 16;
   static const double _spacingTitleForm = 24;
   static const double _spacingBetweenFields = 16;
   static const double _spacingFormButton = 24;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  String? _validateEmail(String? value) {
+    if (value == null || value.trim().isEmpty) return 'Informe seu e-mail';
+
+    final regex = RegExp(r'^[\w.-]+@[\w.-]+\.\w{2,}$');
+    if (!regex.hasMatch(value.trim())) return 'E-mail invalido';
+
+    return null;
+  }
+
+  String? _validatePassword(String? value) {
+    if (value == null || value.isEmpty) return 'Informe sua senha';
+    if (value.length < 6) return 'Senha muito curta';
+    return null;
+  }
+
+  Future<void> _signIn() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    FocusScope.of(context).unfocus();
+    setState(() => _isLoading = true);
+
+    try {
+      await _authService.signIn(
+        email: _emailController.text,
+        password: _passwordController.text,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      _showSnack(
+        error.toString().replaceFirst('Exception: ', ''),
+        AppColors.error,
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  void _showSnack(String message, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: color,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
+  }
+
+  Future<void> _openRegister() async {
+    final message = await Navigator.of(context).push<String>(
+      MaterialPageRoute(builder: (_) => const RegisterScreen()),
+    );
+
+    if (!mounted || message == null) return;
+    _showSnack(message, AppColors.primary);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -93,7 +124,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 constraints: const BoxConstraints(maxWidth: _maxContentWidth),
                                 child: Padding(
                                   padding: const EdgeInsets.symmetric(horizontal: 24),
-                                  child: _buildConteudo(),
+                                  child: _buildContent(),
                                 ),
                               ),
                             ),
@@ -106,14 +137,14 @@ class _LoginScreenState extends State<LoginScreen> {
                 );
               },
             ),
-            _buildWaveInferior(),
+            _buildBottomWave(),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildConteudo() {
+  Widget _buildContent() {
     return Form(
       key: _formKey,
       child: Column(
@@ -144,29 +175,30 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           const SizedBox(height: _spacingTitleForm),
           AuthTextField(
-            controller: _usernameController,
-            validator: _validarUsername,
-            hintText: 'Username',
-            prefixIcon: const Icon(Icons.person_outline_rounded, color: AppColors.textSecondary, size: 22),
+            controller: _emailController,
+            validator: _validateEmail,
+            hintText: 'E-mail',
+            keyboardType: TextInputType.emailAddress,
+            prefixIcon: const Icon(Icons.email_outlined, color: AppColors.textSecondary, size: 22),
             textInputAction: TextInputAction.next,
           ),
           const SizedBox(height: _spacingBetweenFields),
           AuthTextField(
-            controller: _senhaController,
-            validator: _validarSenha,
+            controller: _passwordController,
+            validator: _validatePassword,
             hintText: 'Password',
-            obscureText: !_senhaVisivel,
+            obscureText: !_isPasswordVisible,
             prefixIcon: const Icon(Icons.lock_outline_rounded, color: AppColors.textSecondary, size: 22),
             suffixIcon: IconButton(
-              onPressed: () => setState(() => _senhaVisivel = !_senhaVisivel),
+              onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
               icon: Icon(
-                _senhaVisivel ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                _isPasswordVisible ? Icons.visibility_off_outlined : Icons.visibility_outlined,
                 color: AppColors.textSecondary,
                 size: 22,
               ),
             ),
             textInputAction: TextInputAction.done,
-            onFieldSubmitted: (_) => _entrar(),
+            onFieldSubmitted: (_) => _signIn(),
           ),
           const SizedBox(height: 10),
           Align(
@@ -179,14 +211,17 @@ class _LoginScreenState extends State<LoginScreen> {
                 minimumSize: Size.zero,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-              child: const Text('Forgot your password?', style: TextStyle(fontSize: 13)),
+              child: const Text(
+                'Forgot your password?',
+                style: TextStyle(fontSize: 13),
+              ),
             ),
           ),
           const SizedBox(height: _spacingFormButton),
           GradientButton(
             label: 'Sign in',
-            loading: _carregando,
-            onPressed: _entrar,
+            loading: _isLoading,
+            onPressed: _signIn,
           ),
           const SizedBox(height: 28),
           Center(
@@ -202,12 +237,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       fontWeight: FontWeight.w700,
                       decoration: TextDecoration.underline,
                     ),
-                    recognizer: TapGestureRecognizer()
-                      ..onTap = () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const RegisterScreen()),
-                        );
-                      },
+                    recognizer: TapGestureRecognizer()..onTap = _openRegister,
                   ),
                 ],
               ),
@@ -218,19 +248,19 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _buildWaveInferior() {
+  Widget _buildBottomWave() {
     return Positioned(
       left: -40,
       bottom: -20,
       child: CustomPaint(
         size: const Size(180, 120),
-        painter: _WaveInferiorPainter(),
+        painter: _BottomWavePainter(),
       ),
     );
   }
 }
 
-class _WaveInferiorPainter extends CustomPainter {
+class _BottomWavePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final path = Path()
@@ -240,9 +270,11 @@ class _WaveInferiorPainter extends CustomPainter {
       ..quadraticBezierTo(size.width, size.height * 0.7, size.width, size.height)
       ..lineTo(0, size.height)
       ..close();
+
     final paint = Paint()
       ..color = AppColors.accentPurple.withValues(alpha: 0.85)
       ..style = PaintingStyle.fill;
+
     canvas.drawPath(path, paint);
   }
 

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+import 'screens/auth/auth_gate.dart';
 import 'theme/app_theme.dart';
-import 'screens/auth/login_screen.dart';
-import 'screens/create_post_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,7 +24,7 @@ class UrbappApp extends StatelessWidget {
       title: 'Urbapp',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
-      home: CreatePostScreen(),
+      home: const AuthGate(),
     );
   }
 }

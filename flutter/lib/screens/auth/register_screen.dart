@@ -1,10 +1,11 @@
-import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/material.dart';
+
+import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/app_logo.dart';
 import '../../widgets/auth_text_field.dart';
 import '../../widgets/gradient_button.dart';
-import 'login_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -16,70 +17,95 @@ class RegisterScreen extends StatefulWidget {
 class _RegisterScreenState extends State<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
   final _usernameController = TextEditingController();
-  final _senhaController = TextEditingController();
+  final _passwordController = TextEditingController();
   final _emailController = TextEditingController();
   final _mobileController = TextEditingController();
+  final _authService = AuthService();
 
-  bool _senhaVisivel = false;
-  bool _carregando = false;
-
-  @override
-  void dispose() {
-    _usernameController.dispose();
-    _senhaController.dispose();
-    _emailController.dispose();
-    _mobileController.dispose();
-    super.dispose();
-  }
-
-  String? _validarUsername(String? value) {
-    if (value == null || value.trim().isEmpty) return 'Informe o nome de usuário';
-    return null;
-  }
-
-  String? _validarSenha(String? value) {
-    if (value == null || value.isEmpty) return 'Informe uma senha';
-    if (value.length < 8) return 'Mínimo 8 caracteres';
-    return null;
-  }
-
-  String? _validarEmail(String? value) {
-    if (value == null || value.trim().isEmpty) return 'Informe o e-mail';
-    final regex = RegExp(r'^[\w.-]+@[\w.-]+\.\w{2,}$');
-    if (!regex.hasMatch(value.trim())) return 'E-mail inválido';
-    return null;
-  }
-
-  String? _validarMobile(String? value) {
-    if (value == null || value.trim().isEmpty) return 'Informe o celular';
-    return null;
-  }
-
-  Future<void> _criarConta() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    setState(() => _carregando = true);
-    await Future.delayed(const Duration(seconds: 2));
-
-    if (mounted) {
-      setState(() => _carregando = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Conta criada com sucesso! Bem-vindo ao UrbApp 🎉'),
-          backgroundColor: AppColors.primary,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          margin: const EdgeInsets.all(16),
-        ),
-      );
-    }
-  }
+  bool _isPasswordVisible = false;
+  bool _isLoading = false;
 
   static const double _maxContentWidth = 400;
   static const double _spacingLogoTitle = 16;
   static const double _spacingTitleForm = 24;
   static const double _spacingBetweenFields = 16;
   static const double _spacingFormButton = 24;
+
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    _passwordController.dispose();
+    _emailController.dispose();
+    _mobileController.dispose();
+    super.dispose();
+  }
+
+  String? _validateUsername(String? value) {
+    if (value == null || value.trim().isEmpty) return 'Informe o nome de usuario';
+    if (value.trim().length < 3) return 'Use pelo menos 3 caracteres';
+    return null;
+  }
+
+  String? _validatePassword(String? value) {
+    if (value == null || value.isEmpty) return 'Informe uma senha';
+    if (value.length < 8) return 'Minimo 8 caracteres';
+    return null;
+  }
+
+  String? _validateEmail(String? value) {
+    if (value == null || value.trim().isEmpty) return 'Informe o e-mail';
+
+    final regex = RegExp(r'^[\w.-]+@[\w.-]+\.\w{2,}$');
+    if (!regex.hasMatch(value.trim())) return 'E-mail invalido';
+
+    return null;
+  }
+
+  String? _validateMobile(String? value) {
+    if (value == null || value.trim().isEmpty) return 'Informe o celular';
+    return null;
+  }
+
+  Future<void> _createAccount() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    FocusScope.of(context).unfocus();
+    setState(() => _isLoading = true);
+
+    try {
+      final response = await _authService.signUp(
+        email: _emailController.text,
+        password: _passwordController.text,
+        username: _usernameController.text,
+        phone: _mobileController.text,
+      );
+
+      if (!mounted) return;
+
+      if (response.session == null) {
+        Navigator.of(context).pop('Conta criada. Confirme seu e-mail para entrar.');
+        return;
+      }
+
+      Navigator.of(context).pop('Conta criada com sucesso!');
+    } catch (error) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -105,7 +131,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             constraints: const BoxConstraints(maxWidth: _maxContentWidth),
                             child: Padding(
                               padding: const EdgeInsets.symmetric(horizontal: 24),
-                              child: _buildConteudo(),
+                              child: _buildContent(),
                             ),
                           ),
                         ),
@@ -171,7 +197,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  Widget _buildConteudo() {
+  Widget _buildContent() {
     return Form(
       key: _formKey,
       child: Column(
@@ -194,22 +220,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
           const SizedBox(height: _spacingTitleForm),
           AuthTextField(
             controller: _usernameController,
-            validator: _validarUsername,
+            validator: _validateUsername,
             hintText: 'Username',
             prefixIcon: const Icon(Icons.person_outline_rounded, color: AppColors.textSecondary, size: 22),
             textInputAction: TextInputAction.next,
           ),
           const SizedBox(height: _spacingBetweenFields),
           AuthTextField(
-            controller: _senhaController,
-            validator: _validarSenha,
+            controller: _passwordController,
+            validator: _validatePassword,
             hintText: 'Password',
-            obscureText: !_senhaVisivel,
+            obscureText: !_isPasswordVisible,
             prefixIcon: const Icon(Icons.lock_outline_rounded, color: AppColors.textSecondary, size: 22),
             suffixIcon: IconButton(
-              onPressed: () => setState(() => _senhaVisivel = !_senhaVisivel),
+              onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
               icon: Icon(
-                _senhaVisivel ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                _isPasswordVisible ? Icons.visibility_off_outlined : Icons.visibility_outlined,
                 color: AppColors.textSecondary,
                 size: 22,
               ),
@@ -219,7 +245,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           const SizedBox(height: _spacingBetweenFields),
           AuthTextField(
             controller: _emailController,
-            validator: _validarEmail,
+            validator: _validateEmail,
             hintText: 'E-mail',
             keyboardType: TextInputType.emailAddress,
             prefixIcon: const Icon(Icons.email_outlined, color: AppColors.textSecondary, size: 22),
@@ -228,17 +254,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
           const SizedBox(height: _spacingBetweenFields),
           AuthTextField(
             controller: _mobileController,
-            validator: _validarMobile,
+            validator: _validateMobile,
             hintText: 'Mobile',
             keyboardType: TextInputType.phone,
             prefixIcon: const Icon(Icons.phone_android_rounded, color: AppColors.textSecondary, size: 22),
             textInputAction: TextInputAction.done,
+            onFieldSubmitted: (_) => _createAccount(),
           ),
           const SizedBox(height: _spacingFormButton),
           GradientButton(
             label: 'Create',
-            loading: _carregando,
-            onPressed: _criarConta,
+            loading: _isLoading,
+            onPressed: _createAccount,
           ),
           const SizedBox(height: 24),
           const Text(
