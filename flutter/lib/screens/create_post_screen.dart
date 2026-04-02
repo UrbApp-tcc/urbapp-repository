@@ -17,7 +17,12 @@ import '../widgets/gradient_button.dart';
 import '../widgets/wave_header.dart';
 
 class CreatePostScreen extends StatefulWidget {
-  const CreatePostScreen({super.key});
+  const CreatePostScreen({
+    super.key,
+    this.returnToPreviousOnSuccess = false,
+  });
+
+  final bool returnToPreviousOnSuccess;
 
   @override
   State<CreatePostScreen> createState() => _CreatePostScreenState();
@@ -153,14 +158,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
   String get _currentUserLabel {
     return _authService.currentUser?.email ?? 'Usuario autenticado';
-  }
-
-  Future<void> _handleSignOut() async {
-    try {
-      await _authService.signOut();
-    } catch (error) {
-      _showError(error.toString().replaceFirst('Exception: ', ''));
-    }
   }
 
   Future<void> _pickMedia() async {
@@ -385,6 +382,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         _selectedCategory = null;
         _selectedMedia = const [];
       });
+
+      if (widget.returnToPreviousOnSuccess && mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop(true);
+      }
     } catch (error) {
       _showError(error.toString().replaceFirst('Exception: ', ''));
     } finally {
@@ -448,18 +449,15 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   Widget _buildHeaderContent() {
     return Stack(
       children: [
-        Positioned(
-          top: 0,
-          right: 0,
-          child: TextButton.icon(
-            onPressed: _handleSignOut,
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.white,
+        if (Navigator.of(context).canPop())
+          Positioned(
+            top: 0,
+            left: 0,
+            child: IconButton(
+              onPressed: () => Navigator.of(context).pop(),
+              icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
             ),
-            icon: const Icon(Icons.logout_rounded, size: 18),
-            label: const Text('Sair'),
           ),
-        ),
         Column(
           mainAxisSize: MainAxisSize.min,
           children: [
