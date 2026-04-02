@@ -645,7 +645,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           ),
           Switch(
             value: _isAnonymous,
-            activeColor: AppColors.primary,
+            activeThumbColor: AppColors.primary,
             onChanged: (value) => setState(() => _isAnonymous = value),
           ),
         ],
@@ -861,8 +861,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                       initialZoom: 15,
                       onPositionChanged: (camera, hasGesture) {
                         final center = camera.center;
-                        if (center == null) return;
-
                         _selectedPoint = center;
                         _reverseGeocodeDebounce?.cancel();
                         _reverseGeocodeDebounce = Timer(
@@ -1011,7 +1009,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       shrinkWrap: true,
                       itemCount: items.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      separatorBuilder: (_, _) => const Divider(height: 1),
                       itemBuilder: (context, index) {
                         final option = items[index];
                         return ListTile(

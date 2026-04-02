@@ -292,7 +292,7 @@ class _FeedScreenState extends State<FeedScreen> {
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
       itemCount: _posts.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 18),
+      separatorBuilder: (_, _) => const SizedBox(height: 18),
       itemBuilder: (context, index) {
         return _FeedPostCard(
           post: _posts[index],
@@ -530,7 +530,7 @@ class _PostImageGalleryState extends State<_PostImageGallery> {
                 child: Image.network(
                   image.publicUrl!,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) {
+                  errorBuilder: (_, error, stackTrace) {
                     return Container(
                       color: AppColors.primaryLight,
                       alignment: Alignment.center,

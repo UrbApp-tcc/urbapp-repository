@@ -30,7 +30,7 @@ class AppLogo extends StatelessWidget {
                 assetPath,
                 height: height,
                 fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => _buildFallbackLogo(context),
+                errorBuilder: (_, error, stackTrace) => _buildFallbackLogo(context),
               ),
             )
           : _buildFallbackLogo(context),
