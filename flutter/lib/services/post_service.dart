@@ -13,14 +13,6 @@ class LookupOption {
   final String name;
 }
 
-class UserLookupResult {
-  const UserLookupResult({
-    required this.id,
-  });
-
-  final int id;
-}
-
 class PostService {
   final SupabaseClient _supabase = Supabase.instance.client;
   static const String _postImagesBucket = 'post-images';
@@ -40,8 +32,8 @@ class PostService {
             ),
           )
           .toList();
-    } on PostgrestException catch (e) {
-      throw Exception('Erro ao buscar cidades: ${e.message}');
+    } on PostgrestException catch (error) {
+      throw Exception('Erro ao buscar cidades: ${error.message}');
     } catch (_) {
       throw Exception('Erro inesperado ao buscar cidades.');
     }
@@ -62,43 +54,15 @@ class PostService {
             ),
           )
           .toList();
-    } on PostgrestException catch (e) {
-      throw Exception('Erro ao buscar categorias: ${e.message}');
+    } on PostgrestException catch (error) {
+      throw Exception('Erro ao buscar categorias: ${error.message}');
     } catch (_) {
       throw Exception('Erro inesperado ao buscar categorias.');
     }
   }
 
-  Future<UserLookupResult> getUserByUsername(String username) async {
-    try {
-      final normalized = username.trim();
-      if (normalized.isEmpty) {
-        throw Exception('Informe um username.');
-      }
-
-      final response = await _supabase
-          .from('users')
-          .select('id')
-          .eq('username', normalized)
-          .maybeSingle();
-
-      if (response == null) {
-        throw Exception('Usuario nao encontrado para o username informado.');
-      }
-
-      return UserLookupResult(
-        id: response['id'] as int,
-      );
-    } on PostgrestException catch (e) {
-      throw Exception('Erro ao buscar usuario: ${e.message}');
-    } catch (e) {
-      if (e is Exception) rethrow;
-      throw Exception('Erro inesperado ao buscar usuario.');
-    }
-  }
-
   Future<int> createPost({
-    required int userId,
+    required String userId,
     required int cityId,
     required int categoryId,
     required String title,
@@ -125,16 +89,16 @@ class PostService {
           .single();
 
       return response['id'] as int;
-    } on PostgrestException catch (e) {
-      throw Exception('Erro ao criar post: ${e.message}');
-    } catch (e) {
-      throw Exception('Erro inesperado ao criar post: $e');
+    } on PostgrestException catch (error) {
+      throw Exception('Erro ao criar post: ${error.message}');
+    } catch (error) {
+      throw Exception('Erro inesperado ao criar post: $error');
     }
   }
 
   Future<void> createInitialStatusHistory({
     required int postId,
-    required int userId,
+    required String userId,
   }) async {
     try {
       await _supabase.from('post_status_history').insert({
@@ -144,14 +108,15 @@ class PostService {
         'to_status': 'open',
         'note': 'Post criado pelo usuario.',
       });
-    } on PostgrestException catch (e) {
-      throw Exception('Erro ao criar historico do post: ${e.message}');
-    } catch (e) {
-      throw Exception('Erro inesperado ao criar historico do post: $e');
+    } on PostgrestException catch (error) {
+      throw Exception('Erro ao criar historico do post: ${error.message}');
+    } catch (error) {
+      throw Exception('Erro inesperado ao criar historico do post: $error');
     }
   }
 
   Future<void> uploadPostImages({
+    required String userId,
     required int postId,
     required List<PlatformFile> files,
   }) async {
@@ -164,26 +129,26 @@ class PostService {
         final bytes = _extractBytes(file);
         final extension = _fileExtension(file.name);
         final fileName = '${DateTime.now().millisecondsSinceEpoch}_$index.$extension';
-        final storagePath = 'posts/$postId/$fileName';
+        final storagePath = '$userId/posts/$postId/$fileName';
 
-        await _supabase.storage
-            .from(_postImagesBucket)
-            .uploadBinary(storagePath, bytes, fileOptions: const FileOptions(upsert: false));
-
-        final publicUrl = _supabase.storage.from(_postImagesBucket).getPublicUrl(storagePath);
+        await _supabase.storage.from(_postImagesBucket).uploadBinary(
+              storagePath,
+              bytes,
+              fileOptions: const FileOptions(upsert: false),
+            );
 
         await _supabase.from('post_images').insert({
           'post_id': postId,
-          'storage_path': publicUrl,
+          'storage_path': storagePath,
           'position': index + 1,
         });
       }
-    } on StorageException catch (e) {
-      throw Exception('Erro ao enviar imagem para o storage: ${e.message}');
-    } on PostgrestException catch (e) {
-      throw Exception('Erro ao salvar imagem do post: ${e.message}');
-    } catch (e) {
-      throw Exception('Erro inesperado ao salvar imagens do post: $e');
+    } on StorageException catch (error) {
+      throw Exception('Erro ao enviar imagem para o storage: ${error.message}');
+    } on PostgrestException catch (error) {
+      throw Exception('Erro ao salvar imagem do post: ${error.message}');
+    } catch (error) {
+      throw Exception('Erro inesperado ao salvar imagens do post: $error');
     }
   }
 

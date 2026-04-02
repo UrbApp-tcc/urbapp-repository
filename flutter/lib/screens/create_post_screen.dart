@@ -8,6 +8,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
+import '../services/auth_service.dart';
 import '../services/post_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_logo.dart';
@@ -24,10 +25,10 @@ class CreatePostScreen extends StatefulWidget {
 
 class _CreatePostScreenState extends State<CreatePostScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _authService = AuthService();
   final _postService = PostService();
   final _mapController = MapController();
 
-  final _usernameController = TextEditingController();
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _categorySearchController = TextEditingController();
@@ -64,7 +65,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   @override
   void dispose() {
     _reverseGeocodeDebounce?.cancel();
-    _usernameController.dispose();
     _titleController.dispose();
     _descriptionController.dispose();
     _categorySearchController.dispose();
@@ -151,8 +151,16 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     return null;
   }
 
-  String? _validateUsername(String? value) {
-    return _validateRequired(value, 'o username');
+  String get _currentUserLabel {
+    return _authService.currentUser?.email ?? 'Usuario autenticado';
+  }
+
+  Future<void> _handleSignOut() async {
+    try {
+      await _authService.signOut();
+    } catch (error) {
+      _showError(error.toString().replaceFirst('Exception: ', ''));
+    }
   }
 
   Future<void> _pickMedia() async {
@@ -304,6 +312,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   Future<void> _submitPost() async {
     if (!_formKey.currentState!.validate()) return;
 
+    final currentUser = _authService.currentUser;
+    if (currentUser == null) {
+      _showError('Sua sessao expirou. Entre novamente para publicar o reporte.');
+      return;
+    }
+
     if (_selectedPoint == null) {
       _showError('Aguarde o mapa carregar ou escolha um ponto no mapa.');
       return;
@@ -323,10 +337,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     setState(() => _isSubmitting = true);
 
     try {
-      final user = await _postService.getUserByUsername(_usernameController.text);
-
       final postId = await _postService.createPost(
-        userId: user.id,
+        userId: currentUser.id,
         cityId: _selectedCity!.id,
         categoryId: _selectedCategory!.id,
         title: _titleController.text,
@@ -338,10 +350,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
       await _postService.createInitialStatusHistory(
         postId: postId,
-        userId: user.id,
+        userId: currentUser.id,
       );
 
       await _postService.uploadPostImages(
+        userId: currentUser.id,
         postId: postId,
         files: _selectedMedia,
       );
@@ -363,7 +376,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       );
 
       _formKey.currentState!.reset();
-      _usernameController.clear();
       _titleController.clear();
       _descriptionController.clear();
       _categorySearchController.clear();
@@ -434,29 +446,45 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   }
 
   Widget _buildHeaderContent() {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
+    return Stack(
       children: [
-        const SizedBox(height: 14),
-        const Text(
-          'Criar um Reporte!',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 28,
-            fontWeight: FontWeight.w800,
-            letterSpacing: -0.5,
+        Positioned(
+          top: 0,
+          right: 0,
+          child: TextButton.icon(
+            onPressed: _handleSignOut,
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.white,
+            ),
+            icon: const Icon(Icons.logout_rounded, size: 18),
+            label: const Text('Sair'),
           ),
         ),
-        const SizedBox(height: 8),
-        Text(
-          'Registre um novo reporte para ajudar a comunidade a resolver problemas.',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.9),
-            fontSize: 14,
-            height: 1.4,
-          ),
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 14),
+            const Text(
+              'Criar um Reporte!',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 28,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.5,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Registre um novo reporte para ajudar a comunidade a resolver problemas.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.9),
+                fontSize: 14,
+                height: 1.4,
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -505,12 +533,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             const SizedBox(height: 24),
             _buildAnonymousCard(),
             const SizedBox(height: 12),
-            AuthTextField(
-              controller: _usernameController,
-              validator: _validateUsername,
-              hintText: 'Username',
-              prefixIcon: const Icon(Icons.badge_outlined, size: 22),
-            ),
+            _buildAuthenticatedUserCard(),
             const SizedBox(height: 24),
             _buildSectionLabel('Categoria'),
             const SizedBox(height: 12),
@@ -626,6 +649,58 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             value: _isAnonymous,
             activeColor: AppColors.primary,
             onChanged: (value) => setState(() => _isAnonymous = value),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAuthenticatedUserCard() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: AppColors.primaryLight,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(
+              Icons.verified_user_outlined,
+              color: AppColors.primaryDark,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Usuario autenticado',
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _currentUserLabel,
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 13,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
