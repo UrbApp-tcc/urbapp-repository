@@ -1,0 +1,272 @@
+Project urbapp {
+  database_type: "PostgreSQL"
+  Note: "Modelagem sugerida para o UrbApp com foco em ocorrencias urbanas, engajamento, gamificacao, notificacoes, moderacao e metricas."
+}
+
+Enum report_status {
+  open
+  in_analysis
+  in_progress
+  completed
+  closed
+  expired
+}
+
+Enum state_code {
+  ac
+  al
+  ap
+  am
+  ba
+  ce
+  df
+  es
+  go
+  mt
+  ms
+  mg
+  pa
+  pb
+  pr
+  pe
+  pi
+  rj
+  rn
+  rs
+  ro
+  rr
+  sc
+  sp
+  se
+  to
+}
+
+Table cities {
+  id bigint [pk, increment]
+  name text [not null]
+  state state_code [not null]
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (name, state) [unique]
+  }
+}
+
+Table profiles {
+  id uuid [pk, note: "Mesmo id de auth.users"]
+  city_id bigint
+  full_name text [not null]
+  username text [not null, unique]
+  avatar_url text
+  verified boolean [not null, default: false]
+  current_xp integer [not null, default: 0]
+  current_level integer [not null, default: 1]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+}
+
+Table problem_categories {
+  id bigint [pk, increment]
+  name text [not null]
+  slug text [not null, unique]
+  description text
+  created_at timestamptz [not null, default: `now()`]
+}
+
+Table public_agencies {
+  id bigint [pk, increment]
+  city_id bigint [not null]
+  name text [not null]
+  type text [not null, note: "secretaria, autarquia, terceirizada"]
+  contact_email text
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (city_id, name) [unique]
+  }
+}
+
+Table agency_users {
+  id bigint [pk, increment]
+  agency_id bigint [not null]
+  profile_id uuid [not null]
+  role text [not null, default: 'agent', note: "agent, manager ou admin"]
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (agency_id, profile_id) [unique]
+  }
+}
+
+Table posts {
+  id bigint [pk, increment]
+  user_id uuid [not null]
+  city_id bigint [not null]
+  category_id bigint [not null]
+  agency_id bigint
+  title text [not null]
+  description text [not null]
+  status report_status [not null, default: 'open']
+  latitude numeric(10, 7) [not null]
+  longitude numeric(10, 7) [not null]
+  is_anonymous boolean [not null, default: false]
+  supports_count integer [not null, default: 0]
+  comments_count integer [not null, default: 0]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  resolved_at timestamptz
+}
+
+Table post_images {
+  id bigint [pk, increment]
+  post_id bigint [not null]
+  storage_path text [not null]
+  caption text
+  position smallint [not null, default: 1]
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (post_id, position) [unique]
+  }
+}
+
+Table comments {
+  id bigint [pk, increment]
+  post_id bigint [not null]
+  user_id uuid [not null]
+  parent_comment_id bigint
+  body text [not null]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+}
+
+Table post_supports {
+  id bigint [pk, increment]
+  post_id bigint [not null]
+  user_id uuid [not null]
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (post_id, user_id) [unique]
+  }
+}
+
+Table post_status_history {
+  id bigint [pk, increment]
+  post_id bigint [not null]
+  changed_by uuid [not null]
+  from_status report_status
+  to_status report_status [not null]
+  note text
+  created_at timestamptz [not null, default: `now()`]
+}
+
+Table notifications {
+  id bigint [pk, increment]
+  user_id uuid [not null]
+  type text [not null]
+  title text [not null]
+  body text [not null]
+  payload jsonb
+  read_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+}
+
+Table user_devices {
+  id bigint [pk, increment]
+  user_id uuid [not null]
+  platform text [not null, note: "android ou ios"]
+  push_token text [not null, unique]
+  last_seen_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+}
+
+Table badges {
+  id bigint [pk, increment]
+  name text [not null]
+  slug text [not null, unique]
+  description text [not null]
+  icon text
+  created_at timestamptz [not null, default: `now()`]
+}
+
+Table user_badges {
+  id bigint [pk, increment]
+  user_id uuid [not null]
+  badge_id bigint [not null]
+  awarded_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (user_id, badge_id) [unique]
+  }
+}
+
+Table xp_transactions {
+  id bigint [pk, increment]
+  user_id uuid [not null]
+  source_type text [not null, note: "post, support, comment, badge, moderation"]
+  source_id bigint
+  xp_delta integer [not null, default: 0]
+  points_delta integer [not null, default: 0]
+  created_at timestamptz [not null, default: `now()`]
+}
+
+Table moderation_reports {
+  id bigint [pk, increment]
+  reporter_user_id uuid [not null]
+  target_type text [not null, note: "post, comment ou profile"]
+  target_id bigint [not null]
+  reason text [not null]
+  status text [not null, default: 'open']
+  created_at timestamptz [not null, default: `now()`]
+  resolved_at timestamptz
+
+  Note: "Tabela polimorfica; target_type + target_id representam o alvo denunciado."
+}
+
+Table activity_events {
+  id bigint [pk, increment]
+  user_id uuid
+  post_id bigint
+  event_type text [not null, note: "login, create_post, support_post, comment_post, status_changed"]
+  metadata jsonb
+  created_at timestamptz [not null, default: `now()`]
+}
+
+Ref: profiles.city_id > cities.id
+
+Ref: public_agencies.city_id > cities.id
+Ref: agency_users.agency_id > public_agencies.id
+Ref: agency_users.profile_id > profiles.id
+
+Ref: posts.user_id > profiles.id
+Ref: posts.city_id > cities.id
+Ref: posts.category_id > problem_categories.id
+Ref: posts.agency_id > public_agencies.id
+
+Ref: post_images.post_id > posts.id
+
+Ref: comments.post_id > posts.id
+Ref: comments.user_id > profiles.id
+Ref: comments.parent_comment_id > comments.id
+
+Ref: post_supports.post_id > posts.id
+Ref: post_supports.user_id > profiles.id
+
+Ref: post_status_history.post_id > posts.id
+Ref: post_status_history.changed_by > profiles.id
+
+Ref: notifications.user_id > profiles.id
+
+Ref: user_devices.user_id > profiles.id
+
+Ref: user_badges.user_id > profiles.id
+Ref: user_badges.badge_id > badges.id
+
+Ref: xp_transactions.user_id > profiles.id
+
+Ref: moderation_reports.reporter_user_id > profiles.id
+
+Ref: activity_events.user_id > profiles.id
+Ref: activity_events.post_id > posts.id
