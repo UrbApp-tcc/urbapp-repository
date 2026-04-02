@@ -70,6 +70,16 @@ class FeedPost {
   final int imageCount;
   final String? primaryImageUrl;
   final List<FeedImage> images;
+
+  /// Nome para exibição: autor identificado ou "Usuário Anônimo".
+  String get authorLabel {
+    if (isAnonymous) return 'Usuário Anônimo';
+    final name = authorDisplayName.trim();
+    if (name.isNotEmpty) return name;
+    final u = authorUsername?.trim();
+    if (u != null && u.isNotEmpty) return u;
+    return 'Usuario';
+  }
 }
 
 class FeedService {
@@ -133,7 +143,7 @@ class FeedService {
       commentsCount: (data['comments_count'] as num?)?.toInt() ?? 0,
       isAnonymous: data['is_anonymous'] as bool? ?? false,
       authorId: data['author_id'] as String?,
-      authorDisplayName: (data['author_display_name'] as String?) ?? 'Anonimo',
+      authorDisplayName: (data['author_display_name'] as String?) ?? '',
       authorUsername: data['author_username'] as String?,
       authorAvatarUrl: data['author_avatar_url'] as String?,
       imageCount: (data['image_count'] as num?)?.toInt() ?? 0,

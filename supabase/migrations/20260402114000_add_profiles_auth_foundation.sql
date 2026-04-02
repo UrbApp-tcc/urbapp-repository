@@ -1,6 +1,5 @@
 create table public.profiles (
     id uuid primary key references auth.users(id) on delete cascade,
-    legacy_user_id bigint unique references public.users(id) on delete set null,
     city_id bigint references public.cities(id),
     full_name text not null,
     username text not null,

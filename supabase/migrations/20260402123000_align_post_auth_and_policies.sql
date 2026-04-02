@@ -9,15 +9,10 @@ grant all on table public.problem_categories to service_role;
 alter table public.posts drop constraint if exists posts_user_fkey;
 
 alter table public.posts
-    rename column user_id to legacy_user_id;
+    drop column if exists user_id;
 
 alter table public.posts
     add column user_id uuid;
-
-update public.posts post
-set user_id = profile.id
-from public.profiles profile
-where profile.legacy_user_id = post.legacy_user_id;
 
 alter table public.posts
     add constraint posts_user_id_fkey
@@ -41,15 +36,10 @@ $$;
 alter table public.post_status_history drop constraint if exists post_status_history_changed_by_fkey;
 
 alter table public.post_status_history
-    rename column changed_by to legacy_changed_by;
+    drop column if exists changed_by;
 
 alter table public.post_status_history
     add column changed_by uuid;
-
-update public.post_status_history history
-set changed_by = profile.id
-from public.profiles profile
-where profile.legacy_user_id = history.legacy_changed_by;
 
 alter table public.post_status_history
     add constraint post_status_history_changed_by_fkey

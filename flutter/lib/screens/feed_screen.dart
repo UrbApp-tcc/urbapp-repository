@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/feed_service.dart';
+import 'post_detail_screen.dart';
 
 class FeedScreen extends StatelessWidget {
   const FeedScreen({
@@ -33,7 +34,10 @@ class FeedScreen extends StatelessWidget {
         if (isLoading)
           const _FeaturedCardSkeleton()
         else if (featuredPost != null)
-          _FeaturedFeedCard(post: featuredPost)
+          _FeaturedFeedCard(
+            post: featuredPost,
+            onOpen: () => PostDetailScreen.open(context, featuredPost),
+          )
         else
           const _FeedEmptyHero(),
         const SizedBox(height: 34),
@@ -58,7 +62,10 @@ class FeedScreen extends StatelessWidget {
                   padding: EdgeInsets.only(
                     bottom: entry.key == latestPosts.length - 1 ? 0 : 24,
                   ),
-                  child: _LatestPostRow(post: entry.value),
+                  child: _LatestPostRow(
+                    post: entry.value,
+                    onOpen: () => PostDetailScreen.open(context, entry.value),
+                  ),
                 ),
               ),
       ],
@@ -148,95 +155,106 @@ class _HomeHeader extends StatelessWidget {
 class _FeaturedFeedCard extends StatelessWidget {
   const _FeaturedFeedCard({
     required this.post,
+    required this.onOpen,
   });
 
   final FeedPost post;
+  final VoidCallback onOpen;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 311,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (post.primaryImageUrl != null && post.primaryImageUrl!.isNotEmpty)
-              Image.network(
-                post.primaryImageUrl!,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return _HeroFallback(category: post.categoryName);
-                },
-              )
-            else
-              _HeroFallback(category: post.categoryName),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    const Color(0xFF141E28).withValues(alpha: 0.18),
-                    const Color(0xFF141E28).withValues(alpha: 0.12),
-                    const Color(0xFF141E28).withValues(alpha: 0.86),
-                  ],
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        post.categoryName.toUpperCase(),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const Spacer(),
-                      Text(
-                        _formatRelativeDate(post.createdAt),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 8,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const Spacer(),
-                  Text(
-                    post.title,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      height: 1.2,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.3,
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onOpen,
+        behavior: HitTestBehavior.opaque,
+        child: SizedBox(
+          height: 311,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (post.primaryImageUrl != null && post.primaryImageUrl!.isNotEmpty)
+                  Image.network(
+                    post.primaryImageUrl!,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return _HeroFallback(category: post.categoryName);
+                    },
+                  )
+                else
+                  _HeroFallback(category: post.categoryName),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        const Color(0xFF141E28).withValues(alpha: 0.18),
+                        const Color(0xFF141E28).withValues(alpha: 0.12),
+                        const Color(0xFF141E28).withValues(alpha: 0.86),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 18),
-                  Row(
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.mode_comment_outlined, color: Colors.white, size: 24),
-                      const SizedBox(width: 24),
-                      const Icon(Icons.bookmark_border_rounded, color: Colors.white, size: 24),
+                      Row(
+                        children: [
+                          Text(
+                            post.categoryName.toUpperCase(),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            _formatRelativeDate(post.createdAt),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 8,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      _FeedAuthorRow(post: post, onDarkBackground: true),
                       const Spacer(),
-                      const Icon(Icons.reply_outlined, color: Colors.white, size: 24),
+                      Text(
+                        post.title,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          height: 1.2,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.3,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      Row(
+                        children: [
+                          const Icon(Icons.mode_comment_outlined, color: Colors.white, size: 24),
+                          const SizedBox(width: 24),
+                          const Icon(Icons.bookmark_border_rounded, color: Colors.white, size: 24),
+                          const Spacer(),
+                          const Icon(Icons.reply_outlined, color: Colors.white, size: 24),
+                        ],
+                      ),
                     ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -255,64 +273,195 @@ class _FeaturedFeedCard extends StatelessWidget {
 class _LatestPostRow extends StatelessWidget {
   const _LatestPostRow({
     required this.post,
+    required this.onOpen,
   });
 
   final FeedPost post;
+  final VoidCallback onOpen;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: SizedBox(
-            width: 100,
-            height: 100,
-            child: post.primaryImageUrl != null && post.primaryImageUrl!.isNotEmpty
-                ? Image.network(
-                    post.primaryImageUrl!,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return _ThumbFallback(category: post.categoryName);
-                    },
-                  )
-                : _ThumbFallback(category: post.categoryName),
-          ),
-        ),
-        const SizedBox(width: 24),
-        Expanded(
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onOpen,
+          borderRadius: BorderRadius.circular(12),
           child: Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Column(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  post.categoryName.toUpperCase(),
-                  style: const TextStyle(
-                    color: Color(0xFF9CA3AD),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: SizedBox(
+                    width: 100,
+                    height: 100,
+                    child: post.primaryImageUrl != null && post.primaryImageUrl!.isNotEmpty
+                        ? Image.network(
+                            post.primaryImageUrl!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              return _ThumbFallback(category: post.categoryName);
+                            },
+                          )
+                        : _ThumbFallback(category: post.categoryName),
                   ),
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  post.title,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFF141E28),
-                    fontSize: 18,
-                    height: 1.2,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.3,
+                const SizedBox(width: 24),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _FeedAuthorRow(post: post, onDarkBackground: false),
+                        const SizedBox(height: 8),
+                        Text(
+                          post.categoryName.toUpperCase(),
+                          style: const TextStyle(
+                            color: Color(0xFF9CA3AD),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          post.title,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Color(0xFF141E28),
+                            fontSize: 18,
+                            height: 1.2,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.3,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _FeedAuthorRow extends StatelessWidget {
+  const _FeedAuthorRow({
+    required this.post,
+    required this.onDarkBackground,
+  });
+
+  final FeedPost post;
+  final bool onDarkBackground;
+
+  @override
+  Widget build(BuildContext context) {
+    final textColor = onDarkBackground
+        ? Colors.white.withValues(alpha: 0.92)
+        : const Color(0xFF4B5563);
+    final avatarBg = onDarkBackground
+        ? Colors.white.withValues(alpha: 0.22)
+        : const Color(0xFFE8ECF0);
+    final iconColor =
+        onDarkBackground ? Colors.white.withValues(alpha: 0.85) : const Color(0xFF8F949D);
+
+    return Row(
+      children: [
+        _AuthorAvatar(
+          post: post,
+          backgroundColor: avatarBg,
+          iconColor: iconColor,
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            post.authorLabel,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: textColor,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
       ],
+    );
+  }
+}
+
+class _AuthorAvatar extends StatelessWidget {
+  const _AuthorAvatar({
+    required this.post,
+    required this.backgroundColor,
+    required this.iconColor,
+  });
+
+  final FeedPost post;
+  final Color backgroundColor;
+  final Color iconColor;
+
+  static const double _radius = 14;
+
+  @override
+  Widget build(BuildContext context) {
+    if (post.isAnonymous) {
+      return CircleAvatar(
+        radius: _radius,
+        backgroundColor: backgroundColor,
+        child: Icon(Icons.visibility_off_outlined, size: 16, color: iconColor),
+      );
+    }
+
+    final url = post.authorAvatarUrl;
+    if (url != null && url.isNotEmpty) {
+      return CircleAvatar(
+        radius: _radius,
+        backgroundColor: backgroundColor,
+        child: ClipOval(
+          child: Image.network(
+            url,
+            width: _radius * 2,
+            height: _radius * 2,
+            fit: BoxFit.cover,
+            errorBuilder: (_, _, _) => _initials(),
+          ),
+        ),
+      );
+    }
+
+    return CircleAvatar(
+      radius: _radius,
+      backgroundColor: backgroundColor,
+      child: _initials(),
+    );
+  }
+
+  Widget _initials() {
+    final label = post.authorLabel;
+    final parts = label.trim().split(RegExp(r'\s+')).where((e) => e.isNotEmpty).take(2).toList();
+    String t;
+    if (parts.isEmpty) {
+      t = '?';
+    } else if (parts.length == 1) {
+      t = parts[0].substring(0, 1).toUpperCase();
+    } else {
+      t = '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    }
+    return Text(
+      t,
+      style: TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        color: iconColor,
+      ),
     );
   }
 }

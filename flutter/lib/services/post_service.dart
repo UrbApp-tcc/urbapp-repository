@@ -72,6 +72,8 @@ class PostService {
     bool isAnonymous = false,
   }) async {
     try {
+      await _supabase.rpc('ensure_my_profile');
+
       final response = await _supabase
           .from('posts')
           .insert({

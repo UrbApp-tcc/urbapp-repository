@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/feed_service.dart';
+import 'post_detail_screen.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({
@@ -26,21 +27,27 @@ class _SearchScreenState extends State<SearchScreen> {
     super.dispose();
   }
 
+  static String _haystack(FeedPost post) {
+    return [
+      post.title,
+      post.description,
+      post.categoryName,
+      post.cityName,
+      post.authorDisplayName,
+      post.agencyName ?? '',
+    ].join(' ').toLowerCase();
+  }
+
   List<FeedPost> get _results {
-    final query = _query.trim().toLowerCase();
-    if (query.isEmpty) return widget.posts;
+    final raw = _query.trim().toLowerCase();
+    if (raw.isEmpty) return widget.posts;
+
+    final terms = raw.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
+    if (terms.isEmpty) return widget.posts;
 
     return widget.posts.where((post) {
-      final haystack = [
-        post.title,
-        post.description,
-        post.categoryName,
-        post.cityName,
-        post.authorDisplayName,
-        post.agencyName ?? '',
-      ].join(' ').toLowerCase();
-
-      return haystack.contains(query);
+      final haystack = _haystack(post);
+      return terms.every((term) => haystack.contains(term));
     }).toList();
   }
 
@@ -48,6 +55,7 @@ class _SearchScreenState extends State<SearchScreen> {
   Widget build(BuildContext context) {
     final results = _results;
     final highlights = results.take(2).toList();
+    final showEmpty = !widget.isLoading && results.isEmpty;
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
@@ -58,9 +66,9 @@ class _SearchScreenState extends State<SearchScreen> {
           onChanged: (value) => setState(() => _query = value),
         ),
         const SizedBox(height: 34),
-        _SearchSectionTitle(title: 'Destaques', trailing: '${highlights.length}'),
-        const SizedBox(height: 18),
-        if (widget.isLoading)
+        if (widget.isLoading) ...[
+          _SearchSectionTitle(title: 'Destaques', trailing: '—'),
+          const SizedBox(height: 18),
           SizedBox(
             height: 140,
             child: ListView.separated(
@@ -69,47 +77,47 @@ class _SearchScreenState extends State<SearchScreen> {
               separatorBuilder: (context, index) => const SizedBox(width: 24),
               itemBuilder: (context, index) => const _HighlightSkeleton(),
             ),
-          )
-        else if (highlights.isEmpty)
-          const _EmptySearchState()
-        else
-          SizedBox(
-            height: 140,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: highlights.length,
-              separatorBuilder: (context, index) => const SizedBox(width: 24),
-              itemBuilder: (context, index) => _SearchHighlightCard(post: highlights[index]),
-            ),
           ),
-        const SizedBox(height: 28),
-        _SearchSectionTitle(title: 'Resultados', trailing: '${results.length}'),
-        const SizedBox(height: 18),
-        if (widget.isLoading)
+          const SizedBox(height: 28),
+          _SearchSectionTitle(title: 'Resultados', trailing: '—'),
+          const SizedBox(height: 18),
           ...List.generate(
             5,
             (index) => Padding(
               padding: EdgeInsets.only(bottom: index == 4 ? 0 : 24),
               child: const _ResultSkeleton(),
             ),
-          )
-        else if (results.isEmpty)
-          const _EmptySearchState()
-        else
+          ),
+        ]         else if (showEmpty)
+          _SearchEmptyState(feedIsEmpty: widget.posts.isEmpty)
+        else ...[
+          _SearchSectionTitle(title: 'Destaques', trailing: '${highlights.length}'),
+          const SizedBox(height: 18),
+          SizedBox(
+            height: 140,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: highlights.length,
+              separatorBuilder: (context, index) => const SizedBox(width: 24),
+              itemBuilder: (context, index) => _SearchHighlightCard(
+                post: highlights[index],
+                onOpen: () => PostDetailScreen.open(context, highlights[index]),
+              ),
+            ),
+          ),
+          const SizedBox(height: 28),
+          _SearchSectionTitle(title: 'Resultados', trailing: '${results.length}'),
+          const SizedBox(height: 18),
           ...results.asMap().entries.map(
                 (entry) => Padding(
                   padding: EdgeInsets.only(bottom: entry.key == results.length - 1 ? 0 : 24),
-                  child: Text(
-                    entry.value.title,
-                    style: const TextStyle(
-                      color: Color(0xFF141E28),
-                      fontSize: 16,
-                      height: 1.4,
-                      fontWeight: FontWeight.w500,
-                    ),
+                  child: _SearchResultRow(
+                    post: entry.value,
+                    onOpen: () => PostDetailScreen.open(context, entry.value),
                   ),
                 ),
               ),
+        ],
       ],
     );
   }
@@ -128,50 +136,49 @@ class _SearchField extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       height: 56,
-      padding: const EdgeInsets.only(left: 18, right: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
       decoration: BoxDecoration(
-        color: const Color(0xFF141E28),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: const Color(0xFFE2E5EA)),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF141E28).withValues(alpha: 0.16),
-            blurRadius: 24,
-            offset: const Offset(0, 16),
+            color: const Color(0xFF141E28).withValues(alpha: 0.06),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
       child: Row(
         children: [
+          const Padding(
+            padding: EdgeInsets.only(left: 12),
+            child: Icon(Icons.search_rounded, color: Color(0xFF8F949D), size: 22),
+          ),
           Expanded(
             child: TextField(
               controller: controller,
               onChanged: onChanged,
+              textInputAction: TextInputAction.search,
               style: const TextStyle(
-                color: Colors.white,
+                color: Color(0xFF141E28),
                 fontSize: 15,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w600,
               ),
               decoration: const InputDecoration(
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                 hintText: 'Pesquisar reportes',
                 hintStyle: TextStyle(
-                  color: Colors.white70,
+                  color: Color(0xFF8F949D),
                   fontSize: 15,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ),
-          ),
-          Container(
-            width: 40,
-            height: 40,
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.search_rounded, color: Color(0xFF141E28)),
           ),
         ],
       ),
@@ -228,75 +235,135 @@ class _SearchSectionTitle extends StatelessWidget {
 class _SearchHighlightCard extends StatelessWidget {
   const _SearchHighlightCard({
     required this.post,
+    required this.onOpen,
   });
 
   final FeedPost post;
+  final VoidCallback onOpen;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 224,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (post.primaryImageUrl != null && post.primaryImageUrl!.isNotEmpty)
-              Image.network(
-                post.primaryImageUrl!,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return const DecoratedBox(
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onOpen,
+        behavior: HitTestBehavior.opaque,
+        child: SizedBox(
+          width: 224,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (post.primaryImageUrl != null && post.primaryImageUrl!.isNotEmpty)
+                  Image.network(
+                    post.primaryImageUrl!,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return const DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Color(0xFF141E28),
+                        ),
+                      );
+                    },
+                  )
+                else
+                  const DecoratedBox(
                     decoration: BoxDecoration(
                       color: Color(0xFF141E28),
                     ),
-                  );
-                },
-              )
-            else
-              const DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Color(0xFF141E28),
+                  ),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withValues(alpha: 0.12),
+                        Colors.black.withValues(alpha: 0.48),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.black.withValues(alpha: 0.12),
-                    Colors.black.withValues(alpha: 0.48),
-                  ],
+                const Positioned(
+                  top: 16,
+                  left: 16,
+                  child: Icon(
+                    Icons.play_circle_outline_rounded,
+                    color: Colors.white,
+                    size: 28,
+                  ),
                 ),
-              ),
-            ),
-            const Positioned(
-              top: 16,
-              left: 16,
-              child: Icon(
-                Icons.play_circle_outline_rounded,
-                color: Colors.white,
-                size: 28,
-              ),
-            ),
-            Positioned(
-              left: 16,
-              right: 16,
-              bottom: 16,
-              child: Text(
-                post.title,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  height: 1.35,
-                  fontWeight: FontWeight.w500,
+                Positioned(
+                  left: 16,
+                  right: 16,
+                  bottom: 16,
+                  child: Text(
+                    post.title,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      height: 1.35,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ),
-          ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SearchResultRow extends StatelessWidget {
+  const _SearchResultRow({
+    required this.post,
+    required this.onOpen,
+  });
+
+  final FeedPost post;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onOpen,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  post.title,
+                  style: const TextStyle(
+                    color: Color(0xFF141E28),
+                    fontSize: 16,
+                    height: 1.35,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${post.authorLabel} · ${post.cityName}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF8F949D),
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -333,18 +400,40 @@ class _ResultSkeleton extends StatelessWidget {
   }
 }
 
-class _EmptySearchState extends StatelessWidget {
-  const _EmptySearchState();
+class _SearchEmptyState extends StatelessWidget {
+  const _SearchEmptyState({required this.feedIsEmpty});
+
+  final bool feedIsEmpty;
 
   @override
   Widget build(BuildContext context) {
-    return const Text(
-      'Nenhum reporte encontrado para essa busca.',
-      style: TextStyle(
-        color: Color(0xFF8F949D),
-        fontSize: 15,
-        height: 1.45,
-      ),
+    final title = feedIsEmpty ? 'Nenhum reporte ainda' : 'Nenhum resultado para essa busca';
+    final subtitle = feedIsEmpty
+        ? 'Quando houver reportes no feed, você poderá pesquisar por título, cidade, categoria e mais. Toque no + para criar o primeiro.'
+        : 'Tente outras palavras ou verifique a ortografia.';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            color: Color(0xFF141E28),
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
+            height: 1.3,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          subtitle,
+          style: const TextStyle(
+            color: Color(0xFF8F949D),
+            fontSize: 15,
+            height: 1.45,
+          ),
+        ),
+      ],
     );
   }
 }
