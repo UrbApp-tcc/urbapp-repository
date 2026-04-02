@@ -188,31 +188,6 @@ class _LoginScreenState extends State<LoginScreen> {
             loading: _carregando,
             onPressed: _entrar,
           ),
-          // REMOVER DEPOIS -----------------------------------------
-          ElevatedButton(
-            onPressed: () async {
-              try {
-                await PostService().createPost(
-                  userId: 1, // pode ser qualquer string por enquanto
-                  cityId: 1,
-                  categoryId: 1,
-                  title: 'Post de teste',
-                  description: 'Esse é um post de teste',
-                  latitude: -23.5,
-                  longitude: -47.4,
-                );
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Post criado com sucesso!')),
-                );
-              } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Erro: $e')),
-                );
-              }
-            },
-            child: const Text('Testar criação de post'),
-          ),
-          // REMOVER DEPOIS -----------------------------------------
           const SizedBox(height: 28),
           Center(
             child: RichText(
