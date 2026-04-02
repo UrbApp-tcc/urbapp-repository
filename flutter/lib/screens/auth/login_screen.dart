@@ -6,6 +6,7 @@ import '../../widgets/auth_text_field.dart';
 import '../../widgets/gradient_button.dart';
 import '../../widgets/wave_header.dart';
 import 'register_screen.dart';
+import '../../services/post_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
