@@ -1,16 +1,12 @@
-import 'dart:typed_data';
-
-import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class LookupOption {
-  const LookupOption({
-    required this.id,
-    required this.name,
-  });
+  const LookupOption({required this.id, required this.name, this.stateCode});
 
   final int id;
   final String name;
+  final String? stateCode;
 }
 
 class PostService {
@@ -21,7 +17,7 @@ class PostService {
     try {
       final response = await _supabase
           .from('cities')
-          .select('id, name')
+          .select('id, name, state')
           .order('name');
 
       return (response as List<dynamic>)
@@ -29,6 +25,7 @@ class PostService {
             (item) => LookupOption(
               id: item['id'] as int,
               name: item['name'] as String,
+              stateCode: item['state'] as String?,
             ),
           )
           .toList();
@@ -63,7 +60,7 @@ class PostService {
 
   Future<int> createPost({
     required String userId,
-    required int cityId,
+    int? cityId,
     required int categoryId,
     required String title,
     required String description,
@@ -120,20 +117,23 @@ class PostService {
   Future<void> uploadPostImages({
     required String userId,
     required int postId,
-    required List<PlatformFile> files,
+    required List<XFile> files,
   }) async {
     try {
       final imageFiles = files.where(_isImageFile).toList();
       if (imageFiles.isEmpty) return;
 
       for (var index = 0; index < imageFiles.length; index++) {
-        final file = imageFiles[index];
-        final bytes = _extractBytes(file);
-        final extension = _fileExtension(file.name);
-        final fileName = '${DateTime.now().millisecondsSinceEpoch}_$index.$extension';
+        final image = imageFiles[index];
+        final bytes = await image.readAsBytes();
+        final extension = _fileExtension(image.name);
+        final fileName =
+            '${DateTime.now().millisecondsSinceEpoch}_$index.$extension';
         final storagePath = '$userId/posts/$postId/$fileName';
 
-        await _supabase.storage.from(_postImagesBucket).uploadBinary(
+        await _supabase.storage
+            .from(_postImagesBucket)
+            .uploadBinary(
               storagePath,
               bytes,
               fileOptions: const FileOptions(upsert: false),
@@ -154,7 +154,52 @@ class PostService {
     }
   }
 
-  bool _isImageFile(PlatformFile file) {
+  Future<LookupOption?> findCityByName({
+    required String cityName,
+    String? stateCode,
+  }) async {
+    final normalizedName = _normalizeText(cityName);
+    if (normalizedName.isEmpty) return null;
+
+    try {
+      var query = _supabase.from('cities').select('id, name, state');
+      if (stateCode != null && stateCode.isNotEmpty) {
+        query = query.eq('state', stateCode);
+      }
+
+      final response = await query.limit(200);
+      final cities = (response as List<dynamic>)
+          .map(
+            (item) => LookupOption(
+              id: item['id'] as int,
+              name: item['name'] as String,
+              stateCode: item['state'] as String?,
+            ),
+          )
+          .toList();
+
+      LookupOption? partialMatch;
+      for (final city in cities) {
+        final normalizedCityName = _normalizeText(city.name);
+        if (normalizedCityName == normalizedName) {
+          return city;
+        }
+
+        if (normalizedCityName.contains(normalizedName) ||
+            normalizedName.contains(normalizedCityName)) {
+          partialMatch ??= city;
+        }
+      }
+
+      return partialMatch;
+    } on PostgrestException catch (error) {
+      throw Exception('Erro ao localizar cidade: ${error.message}');
+    } catch (error) {
+      throw Exception('Erro inesperado ao localizar cidade: $error');
+    }
+  }
+
+  bool _isImageFile(XFile file) {
     final extension = _fileExtension(file.name);
     return {'jpg', 'jpeg', 'png', 'gif', 'webp'}.contains(extension);
   }
@@ -165,11 +210,46 @@ class PostService {
     return parts.last.toLowerCase();
   }
 
-  Uint8List _extractBytes(PlatformFile file) {
-    final bytes = file.bytes;
-    if (bytes == null) {
-      throw Exception('Nao foi possivel ler os bytes do arquivo ${file.name}.');
-    }
-    return bytes;
+  String _normalizeText(String value) {
+    var normalized = value.trim().toLowerCase();
+    const replacements = {
+      'á': 'a',
+      'à': 'a',
+      'ã': 'a',
+      'â': 'a',
+      'é': 'e',
+      'ê': 'e',
+      'í': 'i',
+      'ó': 'o',
+      'ô': 'o',
+      'õ': 'o',
+      'ú': 'u',
+      'ç': 'c',
+      'Ã¡': 'a',
+      'Ã ': 'a',
+      'Ã£': 'a',
+      'Ã¢': 'a',
+      'Ã©': 'e',
+      'Ãª': 'e',
+      'Ã­': 'i',
+      'Ã³': 'o',
+      'Ã´': 'o',
+      'Ãµ': 'o',
+      'Ãº': 'u',
+      'Ã§': 'c',
+    };
+
+    replacements.forEach((source, target) {
+      normalized = normalized.replaceAll(source, target);
+    });
+
+    return normalized
+        .replaceAll(RegExp(r'^municipio de\s+'), '')
+        .replaceAll(RegExp(r'^cidade de\s+'), '')
+        .replaceAll(RegExp(r'^estancia turistica de\s+'), '')
+        .replaceAll(RegExp(r'\s*[-/]\s*[a-z]{2}$'), '')
+        .replaceAll(RegExp(r'[^a-z0-9\s]'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
   }
 }

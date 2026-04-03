@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:geocoding/geocoding.dart' as geo;
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../services/auth_service.dart';
@@ -14,13 +16,11 @@ import '../theme/app_theme.dart';
 import '../widgets/app_logo.dart';
 import '../widgets/auth_text_field.dart';
 import '../widgets/gradient_button.dart';
+import '../widgets/media_picker_widget.dart';
 import '../widgets/wave_header.dart';
 
 class CreatePostScreen extends StatefulWidget {
-  const CreatePostScreen({
-    super.key,
-    this.returnToPreviousOnSuccess = false,
-  });
+  const CreatePostScreen({super.key, this.returnToPreviousOnSuccess = false});
 
   final bool returnToPreviousOnSuccess;
 
@@ -40,7 +40,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
   List<LookupOption> _cities = const [];
   List<LookupOption> _categories = const [];
-  List<PlatformFile> _selectedMedia = const [];
+  List<XFile> _images = [];
 
   LookupOption? _selectedCity;
   LookupOption? _selectedCategory;
@@ -48,6 +48,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   LatLng? _selectedPoint;
   String _locationLabel = 'Buscando sua localizacao atual...';
   String _cityLabel = 'Cidade nao identificada';
+  String? _resolvedStateCode;
+  bool _locationIsApproximate = false;
 
   bool _isAnonymous = false;
   bool _isSubmitting = false;
@@ -140,8 +142,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       setState(() {
         _selectedPoint = _fallbackPoint;
         _isLoadingLocation = false;
-        _locationLabel = 'Nao foi possivel usar sua localizacao atual. Ajuste o pin manualmente no mapa.';
+        _locationLabel =
+            'Nao foi possivel usar sua localizacao atual. Ajuste o pin manualmente no mapa.';
         _cityLabel = 'Cidade nao identificada';
+        _resolvedStateCode = null;
+        _locationIsApproximate = true;
       });
 
       _mapController.move(_fallbackPoint, 13);
@@ -160,21 +165,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     return _authService.currentUser?.email ?? 'Usuario autenticado';
   }
 
-  Future<void> _pickMedia() async {
-    final result = await FilePicker.platform.pickFiles(
-      allowMultiple: true,
-      withData: true,
-      type: FileType.custom,
-      allowedExtensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'mov', 'avi', 'mkv'],
-    );
-
-    if (result == null) return;
-
-    setState(() {
-      _selectedMedia = result.files;
-    });
-  }
-
   Future<void> _updateAddressFromPoint(LatLng point) async {
     if (!mounted) return;
 
@@ -185,32 +175,56 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       final street = locationData.street;
       final neighborhood = locationData.neighborhood;
       final locality = locationData.city;
+      final stateCode = _stateCodeFromName(locationData.state);
 
       final locationParts = <String>[
         if (street.isNotEmpty) street,
         if (neighborhood.isNotEmpty) neighborhood,
       ];
 
-      final matchedCity = _matchCity(locality);
+      final matchedCity =
+          _matchCity(locality, stateCode: stateCode) ??
+          await _postService.findCityByName(
+            cityName: locality,
+            stateCode: stateCode,
+          );
+      debugPrint(
+        'Location match: point=(${point.latitude}, ${point.longitude}) '
+        'street="$street" neighborhood="$neighborhood" locality="$locality" '
+        'state="${locationData.state}" stateCode="$stateCode" '
+        'matchedCity="${matchedCity?.name}" loadedCities=${_cities.length}',
+      );
 
       if (!mounted) return;
 
       setState(() {
         _selectedPoint = point;
         _selectedCity = matchedCity;
-        _cityLabel = matchedCity?.name ?? (locality.isNotEmpty ? locality : 'Cidade nao identificada');
+        _cityLabel = locality.isNotEmpty ? locality : 'Cidade nao identificada';
+        _resolvedStateCode = stateCode;
+        _locationIsApproximate =
+            matchedCity == null || locality == 'Localizacao nao identificada';
         _locationLabel = locationParts.isEmpty
-            ? 'Endereco nao identificado com detalhes. Ajuste o pin no mapa.'
+            ? 'Localizacao aproximada'
             : locationParts.join(' - ');
       });
-    } catch (_) {
+
+      debugPrint(
+        'Location UI state: label="$_locationLabel" cityLabel="$_cityLabel" '
+        'approximate=$_locationIsApproximate cityId=${_selectedCity?.id}',
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Reverse geocoding failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
       if (!mounted) return;
 
       setState(() {
         _selectedPoint = point;
         _selectedCity = null;
         _cityLabel = 'Cidade nao identificada';
-        _locationLabel = 'Nao foi possivel identificar rua e bairro para este ponto.';
+        _locationLabel = 'Localizacao aproximada';
+        _resolvedStateCode = null;
+        _locationIsApproximate = true;
       });
     } finally {
       if (mounted) {
@@ -219,68 +233,143 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     }
   }
 
-  LookupOption? _matchCity(String? cityName) {
+  LookupOption? _matchCity(String? cityName, {String? stateCode}) {
     if (cityName == null || cityName.trim().isEmpty) return null;
 
     final normalizedTarget = _normalizeText(cityName);
+    LookupOption? partialMatch;
+
     for (final city in _cities) {
-      if (_normalizeText(city.name) == normalizedTarget) {
+      if (stateCode != null &&
+          city.stateCode != null &&
+          city.stateCode != stateCode) {
+        continue;
+      }
+
+      final normalizedCityName = _normalizeText(city.name);
+      if (normalizedCityName == normalizedTarget) {
         return city;
+      }
+
+      if (normalizedCityName.contains(normalizedTarget) ||
+          normalizedTarget.contains(normalizedCityName)) {
+        partialMatch ??= city;
       }
     }
 
-    return null;
+    debugPrint(
+      'City match not found for "$cityName" (normalized="$normalizedTarget", state="$stateCode"). '
+      'Loaded cities sample: ${_cities.take(10).map((city) => city.name).join(', ')}',
+    );
+    return partialMatch;
   }
 
-  Future<({String street, String neighborhood, String city})> _fetchAddressFromCoordinates(
-    LatLng point,
-  ) async {
-    final uri = Uri.https(
-      'nominatim.openstreetmap.org',
-      '/reverse',
-      {
+  Future<({String street, String neighborhood, String city, String state})>
+  _fetchAddressFromCoordinates(LatLng point) async {
+    if (!kIsWeb) {
+      try {
+        final placemarks = await geo.placemarkFromCoordinates(
+          point.latitude,
+          point.longitude,
+        );
+        debugPrint('Placemark retorno: $placemarks');
+
+        if (placemarks.isNotEmpty) {
+          final placemark = placemarks.first;
+          final street = _firstNonEmpty([
+            placemark.street,
+            placemark.thoroughfare,
+            placemark.name,
+          ]);
+          final neighborhood = _firstNonEmpty([
+            placemark.subLocality,
+            placemark.locality,
+            placemark.subAdministrativeArea,
+          ]);
+          final city = _firstNonEmpty([
+            placemark.locality,
+            placemark.subAdministrativeArea,
+            placemark.administrativeArea,
+            placemark.country,
+          ]);
+
+          return (
+            street: street,
+            neighborhood: neighborhood,
+            city: city,
+            state: placemark.administrativeArea ?? '',
+          );
+        }
+      } catch (error, stackTrace) {
+        debugPrint('placemarkFromCoordinates falhou: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
+    }
+
+    try {
+      final uri = Uri.https('nominatim.openstreetmap.org', '/reverse', {
         'format': 'jsonv2',
         'lat': point.latitude.toString(),
         'lon': point.longitude.toString(),
         'zoom': '18',
         'addressdetails': '1',
-      },
-    );
+      });
 
-    final response = await http.get(
-      uri,
-      headers: {
-        'Accept': 'application/json',
-      },
-    );
+      final response = await http.get(
+        uri,
+        headers: {'Accept': 'application/json'},
+      );
 
-    if (response.statusCode != 200) {
-      throw Exception('Falha ao consultar o endereco no mapa.');
+      if (response.statusCode != 200) {
+        throw Exception('Falha ao consultar o endereco no mapa.');
+      }
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final address = (data['address'] as Map<String, dynamic>?) ?? const {};
+      debugPrint('Reverse geocoding result: $address');
+
+      final street =
+          (address['road'] ?? address['pedestrian'] ?? address['footway'] ?? '')
+              .toString()
+              .trim();
+      final neighborhood =
+          (address['suburb'] ??
+                  address['neighbourhood'] ??
+                  address['quarter'] ??
+                  '')
+              .toString()
+              .trim();
+      final city =
+          (address['city'] ??
+                  address['town'] ??
+                  address['village'] ??
+                  address['municipality'] ??
+                  address['county'] ??
+                  address['state'] ??
+                  address['country'] ??
+                  'Localizacao nao identificada')
+              .toString()
+              .trim();
+      final state = (address['state'] ?? address['region'] ?? '')
+          .toString()
+          .trim();
+
+      return (
+        street: street,
+        neighborhood: neighborhood,
+        city: city,
+        state: state,
+      );
+    } catch (error, stackTrace) {
+      debugPrint('HTTP reverse geocoding falhou: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return (
+        street: '',
+        neighborhood: '',
+        city: 'Localizacao nao identificada',
+        state: '',
+      );
     }
-
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    final address = (data['address'] as Map<String, dynamic>?) ?? const {};
-
-    final street = (address['road'] ?? address['pedestrian'] ?? address['footway'] ?? '')
-        .toString()
-        .trim();
-    final neighborhood = (address['suburb'] ?? address['neighbourhood'] ?? address['quarter'] ?? '')
-        .toString()
-        .trim();
-    final city = (address['city'] ??
-            address['town'] ??
-            address['village'] ??
-            address['municipality'] ??
-            address['county'] ??
-            '')
-        .toString()
-        .trim();
-
-    return (
-      street: street,
-      neighborhood: neighborhood,
-      city: city,
-    );
   }
 
   String _normalizeText(String value) {
@@ -303,7 +392,70 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     replacements.forEach((source, target) {
       normalized = normalized.replaceAll(source, target);
     });
+
+    normalized = normalized
+        .replaceAll(RegExp(r'^municipio de\s+'), '')
+        .replaceAll(RegExp(r'^cidade de\s+'), '')
+        .replaceAll(RegExp(r'^estancia turistica de\s+'), '')
+        .replaceAll(RegExp(r'\s*[-/]\s*[a-z]{2}$'), '')
+        .replaceAll(RegExp(r'[^a-z0-9\s]'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
     return normalized;
+  }
+
+  String? _stateCodeFromName(String? stateName) {
+    if (stateName == null || stateName.trim().isEmpty) return null;
+
+    const stateMap = {
+      'acre': 'ac',
+      'alagoas': 'al',
+      'amapa': 'ap',
+      'amazonas': 'am',
+      'bahia': 'ba',
+      'ceara': 'ce',
+      'distrito federal': 'df',
+      'espirito santo': 'es',
+      'goias': 'go',
+      'maranhao': 'ma',
+      'mato grosso': 'mt',
+      'mato grosso do sul': 'ms',
+      'minas gerais': 'mg',
+      'para': 'pa',
+      'paraiba': 'pb',
+      'parana': 'pr',
+      'pernambuco': 'pe',
+      'piaui': 'pi',
+      'rio de janeiro': 'rj',
+      'rio grande do norte': 'rn',
+      'rio grande do sul': 'rs',
+      'rondonia': 'ro',
+      'roraima': 'rr',
+      'santa catarina': 'sc',
+      'sao paulo': 'sp',
+      'sergipe': 'se',
+      'tocantins': 'to',
+    };
+
+    final normalizedState = _normalizeText(stateName);
+    return stateMap[normalizedState] ?? normalizedState;
+  }
+
+  Future<LookupOption?> _resolveCityForSubmission() async {
+    final localMatch =
+        _selectedCity ?? _matchCity(_cityLabel, stateCode: _resolvedStateCode);
+    if (localMatch != null) return localMatch;
+
+    if (_cityLabel.trim().isEmpty ||
+        _cityLabel == 'Localizacao nao identificada') {
+      return null;
+    }
+
+    return _postService.findCityByName(
+      cityName: _cityLabel,
+      stateCode: _resolvedStateCode,
+    );
   }
 
   Future<void> _submitPost() async {
@@ -311,7 +463,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
     final currentUser = _authService.currentUser;
     if (currentUser == null) {
-      _showError('Sua sessao expirou. Entre novamente para publicar o reporte.');
+      _showError(
+        'Sua sessao expirou. Entre novamente para publicar o reporte.',
+      );
       return;
     }
 
@@ -320,23 +474,21 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       return;
     }
 
-    if (_selectedCity == null) {
-      _showError('Nao foi possivel identificar uma cidade valida para o ponto selecionado.');
-      return;
-    }
+    final matchedCity = await _resolveCityForSubmission();
 
     if (_selectedCategory == null) {
       _showError('Selecione uma categoria.');
       return;
     }
 
+    if (!mounted) return;
     FocusScope.of(context).unfocus();
     setState(() => _isSubmitting = true);
 
     try {
       final postId = await _postService.createPost(
         userId: currentUser.id,
-        cityId: _selectedCity!.id,
+        cityId: matchedCity?.id,
         categoryId: _selectedCategory!.id,
         title: _titleController.text,
         description: _descriptionController.text,
@@ -353,7 +505,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       await _postService.uploadPostImages(
         userId: currentUser.id,
         postId: postId,
-        files: _selectedMedia,
+        files: _images,
       );
 
       if (!mounted) return;
@@ -361,13 +513,15 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            _selectedMedia.isEmpty
+            _images.isEmpty
                 ? 'Post criado com sucesso!'
                 : 'Post criado com imagens com sucesso!',
           ),
           backgroundColor: AppColors.resolved,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           margin: const EdgeInsets.all(16),
         ),
       );
@@ -379,11 +533,20 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
       setState(() {
         _isAnonymous = false;
+        _selectedCity = matchedCity;
         _selectedCategory = null;
-        _selectedMedia = const [];
+        _images = [];
+        _resolvedStateCode = null;
+        _locationIsApproximate = false;
       });
 
-      if (widget.returnToPreviousOnSuccess && mounted && Navigator.of(context).canPop()) {
+      if (matchedCity == null) {
+        _showInfo('Reporte publicado com localizacao aproximada.');
+      }
+
+      if (widget.returnToPreviousOnSuccess &&
+          mounted &&
+          Navigator.of(context).canPop()) {
         Navigator.of(context).pop(true);
       }
     } catch (error) {
@@ -402,6 +565,20 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       SnackBar(
         content: Text(message),
         backgroundColor: AppColors.error,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
+  }
+
+  void _showInfo(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: AppColors.inProgress,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         margin: const EdgeInsets.all(16),
@@ -579,7 +756,14 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               ),
             ),
             const SizedBox(height: _fieldSpacing),
-            _buildMediaPicker(),
+            MediaPickerWidget(
+              images: _images,
+              onChanged: (images) {
+                setState(() {
+                  _images = images;
+                });
+              },
+            ),
             const SizedBox(height: 24),
             _buildSectionLabel('Localização'),
             const SizedBox(height: 12),
@@ -588,7 +772,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             GradientButton(
               label: 'Publicar reporte',
               loading: _isSubmitting,
-              onPressed: (_isLoadingLookups || _isLoadingLocation) ? null : _submitPost,
+              onPressed: (_isLoadingLookups || _isLoadingLocation)
+                  ? null
+                  : _submitPost,
             ),
           ],
         ),
@@ -705,90 +891,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     );
   }
 
-  Widget _buildMediaPicker() {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: AppColors.primaryLight,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Icon(
-                  Icons.perm_media_outlined,
-                  color: AppColors.primaryDark,
-                ),
-              ),
-              const SizedBox(width: 14),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Adicionar midia',
-                      style: TextStyle(
-                        color: AppColors.textPrimary,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      'Selecione imagens e videos para anexar ao post.',
-                      style: TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 13,
-                        height: 1.35,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              TextButton(
-                onPressed: _pickMedia,
-                child: const Text('Escolher'),
-              ),
-            ],
-          ),
-          if (_selectedMedia.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _selectedMedia
-                  .map(
-                    (file) => Chip(
-                      label: Text(
-                        file.name,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      deleteIcon: const Icon(Icons.close_rounded, size: 18),
-                      onDeleted: () {
-                        setState(() {
-                          _selectedMedia = _selectedMedia.where((item) => item != file).toList();
-                        });
-                      },
-                    ),
-                  )
-                  .toList(),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
   Widget _buildLocationCard() {
     return Container(
       padding: const EdgeInsets.all(18),
@@ -820,7 +922,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _isResolvingAddress ? 'Atualizando endereco...' : _locationLabel,
+                      _isResolvingAddress
+                          ? 'Atualizando endereco...'
+                          : _locationLabel,
                       style: const TextStyle(
                         color: AppColors.textPrimary,
                         fontSize: 15,
@@ -829,9 +933,16 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      _cityLabel,
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
+                      _locationIsApproximate &&
+                              _cityLabel != 'Localizacao nao identificada'
+                          ? '$_cityLabel (aproximada)'
+                          : (_locationIsApproximate
+                                ? 'Localizacao aproximada'
+                                : _cityLabel),
+                      style: TextStyle(
+                        color: _locationIsApproximate
+                            ? AppColors.pending
+                            : AppColors.textSecondary,
                         fontSize: 13,
                         height: 1.35,
                       ),
@@ -871,7 +982,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                     ),
                     children: [
                       TileLayer(
-                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        urlTemplate:
+                            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                         userAgentPackageName: 'com.example.meu_app',
                       ),
                     ],
@@ -937,7 +1049,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         }
 
         return options.where(
-          (option) => option.name.toLowerCase().contains(query) || option.id.toString().contains(query),
+          (option) =>
+              option.name.toLowerCase().contains(query) ||
+              option.id.toString().contains(query),
         );
       },
       onSelected: onSelected,
@@ -974,8 +1088,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                     ),
                   )
                 : selectedOption != null
-                    ? const Icon(Icons.check_circle, color: AppColors.resolved)
-                    : const Icon(Icons.search_rounded),
+                ? const Icon(Icons.check_circle, color: AppColors.resolved)
+                : const Icon(Icons.search_rounded),
           ),
         );
       },
@@ -1001,7 +1115,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                         padding: const EdgeInsets.all(16),
                         child: Text(
                           emptyMessage,
-                          style: const TextStyle(color: AppColors.textSecondary),
+                          style: const TextStyle(
+                            color: AppColors.textSecondary,
+                          ),
                         ),
                       ),
                     )
@@ -1035,5 +1151,14 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         letterSpacing: 0.3,
       ),
     );
+  }
+
+  String _firstNonEmpty(List<String?> values) {
+    for (final value in values) {
+      if (value != null && value.trim().isNotEmpty) {
+        return value.trim();
+      }
+    }
+    return '';
   }
 }
