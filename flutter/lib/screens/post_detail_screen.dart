@@ -11,9 +11,7 @@ class PostDetailScreen extends StatelessWidget {
 
   static void open(BuildContext context, FeedPost post) {
     Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => PostDetailScreen(post: post),
-      ),
+      MaterialPageRoute<void>(builder: (_) => PostDetailScreen(post: post)),
     );
   }
 
@@ -66,9 +64,15 @@ class PostDetailScreen extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              _MetaChip(icon: Icons.label_outline_rounded, label: post.categoryName),
+              _MetaChip(
+                icon: Icons.label_outline_rounded,
+                label: post.categoryName,
+              ),
               _MetaChip(icon: Icons.location_on_outlined, label: post.cityName),
-              _MetaChip(icon: Icons.flag_outlined, label: _statusLabel(post.status)),
+              _MetaChip(
+                icon: Icons.flag_outlined,
+                label: _statusLabel(post.status),
+              ),
             ],
           ),
           if (post.agencyName != null && post.agencyName!.trim().isNotEmpty)
@@ -82,17 +86,18 @@ class PostDetailScreen extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             _formatPublishedAt(post.createdAt),
-            style: const TextStyle(
-              color: AppColors.textHint,
-              fontSize: 13,
-            ),
+            style: const TextStyle(color: AppColors.textHint, fontSize: 13),
           ),
           const SizedBox(height: 20),
           const Divider(height: 1, color: AppColors.border),
           const SizedBox(height: 16),
           Row(
             children: [
-              Icon(Icons.mode_comment_outlined, size: 22, color: AppColors.textSecondary.withValues(alpha: 0.9)),
+              Icon(
+                Icons.mode_comment_outlined,
+                size: 22,
+                color: AppColors.textSecondary.withValues(alpha: 0.9),
+              ),
               const SizedBox(width: 8),
               Text(
                 '${post.commentsCount}',
@@ -103,7 +108,11 @@ class PostDetailScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 28),
-              Icon(Icons.favorite_border_rounded, size: 22, color: AppColors.textSecondary.withValues(alpha: 0.9)),
+              Icon(
+                Icons.favorite_border_rounded,
+                size: 22,
+                color: AppColors.textSecondary.withValues(alpha: 0.9),
+              ),
               const SizedBox(width: 8),
               Text(
                 '${post.supportsCount}',
@@ -134,7 +143,11 @@ class PostDetailScreen extends StatelessWidget {
             ),
             child: Column(
               children: [
-                Icon(Icons.chat_bubble_outline_rounded, size: 36, color: AppColors.textHint.withValues(alpha: 0.85)),
+                Icon(
+                  Icons.chat_bubble_outline_rounded,
+                  size: 36,
+                  color: AppColors.textHint.withValues(alpha: 0.85),
+                ),
                 const SizedBox(height: 12),
                 Text(
                   post.commentsCount == 0
@@ -156,10 +169,11 @@ class PostDetailScreen extends StatelessWidget {
   }
 
   static List<String> _orderedImageUrls(FeedPost post) {
-    final fromItems = post.images
-        .where((e) => e.publicUrl != null && e.publicUrl!.isNotEmpty)
-        .toList()
-      ..sort((a, b) => a.position.compareTo(b.position));
+    final fromItems =
+        post.images
+            .where((e) => e.publicUrl != null && e.publicUrl!.isNotEmpty)
+            .toList()
+          ..sort((a, b) => a.position.compareTo(b.position));
     final urls = fromItems.map((e) => e.publicUrl!).toList();
     if (urls.isNotEmpty) return urls;
     if (post.primaryImageUrl != null && post.primaryImageUrl!.isNotEmpty) {
@@ -256,7 +270,11 @@ class _DetailAvatar extends StatelessWidget {
       return CircleAvatar(
         radius: radius,
         backgroundColor: AppColors.primaryLight,
-        child: Icon(Icons.visibility_off_outlined, size: 22, color: AppColors.primaryDark),
+        child: Icon(
+          Icons.visibility_off_outlined,
+          size: 22,
+          color: AppColors.primaryDark,
+        ),
       );
     }
     final url = post.authorAvatarUrl;
@@ -284,7 +302,12 @@ class _DetailAvatar extends StatelessWidget {
 
   Widget _initials() {
     final label = post.authorLabel;
-    final parts = label.trim().split(RegExp(r'\s+')).where((e) => e.isNotEmpty).take(2).toList();
+    final parts = label
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((e) => e.isNotEmpty)
+        .take(2)
+        .toList();
     String t;
     if (parts.isEmpty) {
       t = '?';
@@ -353,19 +376,39 @@ class _PostImageGallery extends StatefulWidget {
 class _PostImageGalleryState extends State<_PostImageGallery> {
   int _page = 0;
 
+  void _openFullscreenGallery(int initialIndex) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _FullscreenImageGallery(
+          urls: widget.urls,
+          initialIndex: initialIndex,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.urls.length == 1) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: AspectRatio(
-          aspectRatio: 16 / 10,
-          child: Image.network(
-            widget.urls.first,
-            fit: BoxFit.cover,
-            errorBuilder: (_, _, _) => const ColoredBox(
-              color: AppColors.divider,
-              child: Center(child: Icon(Icons.broken_image_outlined, size: 48, color: AppColors.textHint)),
+      return GestureDetector(
+        onTap: () => _openFullscreenGallery(0),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: AspectRatio(
+            aspectRatio: 16 / 10,
+            child: Image.network(
+              widget.urls.first,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => const ColoredBox(
+                color: AppColors.divider,
+                child: Center(
+                  child: Icon(
+                    Icons.broken_image_outlined,
+                    size: 48,
+                    color: AppColors.textHint,
+                  ),
+                ),
+              ),
             ),
           ),
         ),
@@ -382,12 +425,21 @@ class _PostImageGalleryState extends State<_PostImageGallery> {
               itemCount: widget.urls.length,
               onPageChanged: (i) => setState(() => _page = i),
               itemBuilder: (context, i) {
-                return Image.network(
-                  widget.urls[i],
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) => const ColoredBox(
-                    color: AppColors.divider,
-                    child: Center(child: Icon(Icons.broken_image_outlined, size: 48, color: AppColors.textHint)),
+                return GestureDetector(
+                  onTap: () => _openFullscreenGallery(i),
+                  child: Image.network(
+                    widget.urls[i],
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => const ColoredBox(
+                      color: AppColors.divider,
+                      child: Center(
+                        child: Icon(
+                          Icons.broken_image_outlined,
+                          size: 48,
+                          color: AppColors.textHint,
+                        ),
+                      ),
+                    ),
                   ),
                 );
               },
@@ -413,6 +465,111 @@ class _PostImageGalleryState extends State<_PostImageGallery> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _FullscreenImageGallery extends StatefulWidget {
+  const _FullscreenImageGallery({
+    required this.urls,
+    required this.initialIndex,
+  });
+
+  final List<String> urls;
+  final int initialIndex;
+
+  @override
+  State<_FullscreenImageGallery> createState() =>
+      _FullscreenImageGalleryState();
+}
+
+class _FullscreenImageGalleryState extends State<_FullscreenImageGallery> {
+  late final PageController _pageController;
+  late int _currentIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+    _pageController = PageController(initialPage: widget.initialIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        title: Text('${_currentIndex + 1}/${widget.urls.length}'),
+      ),
+      body: Stack(
+        children: [
+          PageView.builder(
+            controller: _pageController,
+            itemCount: widget.urls.length,
+            onPageChanged: (index) => setState(() => _currentIndex = index),
+            itemBuilder: (context, index) {
+              return InteractiveViewer(
+                minScale: 1,
+                maxScale: 4,
+                child: Center(
+                  child: Image.network(
+                    widget.urls[index],
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, _, _) => const Center(
+                      child: Icon(
+                        Icons.broken_image_outlined,
+                        size: 56,
+                        color: Colors.white70,
+                      ),
+                    ),
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return const Center(
+                        child: CircularProgressIndicator(color: Colors.white),
+                      );
+                    },
+                  ),
+                ),
+              );
+            },
+          ),
+          if (widget.urls.length > 1)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 24,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(
+                  widget.urls.length,
+                  (index) => Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      width: _currentIndex == index ? 18 : 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: _currentIndex == index
+                            ? Colors.white
+                            : Colors.white38,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
