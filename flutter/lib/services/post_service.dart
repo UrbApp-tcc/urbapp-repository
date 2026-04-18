@@ -92,9 +92,9 @@ class PostService {
 
       return response['id'] as int;
     } on PostgrestException catch (error) {
-      throw Exception('Erro ao criar post: ${error.message}');
+      throw Exception('Erro ao criar o reporte: ${error.message}');
     } catch (error) {
-      throw Exception('Erro inesperado ao criar post: $error');
+      throw Exception('Erro inesperado ao criar o reporte: $error');
     }
   }
 
@@ -108,12 +108,12 @@ class PostService {
         'changed_by': userId,
         'from_status': null,
         'to_status': 'open',
-        'note': 'Post criado pelo usuario.',
+        'note': 'Reporte criado pelo usuário.',
       });
     } on PostgrestException catch (error) {
-      throw Exception('Erro ao criar historico do post: ${error.message}');
+      throw Exception('Erro ao criar histórico do reporte: ${error.message}');
     } catch (error) {
-      throw Exception('Erro inesperado ao criar historico do post: $error');
+      throw Exception('Erro inesperado ao criar histórico do reporte: $error');
     }
   }
 
@@ -146,11 +146,11 @@ class PostService {
         });
       }
     } on StorageException catch (error) {
-      throw Exception('Erro ao enviar imagem para o storage: ${error.message}');
+      throw Exception('Erro ao enviar imagem para o armazenamento: ${error.message}');
     } on PostgrestException catch (error) {
-      throw Exception('Erro ao salvar imagem do post: ${error.message}');
+      throw Exception('Erro ao salvar imagem do reporte: ${error.message}');
     } catch (error) {
-      throw Exception('Erro inesperado ao salvar imagens do post: $error');
+      throw Exception('Erro inesperado ao salvar imagens do reporte: $error');
     }
   }
 
@@ -168,7 +168,7 @@ class PostService {
   Uint8List _extractBytes(PlatformFile file) {
     final bytes = file.bytes;
     if (bytes == null) {
-      throw Exception('Nao foi possivel ler os bytes do arquivo ${file.name}.');
+      throw Exception('Não foi possível ler os bytes do arquivo ${file.name}.');
     }
     return bytes;
   }

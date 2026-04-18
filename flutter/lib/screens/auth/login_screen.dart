@@ -42,7 +42,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (value == null || value.trim().isEmpty) return 'Informe seu e-mail';
 
     final regex = RegExp(r'^[\w.-]+@[\w.-]+\.\w{2,}$');
-    if (!regex.hasMatch(value.trim())) return 'E-mail invalido';
+    if (!regex.hasMatch(value.trim())) return 'E-mail inválido';
 
     return null;
   }

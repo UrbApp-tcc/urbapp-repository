@@ -105,7 +105,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erro ao registrar like: $e'),
+            content: Text('Erro ao registrar apoio: $e'),
             backgroundColor: AppColors.error,
           ),
         );

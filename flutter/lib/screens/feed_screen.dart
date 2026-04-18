@@ -42,7 +42,7 @@ class FeedScreen extends StatelessWidget {
           const _FeedEmptyHero(),
         const SizedBox(height: 34),
         _SectionTitle(
-          title: 'Latest Reports',
+          title: 'Últimos reportes',
           trailing: '${posts.length}',
         ),
         const SizedBox(height: 18),
@@ -264,9 +264,9 @@ class _FeaturedFeedCard extends StatelessWidget {
     final difference = DateTime.now().difference(value.toLocal());
 
     if (difference.inMinutes < 1) return 'Agora';
-    if (difference.inHours < 1) return '${difference.inMinutes} min ago';
-    if (difference.inDays < 1) return '${difference.inHours} h ago';
-    return '${difference.inDays} d ago';
+    if (difference.inHours < 1) return 'Há ${difference.inMinutes} min';
+    if (difference.inDays < 1) return 'Há ${difference.inHours} h';
+    return 'Há ${difference.inDays} d';
   }
 }
 
@@ -690,7 +690,7 @@ class _FeedEmptyHero extends StatelessWidget {
           ),
           SizedBox(height: 8),
           Text(
-            'Use o botao central para criar o primeiro reporte da comunidade.',
+            'Use o botão central para criar o primeiro reporte da comunidade.',
             style: TextStyle(
               color: Color(0xFF8F949D),
               fontSize: 14,
@@ -709,7 +709,7 @@ class _FeedEmptyList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Text(
-      'Quando novos reportes forem criados, eles vao aparecer aqui.',
+      'Quando novos reportes forem criados, eles vão aparecer aqui.',
       style: TextStyle(
         color: Color(0xFF8F949D),
         fontSize: 15,

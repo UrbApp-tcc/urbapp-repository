@@ -26,7 +26,7 @@ class NotificationsScreen extends StatelessWidget {
         _TopBar(onOpenSearch: onOpenSearch),
         const SizedBox(height: 28),
         const Text(
-          'Unread',
+          'Não lidas',
           style: TextStyle(
             color: Color(0xFF141E28),
             fontSize: 36,
@@ -67,8 +67,8 @@ class NotificationsScreen extends StatelessWidget {
           )
         else
           const _EmptyState(
-            title: 'Nenhuma notificacao nova',
-            description: 'Novos movimentos da comunidade vao aparecer aqui.',
+            title: 'Nenhuma notificação nova',
+            description: 'Novos movimentos da comunidade vão aparecer aqui.',
           ),
         const SizedBox(height: 38),
         Text(
@@ -98,8 +98,9 @@ class NotificationsScreen extends StatelessWidget {
               )
         else
           const _EmptyState(
-            title: 'Sem historico recente',
-            description: 'Assim que novos reportes surgirem, eles vao aparecer nesta linha do tempo.',
+            title: 'Sem histórico recente',
+            description:
+                'Assim que novos reportes surgirem, eles vão aparecer nesta linha do tempo.',
           ),
       ],
     );
@@ -108,21 +109,21 @@ class NotificationsScreen extends StatelessWidget {
   String _todayLabel() {
     final now = DateTime.now();
     final months = [
-      'Janeiro',
-      'Fevereiro',
-      'Marco',
-      'Abril',
-      'Maio',
-      'Junho',
-      'Julho',
-      'Agosto',
-      'Setembro',
-      'Outubro',
-      'Novembro',
-      'Dezembro',
+      'janeiro',
+      'fevereiro',
+      'março',
+      'abril',
+      'maio',
+      'junho',
+      'julho',
+      'agosto',
+      'setembro',
+      'outubro',
+      'novembro',
+      'dezembro',
     ];
 
-    return '${now.day} ${months[now.month - 1]}, ${now.year}';
+    return '${now.day} de ${months[now.month - 1]} de ${now.year}';
   }
 }
 

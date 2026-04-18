@@ -46,8 +46,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   LookupOption? _selectedCategory;
 
   LatLng? _selectedPoint;
-  String _locationLabel = 'Buscando sua localizacao atual...';
-  String _cityLabel = 'Cidade nao identificada';
+  String _locationLabel = 'Buscando sua localização atual...';
+  String _cityLabel = 'Cidade não identificada';
 
   bool _isAnonymous = false;
   bool _isSubmitting = false;
@@ -109,7 +109,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        throw Exception('Ative a localizacao do dispositivo para usar o mapa.');
+        throw Exception('Ative a localização do dispositivo para usar o mapa.');
       }
 
       var permission = await Geolocator.checkPermission();
@@ -119,7 +119,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
-        throw Exception('Permissao de localizacao negada.');
+        throw Exception('Permissão de localização negada.');
       }
 
       final position = await Geolocator.getCurrentPosition();
@@ -140,8 +140,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       setState(() {
         _selectedPoint = _fallbackPoint;
         _isLoadingLocation = false;
-        _locationLabel = 'Nao foi possivel usar sua localizacao atual. Ajuste o pin manualmente no mapa.';
-        _cityLabel = 'Cidade nao identificada';
+        _locationLabel =
+            'Não foi possível usar sua localização atual. Ajuste o ponto manualmente no mapa.';
+        _cityLabel = 'Cidade não identificada';
       });
 
       _mapController.move(_fallbackPoint, 13);
@@ -157,7 +158,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   }
 
   String get _currentUserLabel {
-    return _authService.currentUser?.email ?? 'Usuario autenticado';
+    return _authService.currentUser?.email ?? 'Usuário autenticado';
   }
 
   Future<void> _pickMedia() async {
@@ -198,9 +199,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       setState(() {
         _selectedPoint = point;
         _selectedCity = matchedCity;
-        _cityLabel = matchedCity?.name ?? (locality.isNotEmpty ? locality : 'Cidade nao identificada');
+        _cityLabel =
+            matchedCity?.name ?? (locality.isNotEmpty ? locality : 'Cidade não identificada');
         _locationLabel = locationParts.isEmpty
-            ? 'Endereco nao identificado com detalhes. Ajuste o pin no mapa.'
+            ? 'Endereço não identificado com detalhes. Ajuste o ponto no mapa.'
             : locationParts.join(' - ');
       });
     } catch (_) {
@@ -209,8 +211,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       setState(() {
         _selectedPoint = point;
         _selectedCity = null;
-        _cityLabel = 'Cidade nao identificada';
-        _locationLabel = 'Nao foi possivel identificar rua e bairro para este ponto.';
+        _cityLabel = 'Cidade não identificada';
+        _locationLabel = 'Não foi possível identificar rua e bairro para este ponto.';
       });
     } finally {
       if (mounted) {
@@ -255,7 +257,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     );
 
     if (response.statusCode != 200) {
-      throw Exception('Falha ao consultar o endereco no mapa.');
+      throw Exception('Falha ao consultar o endereço no mapa.');
     }
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -311,7 +313,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
     final currentUser = _authService.currentUser;
     if (currentUser == null) {
-      _showError('Sua sessao expirou. Entre novamente para publicar o reporte.');
+      _showError('Sua sessão expirou. Entre novamente para publicar o reporte.');
       return;
     }
 
@@ -321,7 +323,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     }
 
     if (_selectedCity == null) {
-      _showError('Nao foi possivel identificar uma cidade valida para o ponto selecionado.');
+      _showError(
+        'Não foi possível identificar uma cidade válida para o ponto selecionado.',
+      );
       return;
     }
 
@@ -362,8 +366,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         SnackBar(
           content: Text(
             _selectedMedia.isEmpty
-                ? 'Post criado com sucesso!'
-                : 'Post criado com imagens com sucesso!',
+                ? 'Reporte criado com sucesso!'
+                : 'Reporte criado com imagens com sucesso!',
           ),
           backgroundColor: AppColors.resolved,
           behavior: SnackBarBehavior.floating,
@@ -509,7 +513,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Text(
-              'Detalhes do post',
+              'Detalhes do reporte',
               style: TextStyle(
                 color: AppColors.textPrimary,
                 fontSize: 22,
@@ -555,7 +559,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             const SizedBox(height: 12),
             AuthTextField(
               controller: _titleController,
-              validator: (value) => _validateRequired(value, 'o ttulo'),
+              validator: (value) => _validateRequired(value, 'o título'),
               hintText: 'Título',
               prefixIcon: const Icon(Icons.title_rounded, size: 22),
             ),
@@ -624,7 +628,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Reportar em anonimo',
+                  'Reportar em anônimo',
                   style: TextStyle(
                     color: AppColors.textPrimary,
                     fontSize: 15,
@@ -633,7 +637,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 ),
                 SizedBox(height: 4),
                 Text(
-                  'Ocultar o autor do post quando ele for publicado.',
+                  'Ocultar o autor do reporte quando ele for publicado.',
                   style: TextStyle(
                     color: AppColors.textSecondary,
                     fontSize: 13,
@@ -681,7 +685,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Usuario autenticado',
+                  'Usuário autenticado',
                   style: TextStyle(
                     color: AppColors.textPrimary,
                     fontSize: 15,
@@ -736,7 +740,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Adicionar midia',
+                      'Adicionar mídia',
                       style: TextStyle(
                         color: AppColors.textPrimary,
                         fontSize: 15,
@@ -745,7 +749,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                     ),
                     SizedBox(height: 4),
                     Text(
-                      'Selecione imagens e videos para anexar ao post.',
+                      'Selecione imagens e vídeos para anexar ao reporte.',
                       style: TextStyle(
                         color: AppColors.textSecondary,
                         fontSize: 13,
@@ -820,7 +824,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _isResolvingAddress ? 'Atualizando endereco...' : _locationLabel,
+                      _isResolvingAddress ? 'Atualizando endereço...' : _locationLabel,
                       style: const TextStyle(
                         color: AppColors.textPrimary,
                         fontSize: 15,
@@ -840,7 +844,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 ),
               ),
               IconButton(
-                tooltip: 'Usar minha localizacao',
+                tooltip: 'Usar minha localização',
                 onPressed: _isLoadingLocation ? null : _initializeLocation,
                 icon: const Icon(Icons.my_location_rounded),
               ),
@@ -902,7 +906,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           ),
           const SizedBox(height: 12),
           const Text(
-            'O pin fica travado no centro. Arraste o mapa para ajustar o ponto exato do reporte.',
+            'O marcador fica fixo no centro. Arraste o mapa para ajustar o ponto exato do reporte.',
             style: TextStyle(
               color: AppColors.textSecondary,
               fontSize: 13,

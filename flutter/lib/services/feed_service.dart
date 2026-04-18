@@ -78,7 +78,7 @@ class FeedPost {
     if (name.isNotEmpty) return name;
     final u = authorUsername?.trim();
     if (u != null && u.isNotEmpty) return u;
-    return 'Usuario';
+    return 'Usuário';
   }
 }
 
@@ -103,9 +103,9 @@ class FeedService {
           .map((item) => _mapFeedPost(item as Map<String, dynamic>))
           .toList();
     } on PostgrestException catch (error) {
-      throw Exception('Erro ao carregar o feed: ${error.message}');
+      throw Exception('Erro ao carregar a lista de reportes: ${error.message}');
     } catch (_) {
-      throw Exception('Erro inesperado ao carregar o feed.');
+      throw Exception('Erro inesperado ao carregar a lista de reportes.');
     }
   }
 
@@ -125,7 +125,7 @@ class FeedService {
 
     return FeedPost(
       id: data['id'] as int,
-      title: (data['title'] as String?) ?? 'Sem titulo',
+      title: (data['title'] as String?) ?? 'Sem título',
       description: (data['description'] as String?) ?? '',
       status: data['status'] as String,
       createdAt: DateTime.parse(data['created_at'] as String),

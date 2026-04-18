@@ -41,14 +41,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   String? _validateUsername(String? value) {
-    if (value == null || value.trim().isEmpty) return 'Informe o nome de usuario';
+    if (value == null || value.trim().isEmpty) return 'Informe o nome de usuário';
     if (value.trim().length < 3) return 'Use pelo menos 3 caracteres';
     return null;
   }
 
   String? _validatePassword(String? value) {
     if (value == null || value.isEmpty) return 'Informe uma senha';
-    if (value.length < 8) return 'Minimo 8 caracteres';
+    if (value.length < 8) return 'Mínimo de 8 caracteres';
     return null;
   }
 
@@ -56,7 +56,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (value == null || value.trim().isEmpty) return 'Informe o e-mail';
 
     final regex = RegExp(r'^[\w.-]+@[\w.-]+\.\w{2,}$');
-    if (!regex.hasMatch(value.trim())) return 'E-mail invalido';
+    if (!regex.hasMatch(value.trim())) return 'E-mail inválido';
 
     return null;
   }
@@ -208,7 +208,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           const AppLogo(height: 115),
           const SizedBox(height: _spacingLogoTitle),
           const Text(
-            'Create account',
+            'Criar conta',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: AppColors.textPrimary,
@@ -221,7 +221,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           AuthTextField(
             controller: _usernameController,
             validator: _validateUsername,
-            hintText: 'Username',
+            hintText: 'Nome de usuário',
             prefixIcon: const Icon(Icons.person_outline_rounded, color: AppColors.textSecondary, size: 22),
             textInputAction: TextInputAction.next,
           ),
@@ -229,7 +229,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           AuthTextField(
             controller: _passwordController,
             validator: _validatePassword,
-            hintText: 'Password',
+            hintText: 'Senha',
             obscureText: !_isPasswordVisible,
             prefixIcon: const Icon(Icons.lock_outline_rounded, color: AppColors.textSecondary, size: 22),
             suffixIcon: IconButton(
@@ -255,7 +255,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           AuthTextField(
             controller: _mobileController,
             validator: _validateMobile,
-            hintText: 'Mobile',
+            hintText: 'Celular',
             keyboardType: TextInputType.phone,
             prefixIcon: const Icon(Icons.phone_android_rounded, color: AppColors.textSecondary, size: 22),
             textInputAction: TextInputAction.done,
@@ -263,13 +263,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
           ),
           const SizedBox(height: _spacingFormButton),
           GradientButton(
-            label: 'Create',
+            label: 'Criar conta',
             loading: _isLoading,
             onPressed: _createAccount,
           ),
           const SizedBox(height: 24),
           const Text(
-            'Or create account using social media',
+            'Ou crie uma conta com redes sociais',
             textAlign: TextAlign.center,
             style: TextStyle(color: AppColors.textHint, fontSize: 13),
           ),
@@ -290,9 +290,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
               text: TextSpan(
                 style: const TextStyle(color: AppColors.textSecondary, fontSize: 14),
                 children: [
-                  const TextSpan(text: 'Already have an account? '),
+                  const TextSpan(text: 'Já tem uma conta? '),
                   TextSpan(
-                    text: 'Sign in',
+                    text: 'Entrar',
                     style: const TextStyle(
                       color: AppColors.primary,
                       fontWeight: FontWeight.w700,
