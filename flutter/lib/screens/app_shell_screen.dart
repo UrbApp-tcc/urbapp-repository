@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/auth_service.dart';
 import '../services/feed_service.dart';
@@ -19,9 +20,15 @@ class AppShellScreen extends StatefulWidget {
 class _AppShellScreenState extends State<AppShellScreen> {
   final _feedService = FeedService();
   final _authService = AuthService();
+  final _supabase = Supabase.instance.client;
+
+  RealtimeChannel? _postsChannel;
+  RealtimeChannel? _postSupportsChannel;
+  RealtimeChannel? _commentsChannel;
 
   int _selectedIndex = 0;
   List<FeedPost> _posts = const [];
+  Set<int> _likedPostIds = const <int>{};
   bool _isLoading = true;
   bool _isRefreshing = false;
 
@@ -29,6 +36,140 @@ class _AppShellScreenState extends State<AppShellScreen> {
   void initState() {
     super.initState();
     _loadFeed();
+    _setupRealtimeSubscriptions();
+  }
+
+  @override
+  void dispose() {
+    final postsChannel = _postsChannel;
+    final postSupportsChannel = _postSupportsChannel;
+    final commentsChannel = _commentsChannel;
+    if (postsChannel != null) {
+      _supabase.removeChannel(postsChannel);
+    }
+    if (postSupportsChannel != null) {
+      _supabase.removeChannel(postSupportsChannel);
+    }
+    if (commentsChannel != null) {
+      _supabase.removeChannel(commentsChannel);
+    }
+    super.dispose();
+  }
+
+  void _setupRealtimeSubscriptions() {
+    _postsChannel = _supabase
+        .channel('feed-posts-sync')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'posts',
+          callback: (payload) {
+            final newRecord = payload.newRecord;
+            final postId = (newRecord['id'] as num?)?.toInt();
+            if (postId == null || !mounted) return;
+
+            setState(() {
+              _posts = _posts
+                  .map(
+                    (post) => post.id == postId
+                        ? post.copyWith(
+                            supportsCount: (newRecord['supports_count'] as num?)?.toInt(),
+                            commentsCount: (newRecord['comments_count'] as num?)?.toInt(),
+                          )
+                        : post,
+                  )
+                  .toList();
+            });
+          },
+        )
+        .subscribe();
+
+    _commentsChannel = _supabase
+        .channel('feed-comments-sync')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'comments',
+          callback: (payload) {
+            final postId = (payload.newRecord['post_id'] as num?)?.toInt();
+            if (postId == null || !mounted) return;
+
+            setState(() {
+              _posts = _posts
+                  .map(
+                    (post) => post.id == postId
+                        ? post.copyWith(commentsCount: post.commentsCount + 1)
+                        : post,
+                  )
+                  .toList();
+            });
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.delete,
+          schema: 'public',
+          table: 'comments',
+          callback: (payload) {
+            final postId = (payload.oldRecord['post_id'] as num?)?.toInt();
+            if (postId == null || !mounted) return;
+
+            setState(() {
+              _posts = _posts
+                  .map(
+                    (post) => post.id == postId
+                        ? post.copyWith(
+                            commentsCount: (post.commentsCount - 1).clamp(0, 999999),
+                          )
+                        : post,
+                  )
+                  .toList();
+            });
+          },
+        )
+        .subscribe();
+
+    final currentUserId = _authService.currentUser?.id;
+    if (currentUserId == null) return;
+
+    _postSupportsChannel = _supabase
+        .channel('feed-post-supports-sync')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'post_supports',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: currentUserId,
+          ),
+          callback: (payload) {
+            final postId = (payload.newRecord['post_id'] as num?)?.toInt();
+            if (postId == null || !mounted) return;
+
+            setState(() {
+              _likedPostIds = {..._likedPostIds, postId};
+            });
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.delete,
+          schema: 'public',
+          table: 'post_supports',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: currentUserId,
+          ),
+          callback: (payload) {
+            final postId = (payload.oldRecord['post_id'] as num?)?.toInt();
+            if (postId == null || !mounted) return;
+
+            setState(() {
+              _likedPostIds = _likedPostIds.where((id) => id != postId).toSet();
+            });
+          },
+        )
+        .subscribe();
   }
 
   Future<void> _loadFeed({bool refreshing = false}) async {
@@ -40,10 +181,14 @@ class _AppShellScreenState extends State<AppShellScreen> {
 
     try {
       final posts = await _feedService.fetchFeed();
+      final likedPostIds = await _feedService.fetchLikedPostIds(
+        posts.map((post) => post.id).toList(),
+      );
 
       if (!mounted) return;
       setState(() {
         _posts = posts;
+        _likedPostIds = likedPostIds;
       });
     } catch (error) {
       if (!mounted) return;
@@ -139,6 +284,7 @@ class _AppShellScreenState extends State<AppShellScreen> {
                         children: [
                           FeedScreen(
                             posts: _posts,
+                            likedPostIds: _likedPostIds,
                             isLoading: _isLoading,
                             isRefreshing: _isRefreshing,
                             onCreatePost: _openCreatePost,

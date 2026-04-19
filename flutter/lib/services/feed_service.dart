@@ -71,14 +71,46 @@ class FeedPost {
   final String? primaryImageUrl;
   final List<FeedImage> images;
 
-  /// Nome para exibição: autor identificado ou "Usuário Anônimo".
   String get authorLabel {
     if (isAnonymous) return 'Usuário Anônimo';
     final name = authorDisplayName.trim();
     if (name.isNotEmpty) return name;
-    final u = authorUsername?.trim();
-    if (u != null && u.isNotEmpty) return u;
+    final username = authorUsername?.trim();
+    if (username != null && username.isNotEmpty) return username;
     return 'Usuário';
+  }
+
+  FeedPost copyWith({
+    int? supportsCount,
+    int? commentsCount,
+  }) {
+    return FeedPost(
+      id: id,
+      title: title,
+      description: description,
+      status: status,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      resolvedAt: resolvedAt,
+      latitude: latitude,
+      longitude: longitude,
+      cityId: cityId,
+      cityName: cityName,
+      categoryId: categoryId,
+      categoryName: categoryName,
+      agencyId: agencyId,
+      agencyName: agencyName,
+      supportsCount: supportsCount ?? this.supportsCount,
+      commentsCount: commentsCount ?? this.commentsCount,
+      isAnonymous: isAnonymous,
+      authorId: authorId,
+      authorDisplayName: authorDisplayName,
+      authorUsername: authorUsername,
+      authorAvatarUrl: authorAvatarUrl,
+      imageCount: imageCount,
+      primaryImageUrl: primaryImageUrl,
+      images: images,
+    );
   }
 }
 
@@ -99,13 +131,70 @@ class FeedService {
         },
       );
 
-      return (response as List<dynamic>)
+      final posts = (response as List<dynamic>)
           .map((item) => _mapFeedPost(item as Map<String, dynamic>))
+          .toList();
+
+      final commentCounts = await fetchCommentCounts(
+        posts.map((post) => post.id).toList(),
+      );
+
+      return posts
+          .map(
+            (post) => post.copyWith(
+              commentsCount: commentCounts[post.id] ?? post.commentsCount,
+            ),
+          )
           .toList();
     } on PostgrestException catch (error) {
       throw Exception('Erro ao carregar a lista de reportes: ${error.message}');
     } catch (_) {
       throw Exception('Erro inesperado ao carregar a lista de reportes.');
+    }
+  }
+
+  Future<Map<int, int>> fetchCommentCounts(List<int> postIds) async {
+    if (postIds.isEmpty) return const <int, int>{};
+
+    try {
+      final response = await _supabase
+          .from('comments')
+          .select('post_id')
+          .inFilter('post_id', postIds);
+
+      final counts = <int, int>{};
+      for (final item in response as List<dynamic>) {
+        final postId = (item['post_id'] as num).toInt();
+        counts.update(postId, (value) => value + 1, ifAbsent: () => 1);
+      }
+      return counts;
+    } on PostgrestException catch (error) {
+      throw Exception('Erro ao carregar contagem de comentários: ${error.message}');
+    } catch (_) {
+      throw Exception('Erro inesperado ao carregar contagem de comentários.');
+    }
+  }
+
+  Future<Set<int>> fetchLikedPostIds(List<int> postIds) async {
+    if (postIds.isEmpty) return <int>{};
+
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return <int>{};
+
+    try {
+      final response = await _supabase
+          .from('post_supports')
+          .select('post_id')
+          .eq('user_id', userId)
+          .inFilter('post_id', postIds);
+
+      return (response as List<dynamic>)
+          .map((item) => (item['post_id'] as num).toInt())
+          .toSet();
+    } on PostgrestException catch (error) {
+      throw Exception('Erro ao carregar likes do usuário: ${error.message}');
+    } catch (_) {
+      throw Exception('Erro inesperado ao carregar likes do usuário.');
     }
   }
 

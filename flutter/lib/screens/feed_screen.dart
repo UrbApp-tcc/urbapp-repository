@@ -1,18 +1,30 @@
 import 'package:flutter/material.dart';
 
 import '../services/feed_service.dart';
+import '../theme/app_theme.dart';
 import 'post_detail_screen.dart';
+
+String _formatRelativeTime(DateTime value) {
+  final difference = DateTime.now().difference(value.toLocal());
+
+  if (difference.inMinutes < 1) return 'Agora';
+  if (difference.inHours < 1) return 'Há ${difference.inMinutes} min';
+  if (difference.inDays < 1) return 'Há ${difference.inHours} h';
+  return 'Há ${difference.inDays} d';
+}
 
 class FeedScreen extends StatelessWidget {
   const FeedScreen({
     super.key,
     required this.posts,
+    required this.likedPostIds,
     required this.isLoading,
     required this.isRefreshing,
     required this.onCreatePost,
   });
 
   final List<FeedPost> posts;
+  final Set<int> likedPostIds;
   final bool isLoading;
   final bool isRefreshing;
   final VoidCallback onCreatePost;
@@ -36,6 +48,7 @@ class FeedScreen extends StatelessWidget {
         else if (featuredPost != null)
           _FeaturedFeedCard(
             post: featuredPost,
+            isLiked: likedPostIds.contains(featuredPost.id),
             onOpen: () => PostDetailScreen.open(context, featuredPost),
           )
         else
@@ -64,6 +77,7 @@ class FeedScreen extends StatelessWidget {
                   ),
                   child: _LatestPostRow(
                     post: entry.value,
+                    isLiked: likedPostIds.contains(entry.value.id),
                     onOpen: () => PostDetailScreen.open(context, entry.value),
                   ),
                 ),
@@ -155,10 +169,12 @@ class _HomeHeader extends StatelessWidget {
 class _FeaturedFeedCard extends StatelessWidget {
   const _FeaturedFeedCard({
     required this.post,
+    required this.isLiked,
     required this.onOpen,
   });
 
   final FeedPost post;
+  final bool isLiked;
   final VoidCallback onOpen;
 
   @override
@@ -215,7 +231,7 @@ class _FeaturedFeedCard extends StatelessWidget {
                           ),
                           const Spacer(),
                           Text(
-                            _formatRelativeDate(post.createdAt),
+                            _formatRelativeTime(post.createdAt),
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 8,
@@ -243,8 +259,30 @@ class _FeaturedFeedCard extends StatelessWidget {
                       Row(
                         children: [
                           const Icon(Icons.mode_comment_outlined, color: Colors.white, size: 24),
+                          const SizedBox(width: 8),
+                          Text(
+                            '${post.commentsCount}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                           const SizedBox(width: 24),
-                          const Icon(Icons.bookmark_border_rounded, color: Colors.white, size: 24),
+                          Icon(
+                            isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                            color: isLiked ? AppColors.error : Colors.white,
+                            size: 24,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '${post.supportsCount}',
+                            style: TextStyle(
+                              color: isLiked ? AppColors.error : Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                           const Spacer(),
                           const Icon(Icons.reply_outlined, color: Colors.white, size: 24),
                         ],
@@ -273,10 +311,12 @@ class _FeaturedFeedCard extends StatelessWidget {
 class _LatestPostRow extends StatelessWidget {
   const _LatestPostRow({
     required this.post,
+    required this.isLiked,
     required this.onOpen,
   });
 
   final FeedPost post;
+  final bool isLiked;
   final VoidCallback onOpen;
 
   @override
@@ -338,6 +378,57 @@ class _LatestPostRow extends StatelessWidget {
                             fontWeight: FontWeight.w800,
                             letterSpacing: -0.3,
                           ),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.mode_comment_outlined,
+                              size: 16,
+                              color: const Color(0xFF8F949D).withValues(alpha: 0.92),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              '${post.commentsCount}',
+                              style: const TextStyle(
+                                color: Color(0xFF8F949D),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Icon(
+                              isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                              size: 16,
+                              color: isLiked
+                                  ? AppColors.error
+                                  : const Color(0xFF8F949D).withValues(alpha: 0.92),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              '${post.supportsCount}',
+                              style: TextStyle(
+                                color: isLiked ? AppColors.error : const Color(0xFF8F949D),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Icon(
+                              Icons.schedule_rounded,
+                              size: 16,
+                              color: const Color(0xFF8F949D).withValues(alpha: 0.92),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              _formatRelativeTime(post.createdAt),
+                              style: const TextStyle(
+                                color: Color(0xFF8F949D),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
