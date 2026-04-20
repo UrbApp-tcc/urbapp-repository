@@ -88,7 +88,7 @@ class _SearchScreenState extends State<SearchScreen> {
               child: const _ResultSkeleton(),
             ),
           ),
-        ]         else if (showEmpty)
+        ] else if (showEmpty)
           _SearchEmptyState(feedIsEmpty: widget.posts.isEmpty)
         else ...[
           _SearchSectionTitle(title: 'Destaques', trailing: '${highlights.length}'),
@@ -409,7 +409,7 @@ class _SearchEmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     final title = feedIsEmpty ? 'Nenhum reporte ainda' : 'Nenhum resultado para essa busca';
     final subtitle = feedIsEmpty
-        ? 'Quando houver reportes no feed, você poderá pesquisar por título, cidade, categoria e mais. Toque no + para criar o primeiro.'
+        ? 'Quando houver reportes na lista principal, você poderá pesquisar por título, cidade, categoria e mais. Toque no + para criar o primeiro.'
         : 'Tente outras palavras ou verifique a ortografia.';
 
     return Column(

@@ -60,7 +60,7 @@ class AuthService {
     final message = error.message.toLowerCase();
 
     if (message.contains('invalid login credentials')) {
-      return 'E-mail ou senha invalidos.';
+      return 'E-mail ou senha inválidos.';
     }
 
     if (message.contains('email not confirmed')) {
@@ -68,7 +68,7 @@ class AuthService {
     }
 
     if (message.contains('user already registered')) {
-      return 'Ja existe uma conta cadastrada com este e-mail.';
+      return 'Já existe uma conta cadastrada com este e-mail.';
     }
 
     if (message.contains('password should be at least')) {
@@ -76,9 +76,9 @@ class AuthService {
     }
 
     if (message.contains('signup is disabled')) {
-      return 'O cadastro de novos usuarios esta desabilitado no momento.';
+      return 'O cadastro de novos usuários está desabilitado no momento.';
     }
 
-    return error.message;
+    return 'Erro de autenticação: ${error.message}';
   }
 }

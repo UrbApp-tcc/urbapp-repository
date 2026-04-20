@@ -42,7 +42,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (value == null || value.trim().isEmpty) return 'Informe seu e-mail';
 
     final regex = RegExp(r'^[\w.-]+@[\w.-]+\.\w{2,}$');
-    if (!regex.hasMatch(value.trim())) return 'E-mail invalido';
+    if (!regex.hasMatch(value.trim())) return 'E-mail inválido';
 
     return null;
   }
@@ -75,7 +75,7 @@ class _LoginScreenState extends State<LoginScreen> {
         setState(() => _isLoading = false);
       }
     }
-  }
+  } 
 
   void _showSnack(String message, Color color) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -155,7 +155,7 @@ class _LoginScreenState extends State<LoginScreen> {
           const AppLogo(height: 115),
           const SizedBox(height: _spacingLogoTitle),
           const Text(
-            'Hello',
+            'Seja bem-vindo!',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: AppColors.textPrimary,
@@ -166,7 +166,7 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           const SizedBox(height: 6),
           const Text(
-            'Sign in to your account',
+            'Faça login na sua conta',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: AppColors.textSecondary,
@@ -186,7 +186,7 @@ class _LoginScreenState extends State<LoginScreen> {
           AuthTextField(
             controller: _passwordController,
             validator: _validatePassword,
-            hintText: 'Password',
+            hintText: 'Senha',
             obscureText: !_isPasswordVisible,
             prefixIcon: const Icon(Icons.lock_outline_rounded, color: AppColors.textSecondary, size: 22),
             suffixIcon: IconButton(
@@ -212,14 +212,14 @@ class _LoginScreenState extends State<LoginScreen> {
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
               child: const Text(
-                'Forgot your password?',
+                'Esqueceu sua senha?',
                 style: TextStyle(fontSize: 13),
               ),
             ),
           ),
           const SizedBox(height: _spacingFormButton),
           GradientButton(
-            label: 'Sign in',
+            label: 'Entrar',
             loading: _isLoading,
             onPressed: _signIn,
           ),
@@ -229,9 +229,9 @@ class _LoginScreenState extends State<LoginScreen> {
               text: TextSpan(
                 style: const TextStyle(color: AppColors.textSecondary, fontSize: 14),
                 children: [
-                  const TextSpan(text: "Don't have an account? "),
+                  const TextSpan(text: "Não tem uma conta? "),
                   TextSpan(
-                    text: 'Create',
+                    text: 'Criar conta',
                     style: const TextStyle(
                       color: AppColors.primary,
                       fontWeight: FontWeight.w700,
