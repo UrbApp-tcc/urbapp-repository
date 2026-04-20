@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/feed_service.dart';
 import '../theme/app_theme.dart';
-import 'post_detail_screen.dart';
+import 'profile_screen.dart';
 
 String _formatRelativeTime(DateTime value) {
   final difference = DateTime.now().difference(value.toLocal());
@@ -21,6 +22,7 @@ class FeedScreen extends StatelessWidget {
     required this.isLoading,
     required this.isRefreshing,
     required this.onCreatePost,
+    required this.onOpenPost,
   });
 
   final List<FeedPost> posts;
@@ -28,6 +30,7 @@ class FeedScreen extends StatelessWidget {
   final bool isLoading;
   final bool isRefreshing;
   final VoidCallback onCreatePost;
+  final ValueChanged<FeedPost> onOpenPost;
 
   @override
   Widget build(BuildContext context) {
@@ -49,7 +52,7 @@ class FeedScreen extends StatelessWidget {
           _FeaturedFeedCard(
             post: featuredPost,
             isLiked: likedPostIds.contains(featuredPost.id),
-            onOpen: () => PostDetailScreen.open(context, featuredPost),
+            onOpen: () => onOpenPost(featuredPost),
           )
         else
           const _FeedEmptyHero(),
@@ -78,13 +81,24 @@ class FeedScreen extends StatelessWidget {
                   child: _LatestPostRow(
                     post: entry.value,
                     isLiked: likedPostIds.contains(entry.value.id),
-                    onOpen: () => PostDetailScreen.open(context, entry.value),
+                    onOpen: () => onOpenPost(entry.value),
                   ),
                 ),
               ),
       ],
     );
   }
+}
+
+void _openProfileFromPost(BuildContext context, FeedPost post) {
+  final authorId = post.authorId;
+  if (authorId == null || post.isAnonymous) return;
+
+  ProfileScreen.open(
+    context,
+    profileUserId: authorId,
+    currentUserId: Supabase.instance.client.auth.currentUser?.id,
+  );
 }
 
 class _HomeHeader extends StatelessWidget {
@@ -241,7 +255,11 @@ class _FeaturedFeedCard extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: 10),
-                      _FeedAuthorRow(post: post, onDarkBackground: true),
+                      _FeedAuthorRow(
+                        post: post,
+                        onDarkBackground: true,
+                        onTap: () => _openProfileFromPost(context, post),
+                      ),
                       const Spacer(),
                       Text(
                         post.title,
@@ -297,15 +315,6 @@ class _FeaturedFeedCard extends StatelessWidget {
       ),
     );
   }
-
-  String _formatRelativeDate(DateTime value) {
-    final difference = DateTime.now().difference(value.toLocal());
-
-    if (difference.inMinutes < 1) return 'Agora';
-    if (difference.inHours < 1) return 'Há ${difference.inMinutes} min';
-    if (difference.inDays < 1) return 'Há ${difference.inHours} h';
-    return 'Há ${difference.inDays} d';
-  }
 }
 
 class _LatestPostRow extends StatelessWidget {
@@ -356,7 +365,11 @@ class _LatestPostRow extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _FeedAuthorRow(post: post, onDarkBackground: false),
+                        _FeedAuthorRow(
+                          post: post,
+                          onDarkBackground: false,
+                          onTap: () => _openProfileFromPost(context, post),
+                        ),
                         const SizedBox(height: 8),
                         Text(
                           post.categoryName.toUpperCase(),
@@ -447,10 +460,12 @@ class _FeedAuthorRow extends StatelessWidget {
   const _FeedAuthorRow({
     required this.post,
     required this.onDarkBackground,
+    this.onTap,
   });
 
   final FeedPost post;
   final bool onDarkBackground;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -463,7 +478,7 @@ class _FeedAuthorRow extends StatelessWidget {
     final iconColor =
         onDarkBackground ? Colors.white.withValues(alpha: 0.85) : const Color(0xFF8F949D);
 
-    return Row(
+    final child = Row(
       children: [
         _AuthorAvatar(
           post: post,
@@ -484,6 +499,19 @@ class _FeedAuthorRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+
+    if (onTap == null || post.isAnonymous || post.authorId == null) {
+      return child;
+    }
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: child,
+      ),
     );
   }
 }

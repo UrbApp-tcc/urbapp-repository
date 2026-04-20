@@ -7,8 +7,9 @@ import '../theme/app_theme.dart';
 import 'create_post_screen.dart';
 import 'feed_screen.dart';
 import 'notifications_screen.dart';
+import 'post_detail_screen.dart';
+import 'profile_screen.dart';
 import 'search_screen.dart';
-import 'settings_screen.dart';
 
 class AppShellScreen extends StatefulWidget {
   const AppShellScreen({super.key});
@@ -93,16 +94,7 @@ class _AppShellScreenState extends State<AppShellScreen> {
           callback: (payload) {
             final postId = (payload.newRecord['post_id'] as num?)?.toInt();
             if (postId == null || !mounted) return;
-
-            setState(() {
-              _posts = _posts
-                  .map(
-                    (post) => post.id == postId
-                        ? post.copyWith(commentsCount: post.commentsCount + 1)
-                        : post,
-                  )
-                  .toList();
-            });
+            _syncPostCommentsCount(postId);
           },
         )
         .onPostgresChanges(
@@ -112,18 +104,7 @@ class _AppShellScreenState extends State<AppShellScreen> {
           callback: (payload) {
             final postId = (payload.oldRecord['post_id'] as num?)?.toInt();
             if (postId == null || !mounted) return;
-
-            setState(() {
-              _posts = _posts
-                  .map(
-                    (post) => post.id == postId
-                        ? post.copyWith(
-                            commentsCount: (post.commentsCount - 1).clamp(0, 999999),
-                          )
-                        : post,
-                  )
-                  .toList();
-            });
+            _syncPostCommentsCount(postId);
           },
         )
         .subscribe();
@@ -224,6 +205,34 @@ class _AppShellScreenState extends State<AppShellScreen> {
     await _loadFeed(refreshing: true);
   }
 
+  Future<void> _openPostDetail(FeedPost post) async {
+    final hasChanges = await PostDetailScreen.open(context, post);
+    if (!mounted || hasChanges != true) return;
+
+    await _loadFeed(refreshing: true);
+  }
+
+  Future<void> _syncPostCommentsCount(int postId) async {
+    if (_posts.every((post) => post.id != postId)) return;
+
+    try {
+      final commentCounts = await _feedService.fetchCommentCounts([postId]);
+      if (!mounted) return;
+
+      setState(() {
+        _posts = _posts
+            .map(
+              (post) => post.id == postId
+                  ? post.copyWith(commentsCount: commentCounts[postId] ?? 0)
+                  : post,
+            )
+            .toList();
+      });
+    } catch (_) {
+      // Evita quebrar a experiência do feed se a sincronização pontual falhar.
+    }
+  }
+
   Future<void> _signOut() async {
     try {
       await _authService.signOut();
@@ -245,8 +254,14 @@ class _AppShellScreenState extends State<AppShellScreen> {
     setState(() => _selectedIndex = index);
   }
 
+  String? _resolveCurrentUserId() {
+    return _supabase.auth.currentSession?.user.id ?? _authService.currentUser?.id;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final currentUserId = _resolveCurrentUserId();
+
     return Scaffold(
       backgroundColor: const Color(0xFFF3F5F8),
       body: SafeArea(
@@ -288,21 +303,25 @@ class _AppShellScreenState extends State<AppShellScreen> {
                             isLoading: _isLoading,
                             isRefreshing: _isRefreshing,
                             onCreatePost: _openCreatePost,
+                            onOpenPost: _openPostDetail,
                           ),
                           SearchScreen(
                             posts: _posts,
                             isLoading: _isLoading,
                           ),
                           NotificationsScreen(
-                            posts: _posts,
-                            isLoading: _isLoading,
+                            currentUserId: currentUserId,
+                            isActive: _selectedIndex == 2,
                             onOpenSearch: () => _selectTab(1),
                           ),
-                          SettingsScreen(
-                            currentUser: _authService.currentUser,
-                            onOpenSearch: () => _selectTab(1),
-                            onSignOut: _signOut,
-                          ),
+                          if (currentUserId != null)
+                            ProfileScreen(
+                              profileUserId: currentUserId,
+                              currentUserId: currentUserId,
+                              onSignOut: _signOut,
+                            )
+                          else
+                            const _ProfileUnavailableState(),
                         ],
                       ),
                     ),
@@ -351,6 +370,49 @@ class _AppShellScreenState extends State<AppShellScreen> {
               ),
             );
           },
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileUnavailableState extends StatelessWidget {
+  const _ProfileUnavailableState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: const [
+            Icon(
+              Icons.person_off_outlined,
+              size: 42,
+              color: AppColors.textHint,
+            ),
+            SizedBox(height: 14),
+            Text(
+              'Não foi possível identificar sua conta agora.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Tente fechar e abrir a aba novamente. Se persistir, entre na conta de novo.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 14,
+                height: 1.4,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -408,7 +470,7 @@ class _ShellBottomBar extends StatelessWidget {
           ),
           Expanded(
             child: _BottomIconButton(
-              icon: Icons.settings_outlined,
+              icon: Icons.person_outline_rounded,
               isSelected: selectedIndex == 3,
               onTap: () => onSelect(3),
             ),

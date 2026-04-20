@@ -10,15 +10,16 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/feed_service.dart';
 import '../services/post_service.dart';
 import '../theme/app_theme.dart';
+import 'profile_screen.dart';
 
 class PostDetailScreen extends StatefulWidget {
   const PostDetailScreen({super.key, required this.post});
 
   final FeedPost post;
 
-  static void open(BuildContext context, FeedPost post) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => PostDetailScreen(post: post)),
+  static Future<bool?> open(BuildContext context, FeedPost post) {
+    return Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(builder: (_) => PostDetailScreen(post: post)),
     );
   }
 
@@ -186,6 +187,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       );
 
       if (!mounted) return;
+      
       _commentController.clear();
       setState(() {
         _replyParentCommentId = null;
@@ -516,6 +518,14 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     );
   }
 
+  void _openProfile(String userId) {
+    ProfileScreen.open(
+      context,
+      profileUserId: userId,
+      currentUserId: _supabase.auth.currentUser?.id,
+    );
+  }
+
   int _countComments(List<PostComment> comments) {
     var total = 0;
     for (final comment in comments) {
@@ -556,7 +566,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => Navigator.of(context).maybePop(),
+          onPressed: () {
+            final hasChanges = _supportsCount != widget.post.supportsCount || _commentsCount != widget.post.commentsCount;
+            Navigator.of(context).pop(hasChanges);
+          },
         ),
         title: const Text('Reporte'),
         actions: [
@@ -570,7 +583,12 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
         children: [
-          _AuthorHeader(post: widget.post),
+          _AuthorHeader(
+            post: widget.post,
+            onTap: widget.post.authorId == null || widget.post.isAnonymous
+                ? null
+                : () => _openProfile(widget.post.authorId!),
+          ),
           const SizedBox(height: 16),
           Text(
             widget.post.title,
@@ -728,6 +746,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                 onReplyTap: () => _beginReply(comment),
                 onReplyLikeTap: _toggleCommentLike,
                 onReplyReplyTap: _beginReply,
+                onOpenProfile: _openProfile,
               ),
             ),
         ],
@@ -818,13 +837,17 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 }
 
 class _AuthorHeader extends StatelessWidget {
-  const _AuthorHeader({required this.post});
+  const _AuthorHeader({
+    required this.post,
+    this.onTap,
+  });
 
   final FeedPost post;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    final child = Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _DetailAvatar(post: post),
@@ -858,6 +881,17 @@ class _AuthorHeader extends StatelessWidget {
           ),
         ),
       ],
+    );
+
+    if (onTap == null) return child;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: child,
+      ),
     );
   }
 }
@@ -1178,6 +1212,7 @@ class _CommentThread extends StatelessWidget {
     required this.onReplyTap,
     required this.onReplyLikeTap,
     required this.onReplyReplyTap,
+    required this.onOpenProfile,
   });
 
   final PostComment comment;
@@ -1185,6 +1220,7 @@ class _CommentThread extends StatelessWidget {
   final VoidCallback onReplyTap;
   final ValueChanged<PostComment> onReplyLikeTap;
   final ValueChanged<PostComment> onReplyReplyTap;
+  final Function(String userId) onOpenProfile;
 
   @override
   Widget build(BuildContext context) {
@@ -1203,6 +1239,7 @@ class _CommentThread extends StatelessWidget {
             isReply: false,
             onLikeTap: onLikeTap,
             onReplyTap: onReplyTap,
+            onOpenProfile: onOpenProfile,
           ),
           if (comment.replies.isNotEmpty) ...[
             const SizedBox(height: 12),
@@ -1227,6 +1264,7 @@ class _CommentThread extends StatelessWidget {
                           isReply: true,
                           onLikeTap: () => onReplyLikeTap(entry.value),
                           onReplyTap: () => onReplyReplyTap(entry.value),
+                          onOpenProfile: onOpenProfile,
                         ),
                       ),
                     )
@@ -1246,12 +1284,14 @@ class _CommentEntry extends StatelessWidget {
     required this.isReply,
     required this.onLikeTap,
     required this.onReplyTap,
+    required this.onOpenProfile,
   });
 
   final PostComment comment;
   final bool isReply;
   final VoidCallback onLikeTap;
   final VoidCallback onReplyTap;
+  final Function(String userId) onOpenProfile;
 
   @override
   Widget build(BuildContext context) {
@@ -1273,22 +1313,28 @@ class _CommentEntry extends StatelessWidget {
               Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      comment.authorLabel,
-                      style: TextStyle(
-                        color: AppColors.textPrimary,
-                        fontSize: isReply ? 13 : 14,
-                        fontWeight: FontWeight.w700,
+                    child: GestureDetector(
+                      onTap: () => onOpenProfile(comment.userId),
+                      child: Text(
+                        comment.authorLabel,
+                        style: TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: isReply ? 13 : 14,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    _PostDetailScreenState._formatRelativeTime(comment.createdAt),
-                    style: const TextStyle(
-                      color: AppColors.textHint,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
+                  GestureDetector(
+                    onTap: () => onOpenProfile(comment.userId),
+                    child: Text(
+                      _PostDetailScreenState._formatRelativeTime(comment.createdAt),
+                      style: const TextStyle(
+                        color: AppColors.textHint,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ],
