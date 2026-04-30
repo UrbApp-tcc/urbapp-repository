@@ -11,6 +11,7 @@ import '../services/feed_service.dart';
 import '../services/post_service.dart';
 import '../theme/app_theme.dart';
 import 'profile_screen.dart';
+import 'resolve_complaint_screen.dart';
 
 class PostDetailScreen extends StatefulWidget {
   const PostDetailScreen({super.key, required this.post});
@@ -40,6 +41,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   bool _isCommentsLoading = true;
   bool _isSubmittingComment = false;
   bool _isResolvingAddress = true;
+  bool _hasStatusChanges = false;
 
   int? _replyParentCommentId;
   String? _replyTargetLabel;
@@ -187,7 +189,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       );
 
       if (!mounted) return;
-      
+
       _commentController.clear();
       setState(() {
         _replyParentCommentId = null;
@@ -245,10 +247,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         _comments = _updateCommentTree(
           _comments,
           comment.id,
-          (item) => item.copyWith(
-            isLiked: previousLiked,
-            likesCount: previousCount,
-          ),
+          (item) =>
+              item.copyWith(isLiked: previousLiked, likesCount: previousCount),
         );
       });
       ScaffoldMessenger.of(context).showSnackBar(
@@ -302,27 +302,19 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     }
   }
 
-  Future<({String street, String neighborhood, String city})> _fetchAddressFromCoordinates(
-    double latitude,
-    double longitude,
-  ) async {
-    final uri = Uri.https(
-      'nominatim.openstreetmap.org',
-      '/reverse',
-      {
-        'format': 'jsonv2',
-        'lat': latitude.toString(),
-        'lon': longitude.toString(),
-        'zoom': '18',
-        'addressdetails': '1',
-      },
-    );
+  Future<({String street, String neighborhood, String city})>
+  _fetchAddressFromCoordinates(double latitude, double longitude) async {
+    final uri = Uri.https('nominatim.openstreetmap.org', '/reverse', {
+      'format': 'jsonv2',
+      'lat': latitude.toString(),
+      'lon': longitude.toString(),
+      'zoom': '18',
+      'addressdetails': '1',
+    });
 
     final response = await http.get(
       uri,
-      headers: const {
-        'Accept': 'application/json',
-      },
+      headers: const {'Accept': 'application/json'},
     );
 
     if (response.statusCode != 200) {
@@ -332,26 +324,28 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     final address = (data['address'] as Map<String, dynamic>?) ?? const {};
 
-    final street = (address['road'] ?? address['pedestrian'] ?? address['footway'] ?? '')
-        .toString()
-        .trim();
-    final neighborhood = (address['suburb'] ?? address['neighbourhood'] ?? address['quarter'] ?? '')
-        .toString()
-        .trim();
-    final city = (address['city'] ??
-            address['town'] ??
-            address['village'] ??
-            address['municipality'] ??
-            address['county'] ??
-            '')
-        .toString()
-        .trim();
+    final street =
+        (address['road'] ?? address['pedestrian'] ?? address['footway'] ?? '')
+            .toString()
+            .trim();
+    final neighborhood =
+        (address['suburb'] ??
+                address['neighbourhood'] ??
+                address['quarter'] ??
+                '')
+            .toString()
+            .trim();
+    final city =
+        (address['city'] ??
+                address['town'] ??
+                address['village'] ??
+                address['municipality'] ??
+                address['county'] ??
+                '')
+            .toString()
+            .trim();
 
-    return (
-      street: street,
-      neighborhood: neighborhood,
-      city: city,
-    );
+    return (street: street, neighborhood: neighborhood, city: city);
   }
 
   Future<void> _copyToClipboard(String text, String successMessage) async {
@@ -412,7 +406,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                       ),
                       children: [
                         TileLayer(
-                          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                          urlTemplate:
+                              'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                           userAgentPackageName: 'com.example.meu_app',
                         ),
                         MarkerLayer(
@@ -481,7 +476,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                   contentPadding: EdgeInsets.zero,
                   leading: const CircleAvatar(
                     backgroundColor: AppColors.primaryLight,
-                    child: Icon(Icons.link_rounded, color: AppColors.primaryDark),
+                    child: Icon(
+                      Icons.link_rounded,
+                      color: AppColors.primaryDark,
+                    ),
                   ),
                   title: const Text('Copiar link'),
                   subtitle: Text(
@@ -491,17 +489,25 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                   ),
                   onTap: () async {
                     Navigator.of(context).pop();
-                    await _copyToClipboard(link, 'Link copiado para a área de transferência.');
+                    await _copyToClipboard(
+                      link,
+                      'Link copiado para a área de transferência.',
+                    );
                   },
                 ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: const CircleAvatar(
                     backgroundColor: AppColors.primaryLight,
-                    child: Icon(Icons.ios_share_rounded, color: AppColors.primaryDark),
+                    child: Icon(
+                      Icons.ios_share_rounded,
+                      color: AppColors.primaryDark,
+                    ),
                   ),
                   title: const Text('Copiar mensagem para compartilhar'),
-                  subtitle: const Text('Copia uma mensagem pronta com o link do reporte.'),
+                  subtitle: const Text(
+                    'Copia uma mensagem pronta com o link do reporte.',
+                  ),
                   onTap: () async {
                     Navigator.of(context).pop();
                     await _copyToClipboard(
@@ -526,6 +532,13 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     );
   }
 
+  Future<void> _openResolveComplaint() async {
+    final resolved = await ResolveComplaintScreen.open(context, widget.post);
+    if (!mounted || resolved != true) return;
+
+    setState(() => _hasStatusChanges = true);
+  }
+
   int _countComments(List<PostComment> comments) {
     var total = 0;
     for (final comment in comments) {
@@ -540,26 +553,30 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     int commentId,
     PostComment Function(PostComment comment) update,
   ) {
-    return comments
-        .map((comment) {
-          if (comment.id == commentId) {
-            return update(comment);
-          }
+    return comments.map((comment) {
+      if (comment.id == commentId) {
+        return update(comment);
+      }
 
-          if (comment.replies.isEmpty) return comment;
+      if (comment.replies.isEmpty) return comment;
 
-          return comment.copyWith(
-            replies: comment.replies
-                .map((reply) => reply.id == commentId ? update(reply) : reply)
-                .toList(),
-          );
-        })
-        .toList();
+      return comment.copyWith(
+        replies: comment.replies
+            .map((reply) => reply.id == commentId ? update(reply) : reply)
+            .toList(),
+      );
+    }).toList();
   }
 
   @override
   Widget build(BuildContext context) {
     final imageUrls = _orderedImageUrls(widget.post);
+    final currentUserId = _supabase.auth.currentUser?.id;
+    final canResolve =
+        currentUserId != null &&
+        widget.post.authorId == currentUserId &&
+        !_isFinalStatus(widget.post.status);
+    final isCompleted = widget.post.status == 'completed';
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -567,7 +584,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () {
-            final hasChanges = _supportsCount != widget.post.supportsCount || _commentsCount != widget.post.commentsCount;
+            final hasChanges =
+                _hasStatusChanges ||
+                _supportsCount != widget.post.supportsCount ||
+                _commentsCount != widget.post.commentsCount;
             Navigator.of(context).pop(hasChanges);
           },
         ),
@@ -605,6 +625,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             _formatPublishedAt(widget.post.createdAt),
             style: const TextStyle(color: AppColors.textHint, fontSize: 13),
           ),
+          if (isCompleted) ...[
+            const SizedBox(height: 14),
+            _CompletedNotice(resolvedAt: widget.post.resolvedAt),
+          ],
           if (widget.post.description.trim().isNotEmpty) ...[
             const SizedBox(height: 14),
             Text(
@@ -653,6 +677,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             ],
           ),
           const SizedBox(height: 20),
+          if (canResolve) ...[
+            _ResolveComplaintCard(onTap: _openResolveComplaint),
+            const SizedBox(height: 20),
+          ],
           const Divider(height: 1, color: AppColors.border),
           const SizedBox(height: 16),
           Row(
@@ -689,13 +717,17 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                             size: 22,
                             color: _isLiked
                                 ? AppColors.error
-                                : AppColors.textSecondary.withValues(alpha: 0.9),
+                                : AppColors.textSecondary.withValues(
+                                    alpha: 0.9,
+                                  ),
                           ),
                     const SizedBox(width: 8),
                     Text(
                       '$_supportsCount',
                       style: TextStyle(
-                        color: _isLiked ? AppColors.error : AppColors.textPrimary,
+                        color: _isLiked
+                            ? AppColors.error
+                            : AppColors.textPrimary,
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
                       ),
@@ -787,6 +819,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     }
   }
 
+  static bool _isFinalStatus(String status) {
+    return status == 'completed' || status == 'closed' || status == 'expired';
+  }
+
   static String _formatPublishedAt(DateTime at) {
     final local = at.toLocal();
     final d = local.day.toString().padLeft(2, '0');
@@ -820,7 +856,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 
     final parts = <String>[
       if ((_resolvedStreet ?? '').trim().isNotEmpty) _resolvedStreet!.trim(),
-      if ((_resolvedNeighborhood ?? '').trim().isNotEmpty) _resolvedNeighborhood!.trim(),
+      if ((_resolvedNeighborhood ?? '').trim().isNotEmpty)
+        _resolvedNeighborhood!.trim(),
     ];
 
     if (parts.isEmpty) return 'Localização do reporte';
@@ -837,10 +874,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 }
 
 class _AuthorHeader extends StatelessWidget {
-  const _AuthorHeader({
-    required this.post,
-    this.onTap,
-  });
+  const _AuthorHeader({required this.post, this.onTap});
 
   final FeedPost post;
   final VoidCallback? onTap;
@@ -1015,7 +1049,10 @@ class _AddressCard extends StatelessWidget {
                   color: AppColors.primaryLight,
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: const Icon(Icons.place_outlined, color: AppColors.primaryDark),
+                child: const Icon(
+                  Icons.place_outlined,
+                  color: AppColors.primaryDark,
+                ),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -1032,7 +1069,9 @@ class _AddressCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      isLoading ? 'Carregando localização...' : 'Toque para abrir no mapa',
+                      isLoading
+                          ? 'Carregando localização...'
+                          : 'Toque para abrir no mapa',
                       style: const TextStyle(
                         color: AppColors.textSecondary,
                         fontSize: 13,
@@ -1050,6 +1089,148 @@ class _AddressCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _ResolveComplaintCard extends StatelessWidget {
+  const _ResolveComplaintCard({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.resolved.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: AppColors.resolved.withValues(alpha: 0.32),
+            ),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: AppColors.resolved.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(
+                  Icons.task_alt_rounded,
+                  color: AppColors.resolved,
+                ),
+              ),
+              const SizedBox(width: 14),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Resolver reclamação',
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Informe a solução e marque este reporte como concluído.',
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 13,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(width: 12),
+              Icon(Icons.chevron_right_rounded, color: AppColors.resolved),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CompletedNotice extends StatelessWidget {
+  const _CompletedNotice({this.resolvedAt});
+
+  final DateTime? resolvedAt;
+
+  @override
+  Widget build(BuildContext context) {
+    final resolvedAtLabel = resolvedAt == null
+        ? null
+        : _PostDetailScreenState._formatPublishedAt(resolvedAt!);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.resolved.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.resolved.withValues(alpha: 0.28)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: AppColors.resolved.withValues(alpha: 0.16),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.check_circle_rounded,
+              color: AppColors.resolved,
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Reclamação concluída',
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                if (resolvedAtLabel != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    resolvedAtLabel.replaceFirst(
+                      'Publicado em',
+                      'Resolvida em',
+                    ),
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 13,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1183,7 +1364,10 @@ class _CommentComposer extends StatelessWidget {
                 onPressed: isSubmitting ? null : onSubmit,
                 style: ElevatedButton.styleFrom(
                   minimumSize: const Size(0, 44),
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 12,
+                  ),
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
                 child: isSubmitting
@@ -1257,7 +1441,9 @@ class _CommentThread extends StatelessWidget {
                     .map(
                       (entry) => Padding(
                         padding: EdgeInsets.only(
-                          bottom: entry.key == comment.replies.length - 1 ? 0 : 12,
+                          bottom: entry.key == comment.replies.length - 1
+                              ? 0
+                              : 12,
                         ),
                         child: _CommentEntry(
                           comment: entry.value,
@@ -1329,7 +1515,9 @@ class _CommentEntry extends StatelessWidget {
                   GestureDetector(
                     onTap: () => onOpenProfile(comment.userId),
                     child: Text(
-                      _PostDetailScreenState._formatRelativeTime(comment.createdAt),
+                      _PostDetailScreenState._formatRelativeTime(
+                        comment.createdAt,
+                      ),
                       style: const TextStyle(
                         color: AppColors.textHint,
                         fontSize: 12,
@@ -1339,7 +1527,8 @@ class _CommentEntry extends StatelessWidget {
                   ),
                 ],
               ),
-              if (comment.authorUsername != null && comment.authorUsername!.trim().isNotEmpty) ...[
+              if (comment.authorUsername != null &&
+                  comment.authorUsername!.trim().isNotEmpty) ...[
                 const SizedBox(height: 2),
                 Text(
                   '@${comment.authorUsername!.trim()}',
@@ -1366,7 +1555,10 @@ class _CommentEntry extends StatelessWidget {
                     onTap: onLikeTap,
                     borderRadius: BorderRadius.circular(999),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 2,
+                        vertical: 4,
+                      ),
                       child: Row(
                         children: [
                           Icon(
