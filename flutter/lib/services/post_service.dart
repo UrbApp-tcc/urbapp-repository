@@ -1,15 +1,14 @@
-import 'dart:typed_data';
-
-import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'agency_service.dart';
 
 class LookupOption {
-  const LookupOption({required this.id, required this.name});
+  const LookupOption({required this.id, required this.name, this.stateCode});
 
   final int id;
   final String name;
+  final String? stateCode;
 }
 
 class PostComment {
@@ -48,7 +47,7 @@ class PostComment {
     if (fullName.isNotEmpty) return fullName;
     final username = authorUsername?.trim();
     if (username != null && username.isNotEmpty) return username;
-    return 'Usuário';
+    return 'Usuario';
   }
 
   PostComment copyWith({
@@ -102,7 +101,7 @@ class PostService {
     try {
       final response = await _supabase
           .from('cities')
-          .select('id, name')
+          .select('id, name, state')
           .order('name');
 
       return (response as List<dynamic>)
@@ -110,6 +109,7 @@ class PostService {
             (item) => LookupOption(
               id: item['id'] as int,
               name: item['name'] as String,
+              stateCode: item['state'] as String?,
             ),
           )
           .toList();
@@ -149,7 +149,7 @@ class PostService {
 
   Future<int> createPost({
     required String userId,
-    required int cityId,
+    int? cityId,
     required int categoryId,
     required String title,
     required String description,
@@ -196,28 +196,28 @@ class PostService {
         'changed_by': userId,
         'from_status': null,
         'to_status': 'open',
-        'note': 'Reporte criado pelo usuário.',
+        'note': 'Reporte criado pelo usuario.',
       });
     } on PostgrestException catch (error) {
-      throw Exception('Erro ao criar histórico do reporte: ${error.message}');
+      throw Exception('Erro ao criar historico do reporte: ${error.message}');
     } catch (error) {
-      throw Exception('Erro inesperado ao criar histórico do reporte: $error');
+      throw Exception('Erro inesperado ao criar historico do reporte: $error');
     }
   }
 
   Future<void> uploadPostImages({
     required String userId,
     required int postId,
-    required List<PlatformFile> files,
+    required List<XFile> files,
   }) async {
     try {
       final imageFiles = files.where(_isImageFile).toList();
       if (imageFiles.isEmpty) return;
 
       for (var index = 0; index < imageFiles.length; index++) {
-        final file = imageFiles[index];
-        final bytes = _extractBytes(file);
-        final extension = _fileExtension(file.name);
+        final image = imageFiles[index];
+        final bytes = await image.readAsBytes();
+        final extension = _fileExtension(image.name);
         final fileName =
             '${DateTime.now().millisecondsSinceEpoch}_$index.$extension';
         final storagePath = '$userId/posts/$postId/$fileName';
@@ -247,6 +247,51 @@ class PostService {
     }
   }
 
+  Future<LookupOption?> findCityByName({
+    required String cityName,
+    String? stateCode,
+  }) async {
+    final normalizedName = _normalizeText(cityName);
+    if (normalizedName.isEmpty) return null;
+
+    try {
+      var query = _supabase.from('cities').select('id, name, state');
+      if (stateCode != null && stateCode.isNotEmpty) {
+        query = query.eq('state', stateCode);
+      }
+
+      final response = await query.limit(200);
+      final cities = (response as List<dynamic>)
+          .map(
+            (item) => LookupOption(
+              id: item['id'] as int,
+              name: item['name'] as String,
+              stateCode: item['state'] as String?,
+            ),
+          )
+          .toList();
+
+      LookupOption? partialMatch;
+      for (final city in cities) {
+        final normalizedCityName = _normalizeText(city.name);
+        if (normalizedCityName == normalizedName) {
+          return city;
+        }
+
+        if (normalizedCityName.contains(normalizedName) ||
+            normalizedName.contains(normalizedCityName)) {
+          partialMatch ??= city;
+        }
+      }
+
+      return partialMatch;
+    } on PostgrestException catch (error) {
+      throw Exception('Erro ao localizar cidade: ${error.message}');
+    } catch (error) {
+      throw Exception('Erro inesperado ao localizar cidade: $error');
+    }
+  }
+
   Future<List<PostComment>> fetchComments(int postId) async {
     try {
       final response = await _supabase
@@ -273,9 +318,9 @@ class PostService {
 
       return _buildCommentThread(flatComments);
     } on PostgrestException catch (error) {
-      throw Exception('Erro ao carregar comentários: ${error.message}');
+      throw Exception('Erro ao carregar comentarios: ${error.message}');
     } catch (_) {
-      throw Exception('Erro inesperado ao carregar comentários.');
+      throw Exception('Erro inesperado ao carregar comentarios.');
     }
   }
 
@@ -304,9 +349,9 @@ class PostService {
 
       return _mapComment(response, const <int>{});
     } on PostgrestException catch (error) {
-      throw Exception('Erro ao enviar comentário: ${error.message}');
+      throw Exception('Erro ao enviar comentario: ${error.message}');
     } catch (error) {
-      throw Exception('Erro inesperado ao enviar comentário: $error');
+      throw Exception('Erro inesperado ao enviar comentario: $error');
     }
   }
 
@@ -316,7 +361,7 @@ class PostService {
   }) async {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) {
-      throw Exception('Faça login para curtir comentários.');
+      throw Exception('Faca login para curtir comentarios.');
     }
 
     try {
@@ -334,11 +379,11 @@ class PostService {
       }
     } on PostgrestException catch (error) {
       throw Exception(
-        'Erro ao registrar curtida no comentário: ${error.message}',
+        'Erro ao registrar curtida no comentario: ${error.message}',
       );
     } catch (error) {
       throw Exception(
-        'Erro inesperado ao registrar curtida no comentário: $error',
+        'Erro inesperado ao registrar curtida no comentario: $error',
       );
     }
   }
@@ -363,7 +408,7 @@ class PostService {
           .maybeSingle();
 
       if (updatedPost == null) {
-        throw Exception('Você não tem permissão para resolver este reporte.');
+        throw Exception('Voce nao tem permissao para resolver este reporte.');
       }
 
       await _supabase.from('post_status_history').insert({
@@ -443,7 +488,7 @@ class PostService {
     return comment.id;
   }
 
-  bool _isImageFile(PlatformFile file) {
+  bool _isImageFile(XFile file) {
     final extension = _fileExtension(file.name);
     return {'jpg', 'jpeg', 'png', 'gif', 'webp'}.contains(extension);
   }
@@ -454,12 +499,59 @@ class PostService {
     return parts.last.toLowerCase();
   }
 
-  Uint8List _extractBytes(PlatformFile file) {
-    final bytes = file.bytes;
-    if (bytes == null) {
-      throw Exception('Não foi possível ler os bytes do arquivo ${file.name}.');
-    }
-    return bytes;
+  String _normalizeText(String value) {
+    var normalized = value.trim().toLowerCase();
+    const replacements = {
+      'á': 'a',
+      'à': 'a',
+      'ã': 'a',
+      'â': 'a',
+      'é': 'e',
+      'ê': 'e',
+      'í': 'i',
+      'ó': 'o',
+      'ô': 'o',
+      'õ': 'o',
+      'ú': 'u',
+      'ç': 'c',
+      'Ã¡': 'a',
+      'Ã ': 'a',
+      'Ã£': 'a',
+      'Ã¢': 'a',
+      'Ã©': 'e',
+      'Ãª': 'e',
+      'Ã­': 'i',
+      'Ã³': 'o',
+      'Ã´': 'o',
+      'Ãµ': 'o',
+      'Ãº': 'u',
+      'Ã§': 'c',
+      'ÃƒÂ¡': 'a',
+      'ÃƒÂ ': 'a',
+      'ÃƒÂ£': 'a',
+      'ÃƒÂ¢': 'a',
+      'ÃƒÂ©': 'e',
+      'ÃƒÂª': 'e',
+      'ÃƒÂ­': 'i',
+      'ÃƒÂ³': 'o',
+      'ÃƒÂ´': 'o',
+      'ÃƒÂµ': 'o',
+      'ÃƒÂº': 'u',
+      'ÃƒÂ§': 'c',
+    };
+
+    replacements.forEach((source, target) {
+      normalized = normalized.replaceAll(source, target);
+    });
+
+    return normalized
+        .replaceAll(RegExp(r'^municipio de\s+'), '')
+        .replaceAll(RegExp(r'^cidade de\s+'), '')
+        .replaceAll(RegExp(r'^estancia turistica de\s+'), '')
+        .replaceAll(RegExp(r'\s*[-/]\s*[a-z]{2}$'), '')
+        .replaceAll(RegExp(r'[^a-z0-9\s]'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
   }
 
   DateTime? _parseDate(dynamic value) {

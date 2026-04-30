@@ -1668,23 +1668,37 @@ class _PostImageGallery extends StatefulWidget {
 class _PostImageGalleryState extends State<_PostImageGallery> {
   int _page = 0;
 
+  void _openFullscreenGallery(int initialIndex) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _FullscreenImageGallery(
+          urls: widget.urls,
+          initialIndex: initialIndex,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.urls.length == 1) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: AspectRatio(
-          aspectRatio: 16 / 10,
-          child: Image.network(
-            widget.urls.first,
-            fit: BoxFit.cover,
-            errorBuilder: (_, _, _) => const ColoredBox(
-              color: AppColors.divider,
-              child: Center(
-                child: Icon(
-                  Icons.broken_image_outlined,
-                  size: 48,
-                  color: AppColors.textHint,
+      return GestureDetector(
+        onTap: () => _openFullscreenGallery(0),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: AspectRatio(
+            aspectRatio: 16 / 10,
+            child: Image.network(
+              widget.urls.first,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => const ColoredBox(
+                color: AppColors.divider,
+                child: Center(
+                  child: Icon(
+                    Icons.broken_image_outlined,
+                    size: 48,
+                    color: AppColors.textHint,
+                  ),
                 ),
               ),
             ),
@@ -1702,16 +1716,19 @@ class _PostImageGalleryState extends State<_PostImageGallery> {
             child: PageView.builder(
               itemCount: widget.urls.length,
               onPageChanged: (index) => setState(() => _page = index),
-              itemBuilder: (context, index) => Image.network(
-                widget.urls[index],
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => const ColoredBox(
-                  color: AppColors.divider,
-                  child: Center(
-                    child: Icon(
-                      Icons.broken_image_outlined,
-                      size: 48,
-                      color: AppColors.textHint,
+              itemBuilder: (context, index) => GestureDetector(
+                onTap: () => _openFullscreenGallery(index),
+                child: Image.network(
+                  widget.urls[index],
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => const ColoredBox(
+                    color: AppColors.divider,
+                    child: Center(
+                      child: Icon(
+                        Icons.broken_image_outlined,
+                        size: 48,
+                        color: AppColors.textHint,
+                      ),
                     ),
                   ),
                 ),
@@ -1738,6 +1755,111 @@ class _PostImageGalleryState extends State<_PostImageGallery> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _FullscreenImageGallery extends StatefulWidget {
+  const _FullscreenImageGallery({
+    required this.urls,
+    required this.initialIndex,
+  });
+
+  final List<String> urls;
+  final int initialIndex;
+
+  @override
+  State<_FullscreenImageGallery> createState() =>
+      _FullscreenImageGalleryState();
+}
+
+class _FullscreenImageGalleryState extends State<_FullscreenImageGallery> {
+  late final PageController _pageController;
+  late int _currentIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+    _pageController = PageController(initialPage: widget.initialIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        title: Text('${_currentIndex + 1}/${widget.urls.length}'),
+      ),
+      body: Stack(
+        children: [
+          PageView.builder(
+            controller: _pageController,
+            itemCount: widget.urls.length,
+            onPageChanged: (index) => setState(() => _currentIndex = index),
+            itemBuilder: (context, index) {
+              return InteractiveViewer(
+                minScale: 1,
+                maxScale: 4,
+                child: Center(
+                  child: Image.network(
+                    widget.urls[index],
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, _, _) => const Center(
+                      child: Icon(
+                        Icons.broken_image_outlined,
+                        size: 56,
+                        color: Colors.white70,
+                      ),
+                    ),
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return const Center(
+                        child: CircularProgressIndicator(color: Colors.white),
+                      );
+                    },
+                  ),
+                ),
+              );
+            },
+          ),
+          if (widget.urls.length > 1)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 24,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(
+                  widget.urls.length,
+                  (index) => Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      width: _currentIndex == index ? 18 : 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: _currentIndex == index
+                            ? Colors.white
+                            : Colors.white38,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
