@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/feed_service.dart';
+import 'city_ranking_screen.dart';
 import 'post_detail_screen.dart';
 
 class SearchScreen extends StatefulWidget {
@@ -8,10 +9,12 @@ class SearchScreen extends StatefulWidget {
     super.key,
     required this.posts,
     required this.isLoading,
+    required this.currentUserId,
   });
 
   final List<FeedPost> posts;
   final bool isLoading;
+  final String? currentUserId;
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -64,6 +67,13 @@ class _SearchScreenState extends State<SearchScreen> {
         _SearchField(
           controller: _controller,
           onChanged: (value) => setState(() => _query = value),
+        ),
+        const SizedBox(height: 18),
+        _CityRankingPromoCard(
+          onOpen: () => CityRankingScreen.open(
+            context,
+            currentUserId: widget.currentUserId,
+          ),
         ),
         const SizedBox(height: 34),
         if (widget.isLoading) ...[
@@ -119,6 +129,106 @@ class _SearchScreenState extends State<SearchScreen> {
               ),
         ],
       ],
+    );
+  }
+}
+
+class _CityRankingPromoCard extends StatelessWidget {
+  const _CityRankingPromoCard({required this.onOpen});
+
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onOpen,
+        borderRadius: BorderRadius.circular(24),
+        child: Ink(
+          padding: const EdgeInsets.all(22),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [
+                Color(0xFF15202B),
+                Color(0xFF26384C),
+                Color(0xFF516E93),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF15202B).withValues(alpha: 0.14),
+                blurRadius: 24,
+                offset: const Offset(0, 14),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: const Text(
+                        'Em alta',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    const Text(
+                      'Ver ranking da sua cidade',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        height: 1.05,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Compare participação, apoios e resoluções com os usuários mais ativos da comunidade.',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.8),
+                        fontSize: 13,
+                        height: 1.45,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 18),
+              Container(
+                width: 54,
+                height: 54,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: const Icon(
+                  Icons.emoji_events_rounded,
+                  color: Colors.white,
+                  size: 28,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

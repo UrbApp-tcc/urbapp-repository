@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../services/feed_service.dart';
 import '../services/profile_service.dart';
 import '../theme/app_theme.dart';
+import 'agency_profiles_screen.dart';
 import 'post_detail_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -221,6 +222,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _openEditProfileSheet();
                 },
               ),
+              if (widget.currentUserId != null)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.account_balance_outlined),
+                  title: const Text('Perfis institucionais'),
+                  subtitle: const Text('Criar ou gerenciar secretaria/prefeitura'),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    AgencyProfilesScreen.open(
+                      context,
+                      currentUserId: widget.currentUserId!,
+                    );
+                  },
+                ),
               if (widget.onSignOut != null)
                 ListTile(
                   contentPadding: EdgeInsets.zero,

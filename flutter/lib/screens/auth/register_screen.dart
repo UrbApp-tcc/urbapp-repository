@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/auth_service.dart';
+import '../../services/profile_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/app_logo.dart';
 import '../../widgets/auth_text_field.dart';
@@ -21,9 +22,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _emailController = TextEditingController();
   final _mobileController = TextEditingController();
   final _authService = AuthService();
+  final _profileService = ProfileService();
 
   bool _isPasswordVisible = false;
   bool _isLoading = false;
+  bool _isCitiesLoading = true;
+  List<ProfileCityOption> _cities = const [];
+  int? _selectedCityId;
 
   static const double _maxContentWidth = 400;
   static const double _spacingLogoTitle = 16;
@@ -38,6 +43,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _emailController.dispose();
     _mobileController.dispose();
     super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCities();
   }
 
   String? _validateUsername(String? value) {
@@ -66,8 +77,44 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return null;
   }
 
+  Future<void> _loadCities() async {
+    try {
+      final cities = await _profileService.fetchCities();
+      if (!mounted) return;
+      setState(() {
+        _cities = cities;
+        _selectedCityId = cities.isNotEmpty ? cities.first.id : null;
+        _isCitiesLoading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _isCitiesLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+    }
+  }
+
   Future<void> _createAccount() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_selectedCityId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Selecione uma cidade para continuar.'),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+      return;
+    }
 
     FocusScope.of(context).unfocus();
     setState(() => _isLoading = true);
@@ -77,6 +124,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         email: _emailController.text,
         password: _passwordController.text,
         username: _usernameController.text,
+        cityId: _selectedCityId!,
         phone: _mobileController.text,
       );
 
@@ -259,13 +307,37 @@ class _RegisterScreenState extends State<RegisterScreen> {
             keyboardType: TextInputType.phone,
             prefixIcon: const Icon(Icons.phone_android_rounded, color: AppColors.textSecondary, size: 22),
             textInputAction: TextInputAction.done,
-            onFieldSubmitted: (_) => _createAccount(),
+          ),
+          const SizedBox(height: _spacingBetweenFields),
+          DropdownButtonFormField<int>(
+            initialValue: _selectedCityId,
+            items: _cities
+                .map(
+                  (city) => DropdownMenuItem<int>(
+                    value: city.id,
+                    child: Text(city.name),
+                  ),
+                )
+                .toList(),
+            onChanged: _isCitiesLoading
+                ? null
+                : (value) => setState(() => _selectedCityId = value),
+            validator: (value) => value == null ? 'Selecione a sua cidade' : null,
+            decoration: InputDecoration(
+              labelText: 'Cidade',
+              hintText: _isCitiesLoading ? 'Carregando cidades...' : 'Selecione a sua cidade',
+              prefixIcon: const Icon(
+                Icons.location_city_outlined,
+                color: AppColors.textSecondary,
+                size: 22,
+              ),
+            ),
           ),
           const SizedBox(height: _spacingFormButton),
           GradientButton(
             label: 'Criar conta',
-            loading: _isLoading,
-            onPressed: _createAccount,
+            loading: _isLoading || _isCitiesLoading,
+            onPressed: (_isCitiesLoading || _cities.isEmpty) ? null : _createAccount,
           ),
           const SizedBox(height: 24),
           const Text(

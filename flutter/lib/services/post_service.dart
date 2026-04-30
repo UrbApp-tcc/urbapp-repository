@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'agency_service.dart';
+
 class LookupOption {
   const LookupOption({
     required this.id,
@@ -138,6 +140,11 @@ class PostService {
     }
   }
 
+  Future<List<AgencyOption>> fetchAgenciesByCity(int cityId) async {
+    final agencyService = AgencyService();
+    return agencyService.fetchAgenciesByCity(cityId);
+  }
+
   Future<int> createPost({
     required String userId,
     required int cityId,
@@ -146,6 +153,7 @@ class PostService {
     required String description,
     required double latitude,
     required double longitude,
+    int? agencyId,
     bool isAnonymous = false,
   }) async {
     try {
@@ -157,6 +165,7 @@ class PostService {
             'user_id': userId,
             'city_id': cityId,
             'category_id': categoryId,
+            'agency_id': agencyId,
             'title': title.trim(),
             'description': description.trim(),
             'latitude': latitude,

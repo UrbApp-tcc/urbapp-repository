@@ -8,6 +8,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
+import '../services/agency_service.dart';
 import '../services/auth_service.dart';
 import '../services/post_service.dart';
 import '../theme/app_theme.dart';
@@ -40,10 +41,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
   List<LookupOption> _cities = const [];
   List<LookupOption> _categories = const [];
+  List<AgencyOption> _agencies = const [];
   List<PlatformFile> _selectedMedia = const [];
 
   LookupOption? _selectedCity;
   LookupOption? _selectedCategory;
+  AgencyOption? _selectedAgency;
 
   LatLng? _selectedPoint;
   String _locationLabel = 'Buscando sua localização atual...';
@@ -199,18 +202,26 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       setState(() {
         _selectedPoint = point;
         _selectedCity = matchedCity;
+        _selectedAgency = null;
         _cityLabel =
             matchedCity?.name ?? (locality.isNotEmpty ? locality : 'Cidade não identificada');
         _locationLabel = locationParts.isEmpty
             ? 'Endereço não identificado com detalhes. Ajuste o ponto no mapa.'
             : locationParts.join(' - ');
       });
+      if (matchedCity != null) {
+        await _loadAgenciesForCity(matchedCity.id);
+      } else if (mounted) {
+        setState(() => _agencies = const []);
+      }
     } catch (_) {
       if (!mounted) return;
 
       setState(() {
         _selectedPoint = point;
         _selectedCity = null;
+        _selectedAgency = null;
+        _agencies = const [];
         _cityLabel = 'Cidade não identificada';
         _locationLabel = 'Não foi possível identificar rua e bairro para este ponto.';
       });
@@ -308,6 +319,25 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     return normalized;
   }
 
+  Future<void> _loadAgenciesForCity(int cityId) async {
+    try {
+      final agencies = await _postService.fetchAgenciesByCity(cityId);
+      if (!mounted) return;
+      setState(() {
+        _agencies = agencies;
+        if (_selectedAgency != null && _selectedAgency!.cityId != cityId) {
+          _selectedAgency = null;
+        }
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _agencies = const [];
+        _selectedAgency = null;
+      });
+    }
+  }
+
   Future<void> _submitPost() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -346,6 +376,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         description: _descriptionController.text,
         latitude: _selectedPoint!.latitude,
         longitude: _selectedPoint!.longitude,
+        agencyId: _selectedAgency?.id,
         isAnonymous: _isAnonymous,
       );
 
@@ -384,6 +415,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       setState(() {
         _isAnonymous = false;
         _selectedCategory = null;
+        _selectedAgency = null;
         _selectedMedia = const [];
       });
 
@@ -554,6 +586,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 });
               },
             ),
+            const SizedBox(height: 24),
+            _buildSectionLabel('Órgão responsável'),
+            const SizedBox(height: 12),
+            _buildAgencySelector(),
             const SizedBox(height: 24),
             _buildSectionLabel('Conteúdo'),
             const SizedBox(height: 12),
@@ -788,6 +824,66 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                   .toList(),
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAgencySelector() {
+    final selectedCity = _selectedCity;
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Selecione a secretaria ou órgão que deve receber esse chamado. Esse vínculo é opcional, mas ajuda a prefeitura a assumir o reporte.',
+            style: TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 13,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 14),
+          DropdownButtonFormField<int?>(
+            initialValue: _selectedAgency?.id,
+            items: [
+              const DropdownMenuItem<int?>(
+                value: null,
+                child: Text('Nenhum órgão vinculado'),
+              ),
+              ..._agencies.map(
+                (agency) => DropdownMenuItem<int?>(
+                  value: agency.id,
+                  child: Text('${agency.name} (${agency.type})'),
+                ),
+              ),
+            ],
+            onChanged: selectedCity == null
+                ? null
+                : (value) {
+                    setState(() {
+                      _selectedAgency = value == null
+                          ? null
+                          : _agencies.firstWhere((agency) => agency.id == value);
+                    });
+                  },
+            decoration: InputDecoration(
+              labelText: 'Secretaria/órgão',
+              hintText: selectedCity == null
+                  ? 'Defina primeiro a cidade do reporte no mapa'
+                  : _agencies.isEmpty
+                      ? 'Nenhuma secretaria cadastrada para ${selectedCity.name}'
+                      : 'Selecione a secretaria responsável',
+              prefixIcon: const Icon(Icons.account_balance_outlined, size: 22),
+            ),
+          ),
         ],
       ),
     );

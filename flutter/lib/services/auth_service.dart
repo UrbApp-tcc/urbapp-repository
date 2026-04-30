@@ -27,6 +27,7 @@ class AuthService {
     required String email,
     required String password,
     required String username,
+    required int cityId,
     String? phone,
   }) async {
     try {
@@ -36,6 +37,7 @@ class AuthService {
         data: {
           'username': username.trim(),
           'full_name': username.trim(),
+          'city_id': cityId,
           if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
         },
       );

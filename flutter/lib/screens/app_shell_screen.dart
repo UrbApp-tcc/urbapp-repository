@@ -308,6 +308,7 @@ class _AppShellScreenState extends State<AppShellScreen> {
                           SearchScreen(
                             posts: _posts,
                             isLoading: _isLoading,
+                            currentUserId: currentUserId,
                           ),
                           NotificationsScreen(
                             currentUserId: currentUserId,
