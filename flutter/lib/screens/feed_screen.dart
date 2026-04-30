@@ -35,16 +35,15 @@ class FeedScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final featuredPost = posts.isNotEmpty ? posts.first : null;
-    final latestPosts = posts.length > 1 ? posts.skip(1).take(6).toList() : const <FeedPost>[];
+    final latestPosts = posts.length > 1
+        ? posts.skip(1).take(6).toList()
+        : const <FeedPost>[];
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(32, 40, 32, 132),
       children: [
-        _HomeHeader(
-          isRefreshing: isRefreshing,
-          onCreatePost: onCreatePost,
-        ),
+        _HomeHeader(isRefreshing: isRefreshing, onCreatePost: onCreatePost),
         const SizedBox(height: 28),
         if (isLoading)
           const _FeaturedCardSkeleton()
@@ -57,10 +56,7 @@ class FeedScreen extends StatelessWidget {
         else
           const _FeedEmptyHero(),
         const SizedBox(height: 34),
-        _SectionTitle(
-          title: 'Últimos reportes',
-          trailing: '${posts.length}',
-        ),
+        _SectionTitle(title: 'Últimos reportes', trailing: '${posts.length}'),
         const SizedBox(height: 18),
         if (isLoading)
           ...List.generate(
@@ -74,17 +70,17 @@ class FeedScreen extends StatelessWidget {
           const _FeedEmptyList()
         else
           ...latestPosts.asMap().entries.map(
-                (entry) => Padding(
-                  padding: EdgeInsets.only(
-                    bottom: entry.key == latestPosts.length - 1 ? 0 : 24,
-                  ),
-                  child: _LatestPostRow(
-                    post: entry.value,
-                    isLiked: likedPostIds.contains(entry.value.id),
-                    onOpen: () => onOpenPost(entry.value),
-                  ),
-                ),
+            (entry) => Padding(
+              padding: EdgeInsets.only(
+                bottom: entry.key == latestPosts.length - 1 ? 0 : 24,
               ),
+              child: _LatestPostRow(
+                post: entry.value,
+                isLiked: likedPostIds.contains(entry.value.id),
+                onOpen: () => onOpenPost(entry.value),
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -102,10 +98,7 @@ void _openProfileFromPost(BuildContext context, FeedPost post) {
 }
 
 class _HomeHeader extends StatelessWidget {
-  const _HomeHeader({
-    required this.isRefreshing,
-    required this.onCreatePost,
-  });
+  const _HomeHeader({required this.isRefreshing, required this.onCreatePost});
 
   final bool isRefreshing;
   final VoidCallback onCreatePost;
@@ -193,6 +186,8 @@ class _FeaturedFeedCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isCompleted = post.status == 'completed';
+
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
@@ -205,7 +200,8 @@ class _FeaturedFeedCard extends StatelessWidget {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                if (post.primaryImageUrl != null && post.primaryImageUrl!.isNotEmpty)
+                if (post.primaryImageUrl != null &&
+                    post.primaryImageUrl!.isNotEmpty)
                   Image.network(
                     post.primaryImageUrl!,
                     fit: BoxFit.cover,
@@ -235,15 +231,23 @@ class _FeaturedFeedCard extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          Text(
-                            post.categoryName.toUpperCase(),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
+                          Expanded(
+                            child: Text(
+                              post.categoryName.toUpperCase(),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
                           ),
-                          const Spacer(),
+                          if (isCompleted) ...[
+                            const SizedBox(width: 8),
+                            const _CompletedBadge(onDarkBackground: true),
+                          ],
+                          const SizedBox(width: 8),
                           Text(
                             _formatRelativeTime(post.createdAt),
                             style: const TextStyle(
@@ -276,7 +280,11 @@ class _FeaturedFeedCard extends StatelessWidget {
                       const SizedBox(height: 18),
                       Row(
                         children: [
-                          const Icon(Icons.mode_comment_outlined, color: Colors.white, size: 24),
+                          const Icon(
+                            Icons.mode_comment_outlined,
+                            color: Colors.white,
+                            size: 24,
+                          ),
                           const SizedBox(width: 8),
                           Text(
                             '${post.commentsCount}',
@@ -288,7 +296,9 @@ class _FeaturedFeedCard extends StatelessWidget {
                           ),
                           const SizedBox(width: 24),
                           Icon(
-                            isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                            isLiked
+                                ? Icons.favorite_rounded
+                                : Icons.favorite_border_rounded,
                             color: isLiked ? AppColors.error : Colors.white,
                             size: 24,
                           ),
@@ -302,7 +312,11 @@ class _FeaturedFeedCard extends StatelessWidget {
                             ),
                           ),
                           const Spacer(),
-                          const Icon(Icons.reply_outlined, color: Colors.white, size: 24),
+                          const Icon(
+                            Icons.reply_outlined,
+                            color: Colors.white,
+                            size: 24,
+                          ),
                         ],
                       ),
                     ],
@@ -330,6 +344,8 @@ class _LatestPostRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isCompleted = post.status == 'completed';
+
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: Material(
@@ -347,12 +363,16 @@ class _LatestPostRow extends StatelessWidget {
                   child: SizedBox(
                     width: 100,
                     height: 100,
-                    child: post.primaryImageUrl != null && post.primaryImageUrl!.isNotEmpty
+                    child:
+                        post.primaryImageUrl != null &&
+                            post.primaryImageUrl!.isNotEmpty
                         ? Image.network(
                             post.primaryImageUrl!,
                             fit: BoxFit.cover,
                             errorBuilder: (context, error, stackTrace) {
-                              return _ThumbFallback(category: post.categoryName);
+                              return _ThumbFallback(
+                                category: post.categoryName,
+                              );
                             },
                           )
                         : _ThumbFallback(category: post.categoryName),
@@ -371,13 +391,25 @@ class _LatestPostRow extends StatelessWidget {
                           onTap: () => _openProfileFromPost(context, post),
                         ),
                         const SizedBox(height: 8),
-                        Text(
-                          post.categoryName.toUpperCase(),
-                          style: const TextStyle(
-                            color: Color(0xFF9CA3AD),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                          ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                post.categoryName.toUpperCase(),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Color(0xFF9CA3AD),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                            if (isCompleted) ...[
+                              const SizedBox(width: 8),
+                              const _CompletedBadge(),
+                            ],
+                          ],
                         ),
                         const SizedBox(height: 6),
                         Text(
@@ -398,7 +430,9 @@ class _LatestPostRow extends StatelessWidget {
                             Icon(
                               Icons.mode_comment_outlined,
                               size: 16,
-                              color: const Color(0xFF8F949D).withValues(alpha: 0.92),
+                              color: const Color(
+                                0xFF8F949D,
+                              ).withValues(alpha: 0.92),
                             ),
                             const SizedBox(width: 6),
                             Text(
@@ -411,17 +445,23 @@ class _LatestPostRow extends StatelessWidget {
                             ),
                             const SizedBox(width: 16),
                             Icon(
-                              isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                              isLiked
+                                  ? Icons.favorite_rounded
+                                  : Icons.favorite_border_rounded,
                               size: 16,
                               color: isLiked
                                   ? AppColors.error
-                                  : const Color(0xFF8F949D).withValues(alpha: 0.92),
+                                  : const Color(
+                                      0xFF8F949D,
+                                    ).withValues(alpha: 0.92),
                             ),
                             const SizedBox(width: 6),
                             Text(
                               '${post.supportsCount}',
                               style: TextStyle(
-                                color: isLiked ? AppColors.error : const Color(0xFF8F949D),
+                                color: isLiked
+                                    ? AppColors.error
+                                    : const Color(0xFF8F949D),
                                 fontSize: 12,
                                 fontWeight: FontWeight.w700,
                               ),
@@ -430,7 +470,9 @@ class _LatestPostRow extends StatelessWidget {
                             Icon(
                               Icons.schedule_rounded,
                               size: 16,
-                              color: const Color(0xFF8F949D).withValues(alpha: 0.92),
+                              color: const Color(
+                                0xFF8F949D,
+                              ).withValues(alpha: 0.92),
                             ),
                             const SizedBox(width: 6),
                             Text(
@@ -456,6 +498,50 @@ class _LatestPostRow extends StatelessWidget {
   }
 }
 
+class _CompletedBadge extends StatelessWidget {
+  const _CompletedBadge({this.onDarkBackground = false});
+
+  final bool onDarkBackground;
+
+  @override
+  Widget build(BuildContext context) {
+    final backgroundColor = onDarkBackground
+        ? AppColors.resolved.withValues(alpha: 0.92)
+        : AppColors.resolved.withValues(alpha: 0.12);
+    final foregroundColor = onDarkBackground
+        ? Colors.white
+        : AppColors.resolved;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: onDarkBackground
+              ? Colors.white.withValues(alpha: 0.28)
+              : AppColors.resolved.withValues(alpha: 0.22),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.check_circle_rounded, size: 13, color: foregroundColor),
+          const SizedBox(width: 4),
+          Text(
+            'Concluída',
+            style: TextStyle(
+              color: foregroundColor,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _FeedAuthorRow extends StatelessWidget {
   const _FeedAuthorRow({
     required this.post,
@@ -475,8 +561,9 @@ class _FeedAuthorRow extends StatelessWidget {
     final avatarBg = onDarkBackground
         ? Colors.white.withValues(alpha: 0.22)
         : const Color(0xFFE8ECF0);
-    final iconColor =
-        onDarkBackground ? Colors.white.withValues(alpha: 0.85) : const Color(0xFF8F949D);
+    final iconColor = onDarkBackground
+        ? Colors.white.withValues(alpha: 0.85)
+        : const Color(0xFF8F949D);
 
     final child = Row(
       children: [
@@ -565,7 +652,12 @@ class _AuthorAvatar extends StatelessWidget {
 
   Widget _initials() {
     final label = post.authorLabel;
-    final parts = label.trim().split(RegExp(r'\s+')).where((e) => e.isNotEmpty).take(2).toList();
+    final parts = label
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((e) => e.isNotEmpty)
+        .take(2)
+        .toList();
     String t;
     if (parts.isEmpty) {
       t = '?';
@@ -586,10 +678,7 @@ class _AuthorAvatar extends StatelessWidget {
 }
 
 class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({
-    required this.title,
-    required this.trailing,
-  });
+  const _SectionTitle({required this.title, required this.trailing});
 
   final String title;
   final String trailing;
@@ -631,9 +720,7 @@ class _SectionTitle extends StatelessWidget {
 }
 
 class _HeroFallback extends StatelessWidget {
-  const _HeroFallback({
-    required this.category,
-  });
+  const _HeroFallback({required this.category});
 
   final String category;
 
@@ -642,10 +729,7 @@ class _HeroFallback extends StatelessWidget {
     return DecoratedBox(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          colors: [
-            Color(0xFF303B49),
-            Color(0xFF18222E),
-          ],
+          colors: [Color(0xFF303B49), Color(0xFF18222E)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -673,9 +757,7 @@ class _HeroFallback extends StatelessWidget {
 }
 
 class _ThumbFallback extends StatelessWidget {
-  const _ThumbFallback({
-    required this.category,
-  });
+  const _ThumbFallback({required this.category});
 
   final String category;
 
@@ -684,10 +766,7 @@ class _ThumbFallback extends StatelessWidget {
     return DecoratedBox(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          colors: [
-            Color(0xFFF4F6FA),
-            Color(0xFFE9EEF5),
-          ],
+          colors: [Color(0xFFF4F6FA), Color(0xFFE9EEF5)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -829,11 +908,7 @@ class _FeedEmptyList extends StatelessWidget {
   Widget build(BuildContext context) {
     return const Text(
       'Quando novos reportes forem criados, eles vão aparecer aqui.',
-      style: TextStyle(
-        color: Color(0xFF8F949D),
-        fontSize: 15,
-        height: 1.45,
-      ),
+      style: TextStyle(color: Color(0xFF8F949D), fontSize: 15, height: 1.45),
     );
   }
 }

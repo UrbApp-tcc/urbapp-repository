@@ -4,10 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class LookupOption {
-  const LookupOption({
-    required this.id,
-    required this.name,
-  });
+  const LookupOption({required this.id, required this.name});
 
   final int id;
   final String name;
@@ -73,7 +70,9 @@ class PostComment {
       userId: userId ?? this.userId,
       body: body ?? this.body,
       createdAt: createdAt ?? this.createdAt,
-      updatedAt: identical(updatedAt, _sentinel) ? this.updatedAt : updatedAt as DateTime?,
+      updatedAt: identical(updatedAt, _sentinel)
+          ? this.updatedAt
+          : updatedAt as DateTime?,
       parentCommentId: identical(parentCommentId, _sentinel)
           ? this.parentCommentId
           : parentCommentId as int?,
@@ -99,7 +98,10 @@ class PostService {
 
   Future<List<LookupOption>> fetchCities() async {
     try {
-      final response = await _supabase.from('cities').select('id, name').order('name');
+      final response = await _supabase
+          .from('cities')
+          .select('id, name')
+          .order('name');
 
       return (response as List<dynamic>)
           .map(
@@ -207,10 +209,13 @@ class PostService {
         final file = imageFiles[index];
         final bytes = _extractBytes(file);
         final extension = _fileExtension(file.name);
-        final fileName = '${DateTime.now().millisecondsSinceEpoch}_$index.$extension';
+        final fileName =
+            '${DateTime.now().millisecondsSinceEpoch}_$index.$extension';
         final storagePath = '$userId/posts/$postId/$fileName';
 
-        await _supabase.storage.from(_postImagesBucket).uploadBinary(
+        await _supabase.storage
+            .from(_postImagesBucket)
+            .uploadBinary(
               storagePath,
               bytes,
               fileOptions: const FileOptions(upsert: false),
@@ -223,7 +228,9 @@ class PostService {
         });
       }
     } on StorageException catch (error) {
-      throw Exception('Erro ao enviar imagem para o armazenamento: ${error.message}');
+      throw Exception(
+        'Erro ao enviar imagem para o armazenamento: ${error.message}',
+      );
     } on PostgrestException catch (error) {
       throw Exception('Erro ao salvar imagem do reporte: ${error.message}');
     } catch (error) {
@@ -245,7 +252,9 @@ class PostService {
       final responseList = response as List<dynamic>;
       final likedIds = await _fetchLikedCommentIds(
         responseList
-            .map((item) => ((item as Map<String, dynamic>)['id'] as num).toInt())
+            .map(
+              (item) => ((item as Map<String, dynamic>)['id'] as num).toInt(),
+            )
             .toList(),
       );
 
@@ -315,9 +324,52 @@ class PostService {
         });
       }
     } on PostgrestException catch (error) {
-      throw Exception('Erro ao registrar curtida no comentário: ${error.message}');
+      throw Exception(
+        'Erro ao registrar curtida no comentário: ${error.message}',
+      );
     } catch (error) {
-      throw Exception('Erro inesperado ao registrar curtida no comentário: $error');
+      throw Exception(
+        'Erro inesperado ao registrar curtida no comentário: $error',
+      );
+    }
+  }
+
+  Future<void> resolvePost({
+    required int postId,
+    required String userId,
+    required String fromStatus,
+    required String note,
+  }) async {
+    final resolvedNote = note.trim();
+
+    try {
+      final resolvedAt = DateTime.now().toUtc().toIso8601String();
+
+      final updatedPost = await _supabase
+          .from('posts')
+          .update({'status': 'completed', 'resolved_at': resolvedAt})
+          .eq('id', postId)
+          .eq('user_id', userId)
+          .select('id')
+          .maybeSingle();
+
+      if (updatedPost == null) {
+        throw Exception('Você não tem permissão para resolver este reporte.');
+      }
+
+      await _supabase.from('post_status_history').insert({
+        'post_id': postId,
+        'changed_by': userId,
+        'from_status': fromStatus,
+        'to_status': 'completed',
+        'note': resolvedNote.isEmpty
+            ? 'Reporte marcado como resolvido pelo autor.'
+            : resolvedNote,
+      });
+    } on PostgrestException catch (error) {
+      throw Exception('Erro ao resolver o reporte: ${error.message}');
+    } catch (error) {
+      throw Exception('Erro inesperado ao resolver o reporte: $error');
     }
   }
 
@@ -352,7 +404,9 @@ class PostService {
       }
 
       final rootParentId = _resolveTopLevelParentId(comment, commentsById);
-      repliesByParent.putIfAbsent(rootParentId, () => <PostComment>[]).add(comment);
+      repliesByParent
+          .putIfAbsent(rootParentId, () => <PostComment>[])
+          .add(comment);
     }
 
     return topLevel
