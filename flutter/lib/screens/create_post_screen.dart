@@ -532,8 +532,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     FocusScope.of(context).unfocus();
     setState(() => _isSubmitting = true);
 
+    int? createdPostId;
     try {
-      final postId = await _postService.createPost(
+      createdPostId = await _postService.createPost(
         userId: currentUser.id,
         cityId: matchedCity?.id,
         categoryId: _selectedCategory!.id,
@@ -545,16 +546,21 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         isAnonymous: _isAnonymous,
       );
 
-      await _postService.createInitialStatusHistory(
-        postId: postId,
-        userId: currentUser.id,
-      );
+      try {
+        await _postService.createInitialStatusHistory(
+          postId: createdPostId,
+          userId: currentUser.id,
+        );
 
-      await _postService.uploadPostImages(
-        userId: currentUser.id,
-        postId: postId,
-        files: _images,
-      );
+        await _postService.uploadPostImages(
+          userId: currentUser.id,
+          postId: createdPostId,
+          files: _images,
+        );
+      } catch (_) {
+        await _postService.deletePost(createdPostId);
+        rethrow;
+      }
 
       if (!mounted) return;
 

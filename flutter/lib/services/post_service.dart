@@ -164,7 +164,6 @@ class PostService {
       final response = await _supabase
           .from('posts')
           .insert({
-            'user_id': userId,
             'city_id': cityId,
             'category_id': categoryId,
             'agency_id': agencyId,
@@ -183,6 +182,16 @@ class PostService {
       throw Exception('Erro ao criar o reporte: ${error.message}');
     } catch (error) {
       throw Exception('Erro inesperado ao criar o reporte: $error');
+    }
+  }
+
+  Future<void> deletePost(int postId) async {
+    try {
+      await _supabase.from('posts').delete().eq('id', postId);
+    } on PostgrestException catch (error) {
+      throw Exception('Erro ao excluir o reporte: ${error.message}');
+    } catch (error) {
+      throw Exception('Erro inesperado ao excluir o reporte: $error');
     }
   }
 
@@ -337,7 +346,6 @@ class PostService {
           .from('comments')
           .insert({
             'post_id': postId,
-            'user_id': userId,
             'body': body.trim(),
             'parent_comment_id': parentCommentId,
           })
@@ -388,12 +396,20 @@ class PostService {
     }
   }
 
+  static const _finalStatuses = {'completed', 'closed', 'expired'};
+
   Future<void> resolvePost({
     required int postId,
     required String userId,
     required String fromStatus,
     required String note,
   }) async {
+    if (_finalStatuses.contains(fromStatus)) {
+      throw Exception(
+        'Este reporte ja esta em estado final ("$fromStatus") e nao pode ser alterado.',
+      );
+    }
+
     final resolvedNote = note.trim();
 
     try {

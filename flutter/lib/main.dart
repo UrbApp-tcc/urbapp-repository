@@ -4,12 +4,18 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'screens/auth/auth_gate.dart';
 import 'theme/app_theme.dart';
 
+const _supabaseUrl = String.fromEnvironment('SUPABASE_URL');
+const _supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+
 void main() async {
+  assert(_supabaseUrl.isNotEmpty, 'SUPABASE_URL não definida. Rode com --dart-define-from-file=dart_defines/dev.json');
+  assert(_supabaseAnonKey.isNotEmpty, 'SUPABASE_ANON_KEY não definida. Rode com --dart-define-from-file=dart_defines/dev.json');
+
   WidgetsFlutterBinding.ensureInitialized();
 
   await Supabase.initialize(
-    url: 'https://mqdbakhsfmzghhliedhi.supabase.co',
-    anonKey: 'sb_publishable_mxbGnr12no0d1BJApPPSkw_4_JZ9gNA',
+    url: _supabaseUrl,
+    anonKey: _supabaseAnonKey,
   );
 
   runApp(const UrbappApp());
