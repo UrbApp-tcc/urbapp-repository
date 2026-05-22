@@ -72,10 +72,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return null;
   }
 
-  String? _validateMobile(String? value) {
-    if (value == null || value.trim().isEmpty) return 'Informe o celular';
-    return null;
-  }
+  String? _validateMobile(String? value) => null;
 
   Future<void> _loadCities() async {
     try {
@@ -339,23 +336,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
             loading: _isLoading || _isCitiesLoading,
             onPressed: (_isCitiesLoading || _cities.isEmpty) ? null : _createAccount,
           ),
-          const SizedBox(height: 24),
-          const Text(
-            'Ou crie uma conta com redes sociais',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: AppColors.textHint, fontSize: 13),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _buildSocialButton(const Color(0xFF1877F2), Icons.facebook_rounded),
-              const SizedBox(width: 20),
-              _buildSocialButton(const Color(0xFF1DA1F2), Icons.alternate_email_rounded),
-              const SizedBox(width: 20),
-              _buildSocialButton(Colors.white, Icons.g_mobiledata_rounded, isGoogle: true),
-            ],
-          ),
           const SizedBox(height: 28),
           Center(
             child: RichText(
@@ -381,30 +361,4 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  Widget _buildSocialButton(Color bgColor, IconData icon, {bool isGoogle = false}) {
-    return Material(
-      color: bgColor,
-      shape: const CircleBorder(),
-      elevation: 1,
-      shadowColor: Colors.black26,
-      child: InkWell(
-        onTap: () {},
-        customBorder: const CircleBorder(),
-        child: Container(
-          width: 48,
-          height: 48,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: isGoogle ? Border.all(color: AppColors.border) : null,
-          ),
-          child: Icon(
-            icon,
-            color: isGoogle ? AppColors.textPrimary : Colors.white,
-            size: 26,
-          ),
-        ),
-      ),
-    );
-  }
 }

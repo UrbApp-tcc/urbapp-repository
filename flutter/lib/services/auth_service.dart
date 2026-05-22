@@ -48,6 +48,16 @@ class AuthService {
     }
   }
 
+  Future<void> resetPassword(String email) async {
+    try {
+      await _auth.resetPasswordForEmail(email.trim());
+    } on AuthException catch (error) {
+      throw Exception(_mapAuthError(error));
+    } catch (_) {
+      throw Exception('Erro inesperado ao solicitar redefinição de senha.');
+    }
+  }
+
   Future<void> signOut() async {
     try {
       await _auth.signOut();

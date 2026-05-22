@@ -53,6 +53,84 @@ class _LoginScreenState extends State<LoginScreen> {
     return null;
   }
 
+  Future<void> _showForgotPasswordDialog() async {
+    final emailController = TextEditingController(text: _emailController.text.trim());
+    final formKey = GlobalKey<FormState>();
+    var isSending = false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              title: const Text('Redefinir senha'),
+              content: Form(
+                key: formKey,
+                child: TextFormField(
+                  controller: emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: const InputDecoration(
+                    labelText: 'E-mail',
+                    hintText: 'seu@email.com',
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) return 'Informe seu e-mail';
+                    final regex = RegExp(r'^[\w.-]+@[\w.-]+\.\w{2,}$');
+                    if (!regex.hasMatch(value.trim())) return 'E-mail inválido';
+                    return null;
+                  },
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSending ? null : () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancelar'),
+                ),
+                TextButton(
+                  onPressed: isSending
+                      ? null
+                      : () async {
+                          if (!formKey.currentState!.validate()) return;
+                          setDialogState(() => isSending = true);
+                          try {
+                            await _authService.resetPassword(emailController.text);
+                            if (!dialogContext.mounted) return;
+                            Navigator.of(dialogContext).pop();
+                            if (!mounted) return;
+                            _showSnack(
+                              'E-mail de redefinição enviado. Verifique sua caixa de entrada.',
+                              AppColors.primary,
+                            );
+                          } catch (error) {
+                            setDialogState(() => isSending = false);
+                            if (!dialogContext.mounted) return;
+                            Navigator.of(dialogContext).pop();
+                            if (!mounted) return;
+                            _showSnack(
+                              error.toString().replaceFirst('Exception: ', ''),
+                              AppColors.error,
+                            );
+                          }
+                        },
+                  child: isSending
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Enviar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    emailController.dispose();
+  }
+
   Future<void> _signIn() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -204,7 +282,7 @@ class _LoginScreenState extends State<LoginScreen> {
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
-              onPressed: () {},
+              onPressed: _showForgotPasswordDialog,
               style: TextButton.styleFrom(
                 foregroundColor: AppColors.textHint,
                 padding: EdgeInsets.zero,

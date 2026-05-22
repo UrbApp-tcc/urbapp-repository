@@ -145,17 +145,17 @@ class FeedService {
     if (postIds.isEmpty) return const <int, int>{};
 
     try {
-      final response = await _supabase
-          .from('comments')
-          .select('post_id')
-          .inFilter('post_id', postIds);
-
-      final counts = <int, int>{};
-      for (final item in response as List<dynamic>) {
-        final postId = (item['post_id'] as num).toInt();
-        counts.update(postId, (value) => value + 1, ifAbsent: () => 1);
-      }
-      return counts;
+      final entries = await Future.wait(
+        postIds.map((postId) async {
+          final response = await _supabase
+              .from('comments')
+              .select()
+              .eq('post_id', postId)
+              .count(CountOption.exact);
+          return MapEntry(postId, response.count);
+        }),
+      );
+      return Map.fromEntries(entries);
     } on PostgrestException catch (error) {
       throw Exception('Erro ao carregar contagem de comentários: ${error.message}');
     } catch (_) {
