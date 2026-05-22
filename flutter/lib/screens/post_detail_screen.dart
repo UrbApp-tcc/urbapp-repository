@@ -312,10 +312,9 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       'addressdetails': '1',
     });
 
-    final response = await http.get(
-      uri,
-      headers: const {'Accept': 'application/json'},
-    );
+    final response = await http
+        .get(uri, headers: const {'Accept': 'application/json'})
+        .timeout(const Duration(seconds: 10));
 
     if (response.statusCode != 200) {
       throw Exception('Falha ao consultar o endereço do reporte.');

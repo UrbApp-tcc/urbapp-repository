@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../services/feed_service.dart';
@@ -22,10 +24,12 @@ class SearchScreen extends StatefulWidget {
 
 class _SearchScreenState extends State<SearchScreen> {
   final _controller = TextEditingController();
+  Timer? _debounce;
   String _query = '';
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _controller.dispose();
     super.dispose();
   }
@@ -66,7 +70,13 @@ class _SearchScreenState extends State<SearchScreen> {
       children: [
         _SearchField(
           controller: _controller,
-          onChanged: (value) => setState(() => _query = value),
+          onChanged: (value) {
+            _debounce?.cancel();
+            _debounce = Timer(
+              const Duration(milliseconds: 300),
+              () => setState(() => _query = value),
+            );
+          },
         ),
         const SizedBox(height: 18),
         _CityRankingPromoCard(

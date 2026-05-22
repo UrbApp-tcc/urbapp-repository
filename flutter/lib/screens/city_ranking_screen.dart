@@ -808,8 +808,7 @@ class _MiniStat extends StatelessWidget {
             Text(
               label,
               maxLines: 1,
-              overflow: TextOverflow.clip,
-              softWrap: false,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 color: Color(0xFF8F949D),
                 fontSize: 9,

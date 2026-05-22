@@ -1510,7 +1510,20 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
 
     if (result == null || result.files.isEmpty) return;
 
-    setState(() => _avatarFile = result.files.first);
+    final file = result.files.first;
+    const maxBytes = 5 * 1024 * 1024; // 5 MB
+    if ((file.size) > maxBytes) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('A imagem deve ter no máximo 5 MB.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _avatarFile = file);
   }
 
   void _save() {

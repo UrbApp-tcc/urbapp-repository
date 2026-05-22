@@ -44,15 +44,17 @@ class _AgencyProfilesScreenState extends State<AgencyProfilesScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final cities = await _agencyService.fetchCities();
-      final approved = await _agencyService.fetchManagedAgencies(widget.currentUserId);
-      final requests = await _agencyService.fetchOwnAgencyRequests(widget.currentUserId);
+      final results = await Future.wait([
+        _agencyService.fetchCities(),
+        _agencyService.fetchManagedAgencies(widget.currentUserId),
+        _agencyService.fetchOwnAgencyRequests(widget.currentUserId),
+      ]);
 
       if (!mounted) return;
       setState(() {
-        _cities = cities;
-        _approvedAgencies = approved;
-        _requests = requests;
+        _cities = results[0] as List<AgencyCityOption>;
+        _approvedAgencies = results[1] as List<ManagedAgencyProfile>;
+        _requests = results[2] as List<AgencyProfileRequest>;
         _isLoading = false;
       });
     } catch (error) {

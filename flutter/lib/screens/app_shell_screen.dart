@@ -83,7 +83,11 @@ class _AppShellScreenState extends State<AppShellScreen> {
             });
           },
         )
-        .subscribe();
+        .subscribe((status, _) {
+          if (status == RealtimeSubscribeStatus.channelError && mounted) {
+            _loadFeed();
+          }
+        });
 
     _commentsChannel = _supabase
         .channel('feed-comments-sync')
@@ -107,7 +111,11 @@ class _AppShellScreenState extends State<AppShellScreen> {
             _syncPostCommentsCount(postId);
           },
         )
-        .subscribe();
+        .subscribe((status, _) {
+          if (status == RealtimeSubscribeStatus.channelError && mounted) {
+            _loadFeed();
+          }
+        });
 
     final currentUserId = _authService.currentUser?.id;
     if (currentUserId == null) return;
