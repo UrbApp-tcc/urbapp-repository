@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/city_ranking_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/error_formatter.dart';
 import 'profile_screen.dart';
 
 class CityRankingScreen extends StatefulWidget {
@@ -102,7 +103,7 @@ class _CityRankingScreenState extends State<CityRankingScreen> {
   void _showError(Object error) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(error.toString().replaceFirst('Exception: ', '')),
+        content: Text(friendlyError(error)),
         backgroundColor: AppColors.error,
       ),
     );

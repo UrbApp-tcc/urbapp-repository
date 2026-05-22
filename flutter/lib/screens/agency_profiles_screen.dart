@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/agency_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/error_formatter.dart';
 
 class AgencyProfilesScreen extends StatefulWidget {
   const AgencyProfilesScreen({
@@ -62,7 +63,7 @@ class _AgencyProfilesScreenState extends State<AgencyProfilesScreen> {
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(error.toString().replaceFirst('Exception: ', '')),
+          content: Text(friendlyError(error)),
           backgroundColor: AppColors.error,
         ),
       );
@@ -452,7 +453,7 @@ class _RequestAgencySheetState extends State<_RequestAgencySheet> {
       setState(() => _isSaving = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(error.toString().replaceFirst('Exception: ', '')),
+          content: Text(friendlyError(error)),
           backgroundColor: AppColors.error,
         ),
       );

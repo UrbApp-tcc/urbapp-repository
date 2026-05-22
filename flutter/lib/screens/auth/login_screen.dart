@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/error_formatter.dart';
 import '../../widgets/app_logo.dart';
 import '../../widgets/auth_text_field.dart';
 import '../../widgets/gradient_button.dart';
@@ -108,7 +109,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             Navigator.of(dialogContext).pop();
                             if (!mounted) return;
                             _showSnack(
-                              error.toString().replaceFirst('Exception: ', ''),
+                              friendlyError(error),
                               AppColors.error,
                             );
                           }
@@ -145,7 +146,7 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (error) {
       if (!mounted) return;
       _showSnack(
-        error.toString().replaceFirst('Exception: ', ''),
+        friendlyError(error),
         AppColors.error,
       );
     } finally {

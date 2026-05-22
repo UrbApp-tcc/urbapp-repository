@@ -18,6 +18,7 @@ import '../widgets/app_logo.dart';
 import '../widgets/auth_text_field.dart';
 import '../widgets/gradient_button.dart';
 import '../widgets/media_picker_widget.dart';
+import '../utils/error_formatter.dart';
 import '../widgets/wave_header.dart';
 
 class CreatePostScreen extends StatefulWidget {
@@ -105,7 +106,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         _isLoadingLookups = false;
         _isLoadingLocation = false;
       });
-      _showError(error.toString().replaceFirst('Exception: ', ''));
+      _showError(friendlyError(error));
     }
   }
 
@@ -157,7 +158,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       });
 
       _mapController.move(_fallbackPoint, 13);
-      _showError(error.toString().replaceFirst('Exception: ', ''));
+      _showError(friendlyError(error));
     }
   }
 
@@ -310,10 +311,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         'addressdetails': '1',
       });
 
-      final response = await http.get(
-        uri,
-        headers: {'Accept': 'application/json'},
-      );
+      final response = await http
+          .get(uri, headers: const {'Accept': 'application/json'})
+          .timeout(const Duration(seconds: 10));
 
       if (response.statusCode != 200) {
         throw Exception('Falha ao consultar o endereco no mapa.');
@@ -579,7 +579,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         Navigator.of(context).pop(true);
       }
     } catch (error) {
-      _showError(error.toString().replaceFirst('Exception: ', ''));
+      _showError(friendlyError(error));
     } finally {
       if (mounted) {
         setState(() => _isSubmitting = false);

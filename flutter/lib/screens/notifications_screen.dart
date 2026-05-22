@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/notifications_service.dart';
 import '../utils/date_formatter.dart';
+import '../utils/error_formatter.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({
@@ -71,7 +72,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       if (!mounted) return;
       setState(() {
         _isLoading = false;
-        _errorMessage = error.toString().replaceFirst('Exception: ', '');
+        _errorMessage = friendlyError(error);
       });
     }
   }

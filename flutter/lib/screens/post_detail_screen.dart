@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/feed_service.dart';
 import '../services/post_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/error_formatter.dart';
 import '../utils/date_formatter.dart';
 import 'profile_screen.dart';
 import 'resolve_complaint_screen.dart';
@@ -164,7 +165,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       setState(() => _isCommentsLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(error.toString().replaceFirst('Exception: ', '')),
+          content: Text(friendlyError(error)),
           backgroundColor: AppColors.error,
         ),
       );
@@ -209,7 +210,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(error.toString().replaceFirst('Exception: ', '')),
+          content: Text(friendlyError(error)),
           backgroundColor: AppColors.error,
         ),
       );
@@ -254,7 +255,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(error.toString().replaceFirst('Exception: ', '')),
+          content: Text(friendlyError(error)),
           backgroundColor: AppColors.error,
         ),
       );

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../services/feed_service.dart';
 import '../services/profile_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/error_formatter.dart';
 import 'agency_profiles_screen.dart';
 import 'post_detail_screen.dart';
 
@@ -81,7 +82,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(error.toString().replaceFirst('Exception: ', '')),
+          content: Text(friendlyError(error)),
           backgroundColor: AppColors.error,
         ),
       );
@@ -114,7 +115,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       setState(() => _isFollowingLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(error.toString().replaceFirst('Exception: ', '')),
+          content: Text(friendlyError(error)),
           backgroundColor: AppColors.error,
         ),
       );
@@ -177,7 +178,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(error.toString().replaceFirst('Exception: ', '')),
+          content: Text(friendlyError(error)),
           backgroundColor: AppColors.error,
         ),
       );
