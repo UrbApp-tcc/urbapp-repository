@@ -48,6 +48,16 @@ class AuthService {
     }
   }
 
+  Future<void> updatePassword(String newPassword) async {
+    try {
+      await _auth.updateUser(UserAttributes(password: newPassword));
+    } on AuthException catch (error) {
+      throw Exception(_mapAuthError(error));
+    } catch (_) {
+      throw Exception('Erro inesperado ao atualizar a senha.');
+    }
+  }
+
   Future<void> resetPassword(String email) async {
     try {
       await _auth.resetPasswordForEmail(email.trim());

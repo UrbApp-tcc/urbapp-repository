@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../services/auth_service.dart';
 import '../app_shell_screen.dart';
 import 'login_screen.dart';
+import 'reset_password_screen.dart';
 
 class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
@@ -20,6 +21,10 @@ class _AuthGateState extends State<AuthGate> {
     return StreamBuilder<AuthState>(
       stream: _authService.onAuthStateChange,
       builder: (context, snapshot) {
+        if (snapshot.data?.event == AuthChangeEvent.passwordRecovery) {
+          return const ResetPasswordScreen();
+        }
+
         final session = snapshot.data?.session ?? _authService.currentSession;
 
         if (snapshot.connectionState == ConnectionState.waiting && session == null) {
