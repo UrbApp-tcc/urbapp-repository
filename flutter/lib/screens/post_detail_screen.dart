@@ -1,8 +1,8 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/feed_service.dart';
 import '../services/post_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/date_formatter.dart';
 import 'profile_screen.dart';
 import 'resolve_complaint_screen.dart';
 
@@ -832,14 +833,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     return 'Publicado em $d/$m/$y às $h:$min';
   }
 
-  static String _formatRelativeTime(DateTime value) {
-    final difference = DateTime.now().difference(value.toLocal());
-
-    if (difference.inMinutes < 1) return 'Agora';
-    if (difference.inHours < 1) return 'Há ${difference.inMinutes} min';
-    if (difference.inDays < 1) return 'Há ${difference.inHours} h';
-    return 'Há ${difference.inDays} d';
-  }
 
   String _buildShareLink() {
     return 'urbapp://posts/${widget.post.id}';
@@ -1514,9 +1507,7 @@ class _CommentEntry extends StatelessWidget {
                   GestureDetector(
                     onTap: () => onOpenProfile(comment.userId),
                     child: Text(
-                      _PostDetailScreenState._formatRelativeTime(
-                        comment.createdAt,
-                      ),
+                      formatRelativeTime(comment.createdAt),
                       style: const TextStyle(
                         color: AppColors.textHint,
                         fontSize: 12,

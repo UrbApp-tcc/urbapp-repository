@@ -75,6 +75,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   @override
   void dispose() {
     _reverseGeocodeDebounce?.cancel();
+    _mapController.dispose();
     _titleController.dispose();
     _descriptionController.dispose();
     _categorySearchController.dispose();
@@ -195,13 +196,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             stateCode: stateCode,
           );
 
-      debugPrint(
-        'Location match: point=(${point.latitude}, ${point.longitude}) '
-        'street="$street" neighborhood="$neighborhood" locality="$locality" '
-        'state="${locationData.state}" stateCode="$stateCode" '
-        'matchedCity="${matchedCity?.name}" loadedCities=${_cities.length}',
-      );
-
       if (!mounted) return;
 
       setState(() {
@@ -223,13 +217,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         setState(() => _agencies = const []);
       }
 
-      debugPrint(
-        'Location UI state: label="$_locationLabel" cityLabel="$_cityLabel" '
-        'approximate=$_locationIsApproximate cityId=${_selectedCity?.id}',
-      );
-    } catch (error, stackTrace) {
-      debugPrint('Reverse geocoding failed: $error');
-      debugPrintStack(stackTrace: stackTrace);
+    } catch (error) {
       if (!mounted) return;
 
       setState(() {
@@ -273,10 +261,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       }
     }
 
-    debugPrint(
-      'City match not found for "$cityName" (normalized="$normalizedTarget", state="$stateCode"). '
-      'Loaded cities sample: ${_cities.take(10).map((city) => city.name).join(', ')}',
-    );
     return partialMatch;
   }
 
@@ -288,8 +272,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           point.latitude,
           point.longitude,
         );
-        debugPrint('Placemark retorno: $placemarks');
-
         if (placemarks.isNotEmpty) {
           final placemark = placemarks.first;
           final street = _firstNonEmpty([
@@ -316,10 +298,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             state: placemark.administrativeArea ?? '',
           );
         }
-      } catch (error, stackTrace) {
-        debugPrint('placemarkFromCoordinates falhou: $error');
-        debugPrintStack(stackTrace: stackTrace);
-      }
+      } catch (_) {}
     }
 
     try {
@@ -342,7 +321,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
       final data = jsonDecode(response.body) as Map<String, dynamic>;
       final address = (data['address'] as Map<String, dynamic>?) ?? const {};
-      debugPrint('Reverse geocoding result: $address');
 
       final street =
           (address['road'] ?? address['pedestrian'] ?? address['footway'] ?? '')
@@ -376,9 +354,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         city: city,
         state: state,
       );
-    } catch (error, stackTrace) {
-      debugPrint('HTTP reverse geocoding falhou: $error');
-      debugPrintStack(stackTrace: stackTrace);
+    } catch (_) {
       return (
         street: '',
         neighborhood: '',

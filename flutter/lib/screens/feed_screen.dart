@@ -3,16 +3,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/feed_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/date_formatter.dart';
 import 'profile_screen.dart';
-
-String _formatRelativeTime(DateTime value) {
-  final difference = DateTime.now().difference(value.toLocal());
-
-  if (difference.inMinutes < 1) return 'Agora';
-  if (difference.inHours < 1) return 'Há ${difference.inMinutes} min';
-  if (difference.inDays < 1) return 'Há ${difference.inHours} h';
-  return 'Há ${difference.inDays} d';
-}
 
 class FeedScreen extends StatelessWidget {
   const FeedScreen({
@@ -719,6 +711,17 @@ class _SectionTitle extends StatelessWidget {
   }
 }
 
+IconData _iconForCategory(String categoryName) {
+  final normalized = categoryName.toLowerCase();
+  if (normalized.contains('luz')) return Icons.lightbulb_outline_rounded;
+  if (normalized.contains('buraco')) return Icons.construction_rounded;
+  if (normalized.contains('lixo')) return Icons.delete_outline_rounded;
+  if (normalized.contains('agua') || normalized.contains('esgoto')) {
+    return Icons.water_drop_outlined;
+  }
+  return Icons.location_city_outlined;
+}
+
 class _HeroFallback extends StatelessWidget {
   const _HeroFallback({required this.category});
 
@@ -742,17 +745,6 @@ class _HeroFallback extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  IconData _iconForCategory(String categoryName) {
-    final normalized = categoryName.toLowerCase();
-    if (normalized.contains('luz')) return Icons.lightbulb_outline_rounded;
-    if (normalized.contains('buraco')) return Icons.construction_rounded;
-    if (normalized.contains('lixo')) return Icons.delete_outline_rounded;
-    if (normalized.contains('agua') || normalized.contains('esgoto')) {
-      return Icons.water_drop_outlined;
-    }
-    return Icons.location_city_outlined;
   }
 }
 
@@ -779,17 +771,6 @@ class _ThumbFallback extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  IconData _iconForCategory(String categoryName) {
-    final normalized = categoryName.toLowerCase();
-    if (normalized.contains('luz')) return Icons.lightbulb_outline_rounded;
-    if (normalized.contains('buraco')) return Icons.construction_rounded;
-    if (normalized.contains('lixo')) return Icons.delete_outline_rounded;
-    if (normalized.contains('agua') || normalized.contains('esgoto')) {
-      return Icons.water_drop_outlined;
-    }
-    return Icons.location_city_outlined;
   }
 }
 

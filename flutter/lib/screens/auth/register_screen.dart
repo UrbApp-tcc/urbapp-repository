@@ -54,6 +54,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
   String? _validateUsername(String? value) {
     if (value == null || value.trim().isEmpty) return 'Informe o nome de usuário';
     if (value.trim().length < 3) return 'Use pelo menos 3 caracteres';
+    if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(value.trim())) {
+      return 'Use apenas letras, números e _';
+    }
     return null;
   }
 
