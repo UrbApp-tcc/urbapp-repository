@@ -1503,6 +1503,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
   }
 
   Future<void> _pickAvatar() async {
+    final messenger = ScaffoldMessenger.of(context);
     final result = await FilePicker.platform.pickFiles(
       withData: true,
       type: FileType.custom,
@@ -1514,8 +1515,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     final file = result.files.first;
     const maxBytes = 5 * 1024 * 1024; // 5 MB
     if ((file.size) > maxBytes) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         const SnackBar(
           content: Text('A imagem deve ter no máximo 5 MB.'),
           backgroundColor: AppColors.error,
@@ -1524,6 +1524,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
       return;
     }
 
+    if (!mounted) return;
     setState(() => _avatarFile = file);
   }
 

@@ -241,7 +241,7 @@ class _FeaturedFeedCard extends StatelessWidget {
                           ],
                           const SizedBox(width: 8),
                           Text(
-                            _formatRelativeTime(post.createdAt),
+                            formatRelativeTime(post.createdAt),
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 8,
@@ -468,7 +468,7 @@ class _LatestPostRow extends StatelessWidget {
                             ),
                             const SizedBox(width: 6),
                             Text(
-                              _formatRelativeTime(post.createdAt),
+                              formatRelativeTime(post.createdAt),
                               style: const TextStyle(
                                 color: Color(0xFF8F949D),
                                 fontSize: 12,
