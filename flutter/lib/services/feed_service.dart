@@ -131,20 +131,8 @@ class FeedService {
         },
       );
 
-      final posts = (response as List<dynamic>)
+      return (response as List<dynamic>)
           .map((item) => _mapFeedPost(item as Map<String, dynamic>))
-          .toList();
-
-      final commentCounts = await fetchCommentCounts(
-        posts.map((post) => post.id).toList(),
-      );
-
-      return posts
-          .map(
-            (post) => post.copyWith(
-              commentsCount: commentCounts[post.id] ?? post.commentsCount,
-            ),
-          )
           .toList();
     } on PostgrestException catch (error) {
       throw Exception('Erro ao carregar a lista de reportes: ${error.message}');

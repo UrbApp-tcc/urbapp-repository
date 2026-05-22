@@ -36,7 +36,7 @@ class FeedScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final featuredPost = posts.isNotEmpty ? posts.first : null;
     final latestPosts = posts.length > 1
-        ? posts.skip(1).take(6).toList()
+        ? posts.skip(1).toList()
         : const <FeedPost>[];
 
     return ListView(

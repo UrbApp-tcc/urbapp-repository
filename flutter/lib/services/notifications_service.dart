@@ -37,28 +37,29 @@ class NotificationsService {
     required String userId,
   }) async {
     try {
-      final ownPostsResponse = await _supabase
-          .from('posts')
-          .select('id, title')
-          .eq('user_id', userId)
-          .order('created_at', ascending: false)
-          .limit(100);
-
-      final ownCommentsResponse = await _supabase
-          .from('comments')
-          .select('id, post_id, body')
-          .eq('user_id', userId)
-          .order('created_at', ascending: false)
-          .limit(100);
+      final initialResults = await Future.wait<dynamic>([
+        _supabase
+            .from('posts')
+            .select('id, title')
+            .eq('user_id', userId)
+            .order('created_at', ascending: false)
+            .limit(100),
+        _supabase
+            .from('comments')
+            .select('id, post_id, body')
+            .eq('user_id', userId)
+            .order('created_at', ascending: false)
+            .limit(100),
+      ]);
 
       final ownPosts = {
-        for (final item in ownPostsResponse as List<dynamic>)
+        for (final item in initialResults[0] as List<dynamic>)
           (item['id'] as num).toInt(): (item['title'] as String?) ?? 'seu post',
       };
       final ownPostIds = ownPosts.keys.toList();
 
       final ownComments = {
-        for (final item in ownCommentsResponse as List<dynamic>)
+        for (final item in initialResults[1] as List<dynamic>)
           (item['id'] as num).toInt(): _CommentReference(
             id: (item['id'] as num).toInt(),
             postId: (item['post_id'] as num).toInt(),
@@ -67,18 +68,26 @@ class NotificationsService {
       };
       final ownCommentIds = ownComments.keys.toList();
 
-      final followerRows = await _fetchFollowerRows(userId);
-      final postSupportRows = await _fetchPostSupportRows(userId, ownPostIds);
-      final commentLikeRows = await _fetchCommentLikeRows(userId, ownCommentIds);
-      final postCommentRows = await _fetchCommentsOnOwnPosts(
-        userId: userId,
-        ownPostIds: ownPostIds,
-        ownCommentIds: ownCommentIds.toSet(),
-      );
-      final commentReplyRows = await _fetchRepliesToOwnComments(
-        userId: userId,
-        ownCommentIds: ownCommentIds,
-      );
+      final activityResults = await Future.wait<dynamic>([
+        _fetchFollowerRows(userId),
+        _fetchPostSupportRows(userId, ownPostIds),
+        _fetchCommentLikeRows(userId, ownCommentIds),
+        _fetchCommentsOnOwnPosts(
+          userId: userId,
+          ownPostIds: ownPostIds,
+          ownCommentIds: ownCommentIds.toSet(),
+        ),
+        _fetchRepliesToOwnComments(
+          userId: userId,
+          ownCommentIds: ownCommentIds,
+        ),
+      ]);
+
+      final followerRows = activityResults[0] as List<_ActivityRow>;
+      final postSupportRows = activityResults[1] as List<_ActivityRow>;
+      final commentLikeRows = activityResults[2] as List<_ActivityRow>;
+      final postCommentRows = activityResults[3] as List<_CommentActivityRow>;
+      final commentReplyRows = activityResults[4] as List<_CommentActivityRow>;
 
       final actorIds = <String>{
         ...followerRows.map((row) => row.actorId),

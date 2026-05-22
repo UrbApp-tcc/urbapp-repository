@@ -185,22 +185,7 @@ class ProfileService {
         },
       };
 
-      try {
-        await _supabase.from('profiles').update(payload).eq('id', userId);
-      } on PostgrestException catch (error) {
-        if (!_isMissingOptionalProfileFeature(error)) rethrow;
-
-        final fallbackPayload = {
-          'full_name': fullName.trim(),
-          'username': username.trim(),
-          'city_id': cityId,
-          ...?switch (avatarUrl) {
-            final value? => {'avatar_url': value},
-            null => null,
-          },
-        };
-        await _supabase.from('profiles').update(fallbackPayload).eq('id', userId);
-      }
+      await _supabase.from('profiles').update(payload).eq('id', userId);
     } on PostgrestException catch (error) {
       throw Exception('Erro ao atualizar perfil: ${error.message}');
     } catch (error) {
@@ -377,45 +362,23 @@ class ProfileService {
   }
 
   Future<Map<String, dynamic>> _fetchProfileRow(String profileUserId) async {
-    try {
-      final response = await _supabase
-          .from('profiles')
-          .select('''
-            id,
-            full_name,
-            username,
-            avatar_url,
-            city_id,
-            current_xp,
-            current_level,
-            current_points,
-            featured_badge_id,
-            cities(name),
-            badges!profiles_featured_badge_id_fkey(id, name, slug, description, icon)
-          ''')
-          .eq('id', profileUserId)
-          .single();
-
-      return response;
-    } on PostgrestException catch (error) {
-      if (!_isMissingOptionalProfileFeature(error)) rethrow;
-
-      return await _supabase
-          .from('profiles')
-          .select('''
-            id,
-            full_name,
-            username,
-            avatar_url,
-            city_id,
-            current_xp,
-            current_level,
-            current_points,
-            cities(name)
-          ''')
-          .eq('id', profileUserId)
-          .single();
-    }
+    return await _supabase
+        .from('profiles')
+        .select('''
+          id,
+          full_name,
+          username,
+          avatar_url,
+          city_id,
+          current_xp,
+          current_level,
+          current_points,
+          featured_badge_id,
+          cities(name),
+          badges!profiles_featured_badge_id_fkey(id, name, slug, description, icon)
+        ''')
+        .eq('id', profileUserId)
+        .single();
   }
 
   Future<List<FeedPost>> _fetchProfilePosts({
@@ -453,12 +416,8 @@ class ProfileService {
     }
 
     final response = await query.order('created_at', ascending: false);
-    final items = response as List<dynamic>;
-    final filteredItems = includeAnonymous
-        ? items
-        : items.where((item) => (item['anonymity'] as bool?) != true).toList();
 
-    return filteredItems
+    return (response as List<dynamic>)
         .map(
           (item) => _mapProfilePost(
             item as Map<String, dynamic>,
@@ -571,27 +530,11 @@ class ProfileService {
   }
 
   bool _isMissingOptionalProfileFeature(PostgrestException error) {
-    final message = [
-      error.code,
-      error.message,
-      error.details,
-      error.hint,
-    ].whereType<String>().join(' ').toLowerCase();
-
-    return message.contains('featured_badge_id') ||
-        message.contains('profiles_featured_badge_id_fkey') ||
-        message.contains('user_badges') ||
-        message.contains('badges');
+    // 42703 = undefined column, 42P01 = undefined table/relation
+    return error.code == '42703' || error.code == '42P01';
   }
 
   bool _isMissingProfileFollowersFeature(PostgrestException error) {
-    final message = [
-      error.code,
-      error.message,
-      error.details,
-      error.hint,
-    ].whereType<String>().join(' ').toLowerCase();
-
-    return message.contains('profile_followers');
+    return error.code == '42P01';
   }
 }
