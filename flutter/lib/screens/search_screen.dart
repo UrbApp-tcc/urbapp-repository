@@ -26,6 +26,16 @@ class _SearchScreenState extends State<SearchScreen> {
   final _controller = TextEditingController();
   Timer? _debounce;
   String _query = '';
+  String? _selectedStatus;
+
+  static const List<String> _statusOptions = [
+    'open',
+    'in_analysis',
+    'in_progress',
+    'completed',
+    'closed',
+    'expired',
+  ];
 
   @override
   void dispose() {
@@ -45,7 +55,9 @@ class _SearchScreenState extends State<SearchScreen> {
     ].join(' ').toLowerCase();
   }
 
-  List<FeedPost> get _results {
+  bool get _hasActiveSearch => _query.trim().isNotEmpty;
+
+  List<FeedPost> get _textResults {
     final raw = _query.trim().toLowerCase();
     if (raw.isEmpty) return widget.posts;
 
@@ -56,6 +68,32 @@ class _SearchScreenState extends State<SearchScreen> {
       final haystack = _haystack(post);
       return terms.every((term) => haystack.contains(term));
     }).toList();
+  }
+
+  List<FeedPost> get _results {
+    final textResults = _textResults;
+    if (!_hasActiveSearch || _selectedStatus == null) return textResults;
+
+    return textResults.where((post) => post.status == _selectedStatus).toList();
+  }
+
+  static String _statusLabel(String status) {
+    switch (status) {
+      case 'open':
+        return 'Aberto';
+      case 'in_analysis':
+        return 'Em análise';
+      case 'in_progress':
+        return 'Em andamento';
+      case 'completed':
+        return 'Concluído';
+      case 'closed':
+        return 'Encerrado';
+      case 'expired':
+        return 'Expirado';
+      default:
+        return status;
+    }
   }
 
   @override
@@ -74,10 +112,26 @@ class _SearchScreenState extends State<SearchScreen> {
             _debounce?.cancel();
             _debounce = Timer(
               const Duration(milliseconds: 300),
-              () => setState(() => _query = value),
+              () => setState(() {
+                _query = value;
+                if (value.trim().isEmpty) {
+                  _selectedStatus = null;
+                }
+              }),
             );
           },
         ),
+        if (_hasActiveSearch) ...[
+          const SizedBox(height: 18),
+          _StatusFilterBar(
+            options: _statusOptions,
+            selectedStatus: _selectedStatus,
+            onSelected: (status) => setState(() {
+              _selectedStatus = _selectedStatus == status ? null : status;
+            }),
+            statusLabelBuilder: _statusLabel,
+          ),
+        ],
         const SizedBox(height: 18),
         _CityRankingPromoCard(
           onOpen: () => CityRankingScreen.open(
@@ -111,7 +165,10 @@ class _SearchScreenState extends State<SearchScreen> {
         ] else if (showEmpty)
           _SearchEmptyState(feedIsEmpty: widget.posts.isEmpty)
         else ...[
-          _SearchSectionTitle(title: 'Destaques', trailing: '${highlights.length}'),
+          _SearchSectionTitle(
+            title: 'Destaques',
+            trailing: '${highlights.length}',
+          ),
           const SizedBox(height: 18),
           SizedBox(
             height: 140,
@@ -126,17 +183,22 @@ class _SearchScreenState extends State<SearchScreen> {
             ),
           ),
           const SizedBox(height: 28),
-          _SearchSectionTitle(title: 'Resultados', trailing: '${results.length}'),
+          _SearchSectionTitle(
+            title: 'Resultados',
+            trailing: '${results.length}',
+          ),
           const SizedBox(height: 18),
           ...results.asMap().entries.map(
-                (entry) => Padding(
-                  padding: EdgeInsets.only(bottom: entry.key == results.length - 1 ? 0 : 24),
-                  child: _SearchResultRow(
-                    post: entry.value,
-                    onOpen: () => PostDetailScreen.open(context, entry.value),
-                  ),
-                ),
+            (entry) => Padding(
+              padding: EdgeInsets.only(
+                bottom: entry.key == results.length - 1 ? 0 : 24,
               ),
+              child: _SearchResultRow(
+                post: entry.value,
+                onOpen: () => PostDetailScreen.open(context, entry.value),
+              ),
+            ),
+          ),
         ],
       ],
     );
@@ -159,11 +221,7 @@ class _CityRankingPromoCard extends StatelessWidget {
           padding: const EdgeInsets.all(22),
           decoration: BoxDecoration(
             gradient: const LinearGradient(
-              colors: [
-                Color(0xFF15202B),
-                Color(0xFF26384C),
-                Color(0xFF516E93),
-              ],
+              colors: [Color(0xFF15202B), Color(0xFF26384C), Color(0xFF516E93)],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
@@ -183,7 +241,10 @@ class _CityRankingPromoCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(999),
@@ -244,10 +305,7 @@ class _CityRankingPromoCard extends StatelessWidget {
 }
 
 class _SearchField extends StatelessWidget {
-  const _SearchField({
-    required this.controller,
-    required this.onChanged,
-  });
+  const _SearchField({required this.controller, required this.onChanged});
 
   final TextEditingController controller;
   final ValueChanged<String> onChanged;
@@ -273,7 +331,11 @@ class _SearchField extends StatelessWidget {
         children: [
           const Padding(
             padding: EdgeInsets.only(left: 12),
-            child: Icon(Icons.search_rounded, color: Color(0xFF8F949D), size: 22),
+            child: Icon(
+              Icons.search_rounded,
+              color: Color(0xFF8F949D),
+              size: 22,
+            ),
           ),
           Expanded(
             child: TextField(
@@ -290,7 +352,10 @@ class _SearchField extends StatelessWidget {
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
                 isDense: true,
-                contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 10,
+                ),
                 hintText: 'Pesquisar reportes',
                 hintStyle: TextStyle(
                   color: Color(0xFF8F949D),
@@ -307,10 +372,7 @@ class _SearchField extends StatelessWidget {
 }
 
 class _SearchSectionTitle extends StatelessWidget {
-  const _SearchSectionTitle({
-    required this.title,
-    required this.trailing,
-  });
+  const _SearchSectionTitle({required this.title, required this.trailing});
 
   final String title;
   final String trailing;
@@ -352,11 +414,109 @@ class _SearchSectionTitle extends StatelessWidget {
   }
 }
 
-class _SearchHighlightCard extends StatelessWidget {
-  const _SearchHighlightCard({
-    required this.post,
-    required this.onOpen,
+class _StatusFilterBar extends StatelessWidget {
+  const _StatusFilterBar({
+    required this.options,
+    required this.selectedStatus,
+    required this.onSelected,
+    required this.statusLabelBuilder,
   });
+
+  final List<String> options;
+  final String? selectedStatus;
+  final ValueChanged<String> onSelected;
+  final String Function(String status) statusLabelBuilder;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Filtrar por status',
+          style: TextStyle(
+            color: Color(0xFF8F949D),
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 12),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: options
+                .map(
+                  (status) => Padding(
+                    padding: const EdgeInsets.only(right: 10),
+                    child: _StatusChip(
+                      label: statusLabelBuilder(status),
+                      isSelected: selectedStatus == status,
+                      onTap: () => onSelected(status),
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: isSelected ? const Color(0xFF141E28) : Colors.white,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: isSelected
+                  ? const Color(0xFF141E28)
+                  : const Color(0xFFE2E5EA),
+            ),
+            boxShadow: isSelected
+                ? null
+                : [
+                    BoxShadow(
+                      color: const Color(0xFF141E28).withValues(alpha: 0.04),
+                      blurRadius: 16,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: isSelected ? Colors.white : const Color(0xFF4B5563),
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SearchHighlightCard extends StatelessWidget {
+  const _SearchHighlightCard({required this.post, required this.onOpen});
 
   final FeedPost post;
   final VoidCallback onOpen;
@@ -375,23 +535,20 @@ class _SearchHighlightCard extends StatelessWidget {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                if (post.primaryImageUrl != null && post.primaryImageUrl!.isNotEmpty)
+                if (post.primaryImageUrl != null &&
+                    post.primaryImageUrl!.isNotEmpty)
                   Image.network(
                     post.primaryImageUrl!,
                     fit: BoxFit.cover,
                     errorBuilder: (context, error, stackTrace) {
                       return const DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: Color(0xFF141E28),
-                        ),
+                        decoration: BoxDecoration(color: Color(0xFF141E28)),
                       );
                     },
                   )
                 else
                   const DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Color(0xFF141E28),
-                    ),
+                    decoration: BoxDecoration(color: Color(0xFF141E28)),
                   ),
                 DecoratedBox(
                   decoration: BoxDecoration(
@@ -440,10 +597,7 @@ class _SearchHighlightCard extends StatelessWidget {
 }
 
 class _SearchResultRow extends StatelessWidget {
-  const _SearchResultRow({
-    required this.post,
-    required this.onOpen,
-  });
+  const _SearchResultRow({required this.post, required this.onOpen});
 
   final FeedPost post;
   final VoidCallback onOpen;
@@ -527,7 +681,9 @@ class _SearchEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final title = feedIsEmpty ? 'Nenhum reporte ainda' : 'Nenhum resultado para essa busca';
+    final title = feedIsEmpty
+        ? 'Nenhum reporte ainda'
+        : 'Nenhum resultado para essa busca';
     final subtitle = feedIsEmpty
         ? 'Quando houver reportes na lista principal, você poderá pesquisar por título, cidade, categoria e mais. Toque no + para criar o primeiro.'
         : 'Tente outras palavras ou verifique a ortografia.';

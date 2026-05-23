@@ -72,15 +72,18 @@ class FeedPost {
   final List<FeedImage> images;
 
   String get authorLabel {
-    if (isAnonymous) return 'Usuário Anônimo';
+    if (isAnonymous) return 'Usuario Anonimo';
     final name = authorDisplayName.trim();
     if (name.isNotEmpty) return name;
     final username = authorUsername?.trim();
     if (username != null && username.isNotEmpty) return username;
-    return 'Usuário';
+    return 'Usuario';
   }
 
   FeedPost copyWith({
+    String? status,
+    DateTime? updatedAt,
+    DateTime? resolvedAt,
     int? supportsCount,
     int? commentsCount,
   }) {
@@ -88,10 +91,10 @@ class FeedPost {
       id: id,
       title: title,
       description: description,
-      status: status,
+      status: status ?? this.status,
       createdAt: createdAt,
-      updatedAt: updatedAt,
-      resolvedAt: resolvedAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      resolvedAt: resolvedAt ?? this.resolvedAt,
       latitude: latitude,
       longitude: longitude,
       cityId: cityId,
@@ -118,17 +121,11 @@ class FeedService {
   final SupabaseClient _supabase = Supabase.instance.client;
   static const String _postImagesBucket = 'post-images';
 
-  Future<List<FeedPost>> fetchFeed({
-    int limit = 20,
-    int offset = 0,
-  }) async {
+  Future<List<FeedPost>> fetchFeed({int limit = 20, int offset = 0}) async {
     try {
       final response = await _supabase.rpc(
         'get_feed_posts',
-        params: {
-          'page_size': limit,
-          'page_offset': offset,
-        },
+        params: {'page_size': limit, 'page_offset': offset},
       );
 
       return (response as List<dynamic>)
@@ -139,6 +136,95 @@ class FeedService {
     } catch (_) {
       throw Exception('Erro inesperado ao carregar a lista de reportes.');
     }
+  }
+
+  Future<List<FeedPost>> fetchTrendingFeed({
+    int limit = 20,
+    int offset = 0,
+  }) async {
+    try {
+      final response = await _supabase.rpc(
+        'get_trending_feed_posts',
+        params: {'page_size': limit, 'page_offset': offset},
+      );
+
+      return (response as List<dynamic>)
+          .map((item) => _mapFeedPost(item as Map<String, dynamic>))
+          .toList();
+    } on PostgrestException catch (error) {
+      if (_shouldUseTrendingFallback(error)) {
+        return _fetchTrendingFeedFallback(limit: limit, offset: offset);
+      }
+      throw Exception(
+        'Erro ao carregar a lista de reportes em alta: ${error.message}',
+      );
+    } catch (_) {
+      throw Exception(
+        'Erro inesperado ao carregar a lista de reportes em alta.',
+      );
+    }
+  }
+
+  Future<List<FeedPost>> _fetchTrendingFeedFallback({
+    required int limit,
+    required int offset,
+  }) async {
+    final candidatePosts = await fetchFeed(limit: 100, offset: 0);
+    if (candidatePosts.isEmpty) return const <FeedPost>[];
+
+    final postIds = candidatePosts.map((post) => post.id).toList();
+    final authorIds = candidatePosts
+        .map((post) => post.authorId)
+        .whereType<String>()
+        .toSet()
+        .toList();
+
+    final statusChangedAtByPostId = await _fetchLatestStatusChangedAt(postIds);
+    final followersByAuthorId = await _fetchFollowersCountByAuthorId(authorIds);
+
+    final scoredPosts =
+        candidatePosts
+            .map(
+              (post) => (
+                post: post,
+                score: _calculateTrendingScore(
+                  post,
+                  followersCount: followersByAuthorId[post.authorId] ?? 0,
+                  statusChangedAt: statusChangedAtByPostId[post.id],
+                ),
+                statusChangedAt:
+                    statusChangedAtByPostId[post.id] ?? post.createdAt,
+              ),
+            )
+            .toList()
+          ..sort((a, b) {
+            final byScore = b.score.compareTo(a.score);
+            if (byScore != 0) return byScore;
+
+            final byComments = b.post.commentsCount.compareTo(
+              a.post.commentsCount,
+            );
+            if (byComments != 0) return byComments;
+
+            final bySupports = b.post.supportsCount.compareTo(
+              a.post.supportsCount,
+            );
+            if (bySupports != 0) return bySupports;
+
+            final byStatusAge = a.statusChangedAt.compareTo(b.statusChangedAt);
+            if (byStatusAge != 0) return byStatusAge;
+
+            final byCreatedAt = b.post.createdAt.compareTo(a.post.createdAt);
+            if (byCreatedAt != 0) return byCreatedAt;
+
+            return b.post.id.compareTo(a.post.id);
+          });
+
+    return scoredPosts
+        .skip(offset)
+        .take(limit)
+        .map((entry) => entry.post)
+        .toList();
   }
 
   Future<Map<int, int>> fetchCommentCounts(List<int> postIds) async {
@@ -157,9 +243,11 @@ class FeedService {
       );
       return Map.fromEntries(entries);
     } on PostgrestException catch (error) {
-      throw Exception('Erro ao carregar contagem de comentários: ${error.message}');
+      throw Exception(
+        'Erro ao carregar contagem de comentarios: ${error.message}',
+      );
     } catch (_) {
-      throw Exception('Erro inesperado ao carregar contagem de comentários.');
+      throw Exception('Erro inesperado ao carregar contagem de comentarios.');
     }
   }
 
@@ -180,10 +268,154 @@ class FeedService {
           .map((item) => (item['post_id'] as num).toInt())
           .toSet();
     } on PostgrestException catch (error) {
-      throw Exception('Erro ao carregar likes do usuário: ${error.message}');
+      throw Exception('Erro ao carregar likes do usuario: ${error.message}');
     } catch (_) {
-      throw Exception('Erro inesperado ao carregar likes do usuário.');
+      throw Exception('Erro inesperado ao carregar likes do usuario.');
     }
+  }
+
+  Future<Map<int, DateTime>> _fetchLatestStatusChangedAt(
+    List<int> postIds,
+  ) async {
+    if (postIds.isEmpty) return const <int, DateTime>{};
+
+    try {
+      final response = await _supabase
+          .from('post_status_history')
+          .select('post_id, created_at')
+          .inFilter('post_id', postIds)
+          .order('created_at', ascending: false);
+
+      final latestByPostId = <int, DateTime>{};
+      for (final item in response as List<dynamic>) {
+        final data = item as Map<String, dynamic>;
+        final postId = (data['post_id'] as num).toInt();
+        latestByPostId.putIfAbsent(
+          postId,
+          () => DateTime.parse(data['created_at'] as String),
+        );
+      }
+      return latestByPostId;
+    } on PostgrestException catch (error) {
+      if (_isMissingStatusHistoryFeature(error)) {
+        return const <int, DateTime>{};
+      }
+      rethrow;
+    }
+  }
+
+  Future<Map<String, int>> _fetchFollowersCountByAuthorId(
+    List<String> authorIds,
+  ) async {
+    if (authorIds.isEmpty) return const <String, int>{};
+
+    try {
+      final response = await _supabase
+          .from('profile_followers')
+          .select('followed_id')
+          .inFilter('followed_id', authorIds);
+
+      final counts = <String, int>{};
+      for (final item in response as List<dynamic>) {
+        final authorId =
+            (item as Map<String, dynamic>)['followed_id'] as String;
+        counts.update(authorId, (count) => count + 1, ifAbsent: () => 1);
+      }
+      return counts;
+    } on PostgrestException catch (error) {
+      if (_isMissingFollowersFeature(error)) {
+        return const <String, int>{};
+      }
+      rethrow;
+    }
+  }
+
+  int _calculateTrendingScore(
+    FeedPost post, {
+    required int followersCount,
+    required DateTime? statusChangedAt,
+  }) {
+    final changedAt = (statusChangedAt ?? post.createdAt).toUtc();
+    final hoursInCurrentStatus =
+        DateTime.now().toUtc().difference(changedAt).inMilliseconds /
+        Duration.millisecondsPerHour;
+
+    final cappedHours = hoursInCurrentStatus.clamp(
+      0,
+      _statusAgeCapHours(post.status),
+    );
+    final agingScore = (cappedHours * _statusAgeWeight(post.status)).floor();
+
+    return post.supportsCount * 18 +
+        post.commentsCount * 24 +
+        (post.supportsCount + post.commentsCount) * 6 +
+        followersCount * 5 +
+        _statusBaseScore(post.status) +
+        agingScore;
+  }
+
+  int _statusBaseScore(String status) {
+    switch (status) {
+      case 'open':
+        return 80;
+      case 'in_analysis':
+        return 90;
+      case 'in_progress':
+        return 70;
+      case 'completed':
+        return 30;
+      case 'closed':
+        return 20;
+      case 'expired':
+        return 10;
+      default:
+        return 0;
+    }
+  }
+
+  double _statusAgeCapHours(String status) {
+    switch (status) {
+      case 'open':
+      case 'in_analysis':
+        return 24 * 30;
+      case 'in_progress':
+        return 24 * 21;
+      case 'completed':
+      case 'closed':
+        return 24 * 7;
+      default:
+        return 24 * 3;
+    }
+  }
+
+  double _statusAgeWeight(String status) {
+    switch (status) {
+      case 'open':
+      case 'in_analysis':
+        return 0.90;
+      case 'in_progress':
+        return 0.60;
+      case 'completed':
+      case 'closed':
+        return 0.15;
+      default:
+        return 0.08;
+    }
+  }
+
+  bool _shouldUseTrendingFallback(PostgrestException error) {
+    final message = error.message.toLowerCase();
+    return error.code == 'PGRST202' ||
+        (message.contains('get_trending_feed_posts') &&
+            message.contains('schema cache'));
+  }
+
+  bool _isMissingFollowersFeature(PostgrestException error) {
+    return error.code == '42P01';
+  }
+
+  bool _isMissingStatusHistoryFeature(PostgrestException error) {
+    return error.code == '42P01';
   }
 
   FeedPost _mapFeedPost(Map<String, dynamic> data) {
@@ -202,7 +434,7 @@ class FeedService {
 
     return FeedPost(
       id: data['id'] as int,
-      title: (data['title'] as String?) ?? 'Sem título',
+      title: (data['title'] as String?) ?? 'Sem titulo',
       description: (data['description'] as String?) ?? '',
       status: data['status'] as String,
       createdAt: DateTime.parse(data['created_at'] as String),
