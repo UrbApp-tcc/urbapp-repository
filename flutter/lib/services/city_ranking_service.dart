@@ -47,7 +47,10 @@ class CityRankingEntry {
 }
 
 class CityRankingService {
-  final SupabaseClient _supabase = Supabase.instance.client;
+  CityRankingService({SupabaseClient? supabase})
+      : _supabase = supabase ?? Supabase.instance.client;
+
+  final SupabaseClient _supabase;
 
   Future<List<CityRankingCityOption>> fetchCities() async {
     try {

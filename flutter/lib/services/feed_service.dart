@@ -115,7 +115,10 @@ class FeedPost {
 }
 
 class FeedService {
-  final SupabaseClient _supabase = Supabase.instance.client;
+  FeedService({SupabaseClient? supabase})
+      : _supabase = supabase ?? Supabase.instance.client;
+
+  final SupabaseClient _supabase;
   static const String _postImagesBucket = 'post-images';
 
   Future<List<FeedPost>> fetchFeed({

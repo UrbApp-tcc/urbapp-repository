@@ -1,6 +1,7 @@
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../logic/app_rules.dart';
 import 'agency_service.dart';
 
 class LookupOption {
@@ -94,7 +95,12 @@ class PostComment {
 const Object _sentinel = Object();
 
 class PostService {
-  final SupabaseClient _supabase = Supabase.instance.client;
+  PostService({SupabaseClient? supabase, AgencyService? agencyService})
+      : _supabase = supabase ?? Supabase.instance.client,
+        _agencyService = agencyService ?? AgencyService();
+
+  final SupabaseClient _supabase;
+  final AgencyService _agencyService;
   static const String _postImagesBucket = 'post-images';
 
   Future<List<LookupOption>> fetchCities() async {
@@ -142,10 +148,8 @@ class PostService {
     }
   }
 
-  Future<List<AgencyOption>> fetchAgenciesByCity(int cityId) async {
-    final agencyService = AgencyService();
-    return agencyService.fetchAgenciesByCity(cityId);
-  }
+  Future<List<AgencyOption>> fetchAgenciesByCity(int cityId) =>
+      _agencyService.fetchAgenciesByCity(cityId);
 
   Future<int> createPost({
     required String userId,
@@ -396,7 +400,44 @@ class PostService {
     }
   }
 
-  static const _finalStatuses = {'completed', 'closed', 'expired'};
+  /// Toggles the support (like) on a post and returns the new liked state.
+  /// Throws if [currentUserId] matches [postAuthorId] (self-support).
+  /// Throws if [postStatus] is a final status.
+  Future<bool> toggleSupport({
+    required int postId,
+    required String currentUserId,
+    required String? postAuthorId,
+    required bool isCurrentlyLiked,
+    required String postStatus,
+  }) async {
+    if (postAuthorId != null && isSelfSupport(currentUserId, postAuthorId)) {
+      throw Exception('Você não pode apoiar o próprio reporte.');
+    }
+    if (isFinalStatus(postStatus)) {
+      throw Exception('Este reporte está encerrado e não aceita novas interações.');
+    }
+
+    try {
+      if (isCurrentlyLiked) {
+        await _supabase
+            .from('post_supports')
+            .delete()
+            .eq('post_id', postId)
+            .eq('user_id', currentUserId);
+        return false;
+      } else {
+        await _supabase.from('post_supports').insert({
+          'post_id': postId,
+          'user_id': currentUserId,
+        });
+        return true;
+      }
+    } on PostgrestException catch (error) {
+      throw Exception('Erro ao registrar apoio: ${error.message}');
+    } catch (error) {
+      throw Exception('Erro inesperado ao registrar apoio: $error');
+    }
+  }
 
   Future<void> resolvePost({
     required int postId,
@@ -404,7 +445,7 @@ class PostService {
     required String fromStatus,
     required String note,
   }) async {
-    if (_finalStatuses.contains(fromStatus)) {
+    if (isFinalStatus(fromStatus)) {
       throw Exception(
         'Este reporte ja esta em estado final ("$fromStatus") e nao pode ser alterado.',
       );

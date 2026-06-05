@@ -29,9 +29,10 @@ class AppNotificationItem {
 }
 
 class NotificationsService {
-  NotificationsService();
+  NotificationsService({SupabaseClient? supabase})
+      : _supabase = supabase ?? Supabase.instance.client;
 
-  final SupabaseClient _supabase = Supabase.instance.client;
+  final SupabaseClient _supabase;
 
   Future<List<AppNotificationItem>> fetchNotifications({
     required String userId,

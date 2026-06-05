@@ -71,7 +71,10 @@ class UserProfileData {
 }
 
 class ProfileService {
-  final SupabaseClient _supabase = Supabase.instance.client;
+  ProfileService({SupabaseClient? supabase})
+      : _supabase = supabase ?? Supabase.instance.client;
+
+  final SupabaseClient _supabase;
 
   static const String _postImagesBucket = 'post-images';
   static const String _profileImagesBucket = 'profile-images';

@@ -1,7 +1,10 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AuthService {
-  final GoTrueClient _auth = Supabase.instance.client.auth;
+  AuthService({SupabaseClient? supabase})
+      : _auth = (supabase ?? Supabase.instance.client).auth;
+
+  final GoTrueClient _auth;
 
   Stream<AuthState> get onAuthStateChange => _auth.onAuthStateChange;
   Session? get currentSession => _auth.currentSession;

@@ -410,7 +410,7 @@ class _RequestAgencySheetState extends State<_RequestAgencySheet> {
   @override
   void initState() {
     super.initState();
-    _selectedCityId = widget.cities.first.id;
+    if (widget.cities.isNotEmpty) _selectedCityId = widget.cities.first.id;
   }
 
   @override

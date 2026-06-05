@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../logic/app_rules.dart';
 import '../services/feed_service.dart';
 import '../services/post_service.dart';
 import '../theme/app_theme.dart';
@@ -111,35 +112,25 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     setState(() => _isLikeLoading = true);
 
     try {
-      if (_isLiked) {
-        await _supabase
-            .from('post_supports')
-            .delete()
-            .eq('post_id', widget.post.id)
-            .eq('user_id', userId);
+      final newLikedState = await _postService.toggleSupport(
+        postId: widget.post.id,
+        currentUserId: userId,
+        postAuthorId: widget.post.authorId,
+        isCurrentlyLiked: _isLiked,
+        postStatus: widget.post.status,
+      );
 
-        if (!mounted) return;
-        setState(() {
-          _isLiked = false;
-          _supportsCount = (_supportsCount - 1).clamp(0, 999999);
-        });
-      } else {
-        await _supabase.from('post_supports').insert({
-          'post_id': widget.post.id,
-          'user_id': userId,
-        });
-
-        if (!mounted) return;
-        setState(() {
-          _isLiked = true;
-          _supportsCount++;
-        });
-      }
+      if (!mounted) return;
+      setState(() {
+        _isLiked = newLikedState;
+        _supportsCount =
+            newLikedState ? _supportsCount + 1 : (_supportsCount - 1).clamp(0, 999999);
+      });
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Erro ao registrar apoio: $error'),
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
           backgroundColor: AppColors.error,
         ),
       );
@@ -175,6 +166,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   Future<void> _submitComment() async {
     final currentUser = _supabase.auth.currentUser;
     if (currentUser == null) return;
+
+    if (isFinalStatus(widget.post.status)) return;
 
     final body = _commentController.text.trim();
     if (body.isEmpty) return;
@@ -576,7 +569,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     final canResolve =
         currentUserId != null &&
         widget.post.authorId == currentUserId &&
-        !_isFinalStatus(widget.post.status);
+        !isFinalStatus(widget.post.status);
     final isCompleted = widget.post.status == 'completed';
 
     return Scaffold(
@@ -754,13 +747,14 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          _CommentComposer(
-            controller: _commentController,
-            isSubmitting: _isSubmittingComment,
-            onSubmit: _submitComment,
-            replyTargetLabel: _replyTargetLabel,
-            onCancelReply: _replyParentCommentId == null ? null : _cancelReply,
-          ),
+          if (!isFinalStatus(widget.post.status))
+            _CommentComposer(
+              controller: _commentController,
+              isSubmitting: _isSubmittingComment,
+              onSubmit: _submitComment,
+              replyTargetLabel: _replyTargetLabel,
+              onCancelReply: _replyParentCommentId == null ? null : _cancelReply,
+            ),
           const SizedBox(height: 16),
           if (_isCommentsLoading)
             const Center(
@@ -818,10 +812,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       default:
         return status;
     }
-  }
-
-  static bool _isFinalStatus(String status) {
-    return status == 'completed' || status == 'closed' || status == 'expired';
   }
 
   static String _formatPublishedAt(DateTime at) {
