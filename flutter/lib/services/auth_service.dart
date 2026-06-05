@@ -89,7 +89,7 @@ class AuthService {
     }
 
     if (message.contains('unregistered api key')) {
-      return 'A Publishable key configurada no app nÃ£o Ã© mais vÃ¡lida para este projeto Supabase.';
+      return 'A Publishable key configurada no app não é mais válida para este projeto Supabase.';
     }
 
     if (message.contains('email not confirmed')) {
