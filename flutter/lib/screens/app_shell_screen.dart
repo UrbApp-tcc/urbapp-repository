@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -27,12 +29,15 @@ class _AppShellScreenState extends State<AppShellScreen> {
   RealtimeChannel? _postsChannel;
   RealtimeChannel? _postSupportsChannel;
   RealtimeChannel? _commentsChannel;
+  Timer? _trendingRefreshDebounce;
 
   int _selectedIndex = 0;
   List<FeedPost> _posts = const [];
+  List<FeedPost> _trendingPosts = const [];
   Set<int> _likedPostIds = const <int>{};
   bool _isLoading = true;
   bool _isRefreshing = false;
+  bool _hasShownTrendingWarning = false;
 
   @override
   void initState() {
@@ -55,6 +60,7 @@ class _AppShellScreenState extends State<AppShellScreen> {
     if (commentsChannel != null) {
       _supabase.removeChannel(commentsChannel);
     }
+    _trendingRefreshDebounce?.cancel();
     super.dispose();
   }
 
@@ -71,17 +77,18 @@ class _AppShellScreenState extends State<AppShellScreen> {
             if (postId == null || !mounted) return;
 
             setState(() {
-              _posts = _posts
-                  .map(
-                    (post) => post.id == postId
-                        ? post.copyWith(
-                            supportsCount: (newRecord['supports_count'] as num?)?.toInt(),
-                            commentsCount: (newRecord['comments_count'] as num?)?.toInt(),
-                          )
-                        : post,
-                  )
-                  .toList();
+              _updatePostCollections(
+                postId,
+                (post) => post.copyWith(
+                  status: newRecord['status'] as String?,
+                  updatedAt: _parseDate(newRecord['updated_at']),
+                  resolvedAt: _parseDate(newRecord['resolved_at']),
+                  supportsCount: (newRecord['supports_count'] as num?)?.toInt(),
+                  commentsCount: (newRecord['comments_count'] as num?)?.toInt(),
+                ),
+              );
             });
+            _scheduleTrendingRefresh();
           },
         )
         .subscribe((status, _) {
@@ -100,6 +107,7 @@ class _AppShellScreenState extends State<AppShellScreen> {
             final postId = (payload.newRecord['post_id'] as num?)?.toInt();
             if (postId == null || !mounted) return;
             _syncPostCommentsCount(postId);
+            _scheduleTrendingRefresh();
           },
         )
         .onPostgresChanges(
@@ -110,6 +118,7 @@ class _AppShellScreenState extends State<AppShellScreen> {
             final postId = (payload.oldRecord['post_id'] as num?)?.toInt();
             if (postId == null || !mounted) return;
             _syncPostCommentsCount(postId);
+            _scheduleTrendingRefresh();
           },
         )
         .subscribe((status, _) {
@@ -171,26 +180,32 @@ class _AppShellScreenState extends State<AppShellScreen> {
 
     try {
       final posts = await _feedService.fetchFeed();
+      List<FeedPost> trendingPosts = const [];
+      Object? trendingError;
+
+      try {
+        trendingPosts = await _feedService.fetchTrendingFeed();
+      } catch (error) {
+        trendingError = error;
+      }
+
       final likedPostIds = await _feedService.fetchLikedPostIds(
-        posts.map((post) => post.id).toList(),
+        _mergePostIds(posts: posts, trendingPosts: trendingPosts),
       );
 
       if (!mounted) return;
       setState(() {
         _posts = posts;
+        _trendingPosts = trendingPosts;
         _likedPostIds = likedPostIds;
       });
+
+      if (trendingError != null) {
+        _showTrendingWarning(trendingError);
+      }
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(friendlyError(error)),
-          backgroundColor: AppColors.error,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          margin: const EdgeInsets.all(16),
-        ),
-      );
+      _showErrorSnackBar(friendlyError(error));
     } finally {
       if (mounted) {
         setState(() {
@@ -222,24 +237,77 @@ class _AppShellScreenState extends State<AppShellScreen> {
   }
 
   Future<void> _syncPostCommentsCount(int postId) async {
-    if (_posts.every((post) => post.id != postId)) return;
+    if (!_containsPost(postId)) return;
 
     try {
       final commentCounts = await _feedService.fetchCommentCounts([postId]);
       if (!mounted) return;
 
       setState(() {
-        _posts = _posts
-            .map(
-              (post) => post.id == postId
-                  ? post.copyWith(commentsCount: commentCounts[postId] ?? 0)
-                  : post,
-            )
-            .toList();
+        _updatePostCollections(
+          postId,
+          (post) => post.copyWith(commentsCount: commentCounts[postId] ?? 0),
+        );
       });
     } catch (_) {
       // Evita quebrar a experiência do feed se a sincronização pontual falhar.
     }
+  }
+
+  Future<void> _refreshTrendingFeed() async {
+    try {
+      final trendingPosts = await _feedService.fetchTrendingFeed();
+      final likedPostIds = await _feedService.fetchLikedPostIds(
+        _mergePostIds(posts: _posts, trendingPosts: trendingPosts),
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _trendingPosts = trendingPosts;
+        _likedPostIds = likedPostIds;
+      });
+    } catch (_) {
+      // Mantem o feed principal utilizavel mesmo se o recálculo em alta falhar.
+    }
+  }
+
+  void _scheduleTrendingRefresh() {
+    _trendingRefreshDebounce?.cancel();
+    _trendingRefreshDebounce = Timer(const Duration(milliseconds: 600), () {
+      if (!mounted) return;
+      _refreshTrendingFeed();
+    });
+  }
+
+  void _showTrendingWarning(Object error) {
+    if (!mounted || _hasShownTrendingWarning) return;
+
+    final rawMessage = friendlyError(error);
+    final message = _isMissingTrendingFunction(error)
+        ? 'A aba Em Alta ainda não está disponível neste banco. '
+              'Aplique a migration do ranking para habilitá-la.'
+        : rawMessage;
+
+    _hasShownTrendingWarning = true;
+    _showErrorSnackBar(message);
+  }
+
+  bool _isMissingTrendingFunction(Object error) {
+    final message = error.toString().toLowerCase();
+    return message.contains('get_trending_feed_posts') &&
+        message.contains('schema cache');
+  }
+
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: AppColors.error,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
   }
 
   Future<void> _signOut() async {
@@ -247,15 +315,7 @@ class _AppShellScreenState extends State<AppShellScreen> {
       await _authService.signOut();
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(friendlyError(error)),
-          backgroundColor: AppColors.error,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          margin: const EdgeInsets.all(16),
-        ),
-      );
+      _showErrorSnackBar(friendlyError(error));
     }
   }
 
@@ -263,8 +323,43 @@ class _AppShellScreenState extends State<AppShellScreen> {
     setState(() => _selectedIndex = index);
   }
 
+  bool _containsPost(int postId) {
+    return _posts.any((post) => post.id == postId) ||
+        _trendingPosts.any((post) => post.id == postId);
+  }
+
+  List<int> _mergePostIds({
+    required List<FeedPost> posts,
+    required List<FeedPost> trendingPosts,
+  }) {
+    return {
+      ...posts.map((post) => post.id),
+      ...trendingPosts.map((post) => post.id),
+    }.toList();
+  }
+
+  void _updatePostCollections(
+    int postId,
+    FeedPost Function(FeedPost post) update,
+  ) {
+    _posts = _posts
+        .map((post) => post.id == postId ? update(post) : post)
+        .toList();
+    _trendingPosts = _trendingPosts
+        .map((post) => post.id == postId ? update(post) : post)
+        .toList();
+  }
+
+  DateTime? _parseDate(dynamic value) {
+    if (value is String && value.isNotEmpty) {
+      return DateTime.tryParse(value);
+    }
+    return null;
+  }
+
   String? _resolveCurrentUserId() {
-    return _supabase.auth.currentSession?.user.id ?? _authService.currentUser?.id;
+    return _supabase.auth.currentSession?.user.id ??
+        _authService.currentUser?.id;
   }
 
   @override
@@ -277,7 +372,9 @@ class _AppShellScreenState extends State<AppShellScreen> {
         child: LayoutBuilder(
           builder: (context, constraints) {
             final useFramedLayout = constraints.maxWidth > 520;
-            final shellWidth = constraints.maxWidth > 430 ? 390.0 : constraints.maxWidth;
+            final shellWidth = constraints.maxWidth > 430
+                ? 390.0
+                : constraints.maxWidth;
 
             return Center(
               child: Container(
@@ -308,6 +405,7 @@ class _AppShellScreenState extends State<AppShellScreen> {
                         children: [
                           FeedScreen(
                             posts: _posts,
+                            trendingPosts: _trendingPosts,
                             likedPostIds: _likedPostIds,
                             isLoading: _isLoading,
                             isRefreshing: _isRefreshing,
@@ -359,7 +457,9 @@ class _AppShellScreenState extends State<AppShellScreen> {
                               borderRadius: BorderRadius.circular(20),
                               boxShadow: [
                                 BoxShadow(
-                                  color: AppColors.accentPink.withValues(alpha: 0.28),
+                                  color: AppColors.accentPink.withValues(
+                                    alpha: 0.28,
+                                  ),
                                   blurRadius: 24,
                                   offset: const Offset(0, 12),
                                 ),
@@ -430,10 +530,7 @@ class _ProfileUnavailableState extends StatelessWidget {
 }
 
 class _ShellBottomBar extends StatelessWidget {
-  const _ShellBottomBar({
-    required this.selectedIndex,
-    required this.onSelect,
-  });
+  const _ShellBottomBar({required this.selectedIndex, required this.onSelect});
 
   final int selectedIndex;
   final ValueChanged<int> onSelect;

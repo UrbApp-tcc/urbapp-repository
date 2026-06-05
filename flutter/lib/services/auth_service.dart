@@ -88,6 +88,10 @@ class AuthService {
       return 'E-mail ou senha inválidos.';
     }
 
+    if (message.contains('unregistered api key')) {
+      return 'A Publishable key configurada no app nÃ£o Ã© mais vÃ¡lida para este projeto Supabase.';
+    }
+
     if (message.contains('email not confirmed')) {
       return 'Confirme seu e-mail antes de entrar.';
     }

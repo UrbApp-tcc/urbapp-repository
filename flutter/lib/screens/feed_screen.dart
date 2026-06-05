@@ -6,10 +6,11 @@ import '../theme/app_theme.dart';
 import '../utils/date_formatter.dart';
 import 'profile_screen.dart';
 
-class FeedScreen extends StatelessWidget {
+class FeedScreen extends StatefulWidget {
   const FeedScreen({
     super.key,
     required this.posts,
+    required this.trendingPosts,
     required this.likedPostIds,
     required this.isLoading,
     required this.isRefreshing,
@@ -18,10 +19,101 @@ class FeedScreen extends StatelessWidget {
   });
 
   final List<FeedPost> posts;
+  final List<FeedPost> trendingPosts;
   final Set<int> likedPostIds;
   final bool isLoading;
   final bool isRefreshing;
   final VoidCallback onCreatePost;
+  final ValueChanged<FeedPost> onOpenPost;
+
+  @override
+  State<FeedScreen> createState() => _FeedScreenState();
+}
+
+class _FeedScreenState extends State<FeedScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(32, 40, 32, 0),
+          child: Column(
+            children: [
+              _HomeHeader(
+                isRefreshing: widget.isRefreshing,
+                onCreatePost: widget.onCreatePost,
+              ),
+              const SizedBox(height: 24),
+              _FeedTabBar(controller: _tabController),
+            ],
+          ),
+        ),
+        Expanded(
+          child: TabBarView(
+            controller: _tabController,
+            children: [
+              _FeedPostsList(
+                posts: widget.posts,
+                likedPostIds: widget.likedPostIds,
+                isLoading: widget.isLoading,
+                isTrending: false,
+                sectionTitle: 'Ultimos reportes',
+                emptyHero: const _FeedEmptyHero(),
+                emptyList: const _FeedEmptyList(),
+                onOpenPost: widget.onOpenPost,
+              ),
+              _FeedPostsList(
+                posts: widget.trendingPosts,
+                likedPostIds: widget.likedPostIds,
+                isLoading: widget.isLoading,
+                isTrending: true,
+                sectionTitle: 'Top 20 da comunidade',
+                emptyHero: const _TrendingEmptyHero(),
+                emptyList: const _TrendingEmptyList(),
+                onOpenPost: widget.onOpenPost,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FeedPostsList extends StatelessWidget {
+  const _FeedPostsList({
+    required this.posts,
+    required this.likedPostIds,
+    required this.isLoading,
+    required this.isTrending,
+    required this.sectionTitle,
+    required this.emptyHero,
+    required this.emptyList,
+    required this.onOpenPost,
+  });
+
+  final List<FeedPost> posts;
+  final Set<int> likedPostIds;
+  final bool isLoading;
+  final bool isTrending;
+  final String sectionTitle;
+  final Widget emptyHero;
+  final Widget emptyList;
   final ValueChanged<FeedPost> onOpenPost;
 
   @override
@@ -31,49 +123,158 @@ class FeedScreen extends StatelessWidget {
         ? posts.skip(1).toList()
         : const <FeedPost>[];
 
-    return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(32, 40, 32, 132),
+    return Stack(
+      fit: StackFit.expand,
       children: [
-        _HomeHeader(isRefreshing: isRefreshing, onCreatePost: onCreatePost),
-        const SizedBox(height: 28),
-        if (isLoading)
-          const _FeaturedCardSkeleton()
-        else if (featuredPost != null)
-          _FeaturedFeedCard(
-            post: featuredPost,
-            isLiked: likedPostIds.contains(featuredPost.id),
-            onOpen: () => onOpenPost(featuredPost),
-          )
-        else
-          const _FeedEmptyHero(),
-        const SizedBox(height: 34),
-        _SectionTitle(title: 'Últimos reportes', trailing: '${posts.length}'),
-        const SizedBox(height: 18),
-        if (isLoading)
-          ...List.generate(
-            4,
-            (index) => Padding(
-              padding: EdgeInsets.only(bottom: index == 3 ? 0 : 24),
-              child: const _LatestPostSkeleton(),
-            ),
-          )
-        else if (posts.isEmpty)
-          const _FeedEmptyList()
-        else
-          ...latestPosts.asMap().entries.map(
-            (entry) => Padding(
-              padding: EdgeInsets.only(
-                bottom: entry.key == latestPosts.length - 1 ? 0 : 24,
+        if (isTrending) const _TrendingFeedBackdrop(),
+        ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(32, 28, 32, 132),
+          children: [
+            if (isLoading)
+              const _FeaturedCardSkeleton()
+            else if (featuredPost != null)
+              _FeaturedFeedCard(
+                post: featuredPost,
+                isLiked: likedPostIds.contains(featuredPost.id),
+                onOpen: () => onOpenPost(featuredPost),
+              )
+            else
+              emptyHero,
+            const SizedBox(height: 34),
+            _SectionTitle(title: sectionTitle, trailing: '${posts.length}'),
+            const SizedBox(height: 18),
+            if (isLoading)
+              ...List.generate(
+                4,
+                (index) => Padding(
+                  padding: EdgeInsets.only(bottom: index == 3 ? 0 : 24),
+                  child: const _LatestPostSkeleton(),
+                ),
+              )
+            else if (posts.isEmpty)
+              emptyList
+            else
+              ...latestPosts.asMap().entries.map(
+                (entry) => Padding(
+                  padding: EdgeInsets.only(
+                    bottom: entry.key == latestPosts.length - 1 ? 0 : 24,
+                  ),
+                  child: _LatestPostRow(
+                    post: entry.value,
+                    isLiked: likedPostIds.contains(entry.value.id),
+                    onOpen: () => onOpenPost(entry.value),
+                  ),
+                ),
               ),
-              child: _LatestPostRow(
-                post: entry.value,
-                isLiked: likedPostIds.contains(entry.value.id),
-                onOpen: () => onOpenPost(entry.value),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _TrendingFeedBackdrop extends StatelessWidget {
+  const _TrendingFeedBackdrop();
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Stack(
+        children: [
+          const Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topRight,
+                  end: Alignment.bottomLeft,
+                  colors: [
+                    Color(0x10FF9A4D),
+                    Color(0x06FFC786),
+                    Color(0x00FFFFFF),
+                  ],
+                  stops: [0.0, 0.22, 0.58],
+                ),
               ),
             ),
           ),
-      ],
+          Positioned(
+            top: 24,
+            right: -42,
+            child: Container(
+              width: 170,
+              height: 170,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    Color(0x18FF8B2D),
+                    Color(0x08FFB35C),
+                    Color(0x00FFFFFF),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 260,
+            left: -76,
+            child: Container(
+              width: 220,
+              height: 220,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    Color(0x10FFB14A),
+                    Color(0x06FFD7A0),
+                    Color(0x00FFFFFF),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FeedTabBar extends StatelessWidget {
+  const _FeedTabBar({required this.controller});
+
+  final TabController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 52,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF4F6F8),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE3E7EC)),
+      ),
+      child: TabBar(
+        controller: controller,
+        indicator: BoxDecoration(
+          color: Color(0xFF18222E),
+          borderRadius: BorderRadius.all(Radius.circular(14)),
+        ),
+        indicatorSize: TabBarIndicatorSize.tab,
+        dividerColor: Colors.transparent,
+        labelColor: Colors.white,
+        unselectedLabelColor: Color(0xFF7A838E),
+        labelStyle: TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+        unselectedLabelStyle: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+        ),
+        tabs: const [
+          Tab(text: 'Recentes'),
+          Tab(text: 'Em Alta'),
+        ],
+      ),
     );
   }
 }
@@ -521,7 +722,7 @@ class _CompletedBadge extends StatelessWidget {
           Icon(Icons.check_circle_rounded, size: 13, color: foregroundColor),
           const SizedBox(width: 4),
           Text(
-            'Concluída',
+            'Concluida',
             style: TextStyle(
               color: foregroundColor,
               fontSize: 11,
@@ -869,7 +1070,7 @@ class _FeedEmptyHero extends StatelessWidget {
           ),
           SizedBox(height: 8),
           Text(
-            'Use o botão central para criar o primeiro reporte da comunidade.',
+            'Use o botao central para criar o primeiro reporte da comunidade.',
             style: TextStyle(
               color: Color(0xFF8F949D),
               fontSize: 14,
@@ -888,7 +1089,67 @@ class _FeedEmptyList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Text(
-      'Quando novos reportes forem criados, eles vão aparecer aqui.',
+      'Quando novos reportes forem criados, eles vao aparecer aqui.',
+      style: TextStyle(color: Color(0xFF8F949D), fontSize: 15, height: 1.45),
+    );
+  }
+}
+
+class _TrendingEmptyHero extends StatelessWidget {
+  const _TrendingEmptyHero();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 220,
+      padding: const EdgeInsets.all(28),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFFFDF6EC), Color(0xFFF8E8D0)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.local_fire_department_rounded,
+            size: 34,
+            color: Color(0xFFCB6A12),
+          ),
+          Spacer(),
+          Text(
+            'Ainda nao ha posts em alta',
+            style: TextStyle(
+              color: Color(0xFF141E28),
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          SizedBox(height: 8),
+          Text(
+            'Assim que os reportes acumularem apoios, comentarios e engajamento, eles aparecem aqui.',
+            style: TextStyle(
+              color: Color(0xFF6B7280),
+              fontSize: 14,
+              height: 1.45,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TrendingEmptyList extends StatelessWidget {
+  const _TrendingEmptyList();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Text(
+      'Esse ranking considera comentarios, apoios, seguidores do autor e o tempo no status atual.',
       style: TextStyle(color: Color(0xFF8F949D), fontSize: 15, height: 1.45),
     );
   }
