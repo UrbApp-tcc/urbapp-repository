@@ -422,15 +422,19 @@ class FeedService {
   }
 
   FeedPost _mapFeedPost(Map<String, dynamic> data) {
-    final imageItems = (data['images'] as List<dynamic>? ?? const [])
+    final rawImages = data['images'];
+    final imageList = rawImages is List
+        ? rawImages
+        : (rawImages is String ? [] : const []);
+    final imageItems = imageList
         .map((item) => item as Map<String, dynamic>)
         .map(
           (item) => FeedImage(
-            id: item['id'] as int,
+            id: (item['id'] as num).toInt(),
             storagePath: item['storage_path'] as String,
             publicUrl: _resolveImageUrl(item['storage_path'] as String?),
             caption: item['caption'] as String?,
-            position: item['position'] as int,
+            position: (item['position'] as num?)?.toInt() ?? 0,
           ),
         )
         .toList();
@@ -460,6 +464,111 @@ class FeedService {
       authorAvatarUrl: data['author_avatar_url'] as String?,
       imageCount: (data['image_count'] as num?)?.toInt() ?? 0,
       primaryImageUrl: _resolveImageUrl(data['primary_image_path'] as String?),
+      images: imageItems,
+    );
+  }
+
+  Future<FeedPost?> fetchPostById(int id) async {
+    try {
+      final response = await _supabase.rpc(
+        'get_feed_posts',
+        params: {'page_size': 100, 'page_offset': 0},
+      );
+
+      final list = response as List<dynamic>;
+      final match = list
+          .map((item) => item as Map<String, dynamic>)
+          .where((item) => (item['id'] as num?)?.toInt() == id)
+          .map(_mapFeedPost)
+          .firstOrNull;
+
+      if (match != null) return match;
+
+      final row = await _supabase
+          .from('posts')
+          .select('''
+            id, title, description, status, created_at, updated_at, resolved_at,
+            latitude, longitude, city_id, category_id, agency_id,
+            supports_count, comments_count, anonymity, user_id,
+            cities(name), problem_categories(name), public_agencies(name),
+            profiles!posts_user_id_fkey(full_name, username, avatar_url),
+            post_images(id, storage_path, caption, position)
+          ''')
+          .eq('id', id)
+          .maybeSingle();
+
+      if (row == null) return null;
+      return _mapDirectPost(row);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  FeedPost _mapDirectPost(Map<String, dynamic> data) {
+    final isAnonymous = data['anonymity'] as bool? ?? false;
+    final profile = data['profiles'];
+    final profileMap = profile is Map<String, dynamic>
+        ? profile
+        : profile is List && profile.isNotEmpty
+            ? profile.first as Map<String, dynamic>
+            : null;
+
+    final city = data['cities'];
+    final cityMap = city is Map<String, dynamic> ? city : null;
+    final category = data['problem_categories'];
+    final categoryMap = category is Map<String, dynamic> ? category : null;
+    final agency = data['public_agencies'];
+    final agencyMap = agency is Map<String, dynamic> ? agency : null;
+
+    final rawImages = data['post_images'];
+    final imageList = rawImages is List ? rawImages : const [];
+    final imageItems = imageList
+        .map((item) => item as Map<String, dynamic>)
+        .map(
+          (item) => FeedImage(
+            id: (item['id'] as num).toInt(),
+            storagePath: item['storage_path'] as String,
+            publicUrl: _resolveImageUrl(item['storage_path'] as String?),
+            caption: item['caption'] as String?,
+            position: (item['position'] as num?)?.toInt() ?? 0,
+          ),
+        )
+        .toList()
+      ..sort((a, b) => a.position.compareTo(b.position));
+
+    final authorName = isAnonymous
+        ? 'Anonimo'
+        : (() {
+            final name = (profileMap?['full_name'] as String?)?.trim();
+            if (name != null && name.isNotEmpty) return name;
+            return (profileMap?['username'] as String?)?.trim() ?? '';
+          })();
+
+    return FeedPost(
+      id: (data['id'] as num).toInt(),
+      title: (data['title'] as String?) ?? 'Sem titulo',
+      description: (data['description'] as String?) ?? '',
+      status: data['status'] as String,
+      createdAt: DateTime.parse(data['created_at'] as String),
+      updatedAt: _parseDate(data['updated_at']),
+      resolvedAt: _parseDate(data['resolved_at']),
+      latitude: (data['latitude'] as num?)?.toDouble() ?? 0.0,
+      longitude: (data['longitude'] as num?)?.toDouble() ?? 0.0,
+      cityId: (data['city_id'] as num?)?.toInt() ?? 0,
+      cityName: (cityMap?['name'] as String?) ?? 'Cidade desconhecida',
+      categoryId: (data['category_id'] as num?)?.toInt() ?? 0,
+      categoryName: (categoryMap?['name'] as String?) ?? 'Categoria',
+      agencyId: (data['agency_id'] as num?)?.toInt(),
+      agencyName: agencyMap?['name'] as String?,
+      supportsCount: (data['supports_count'] as num?)?.toInt() ?? 0,
+      commentsCount: (data['comments_count'] as num?)?.toInt() ?? 0,
+      isAnonymous: isAnonymous,
+      authorId: isAnonymous ? null : data['user_id'] as String?,
+      authorDisplayName: authorName,
+      authorUsername: isAnonymous ? null : profileMap?['username'] as String?,
+      authorAvatarUrl: isAnonymous ? null : profileMap?['avatar_url'] as String?,
+      imageCount: imageItems.length,
+      primaryImageUrl: imageItems.isNotEmpty ? imageItems.first.publicUrl : null,
       images: imageItems,
     );
   }

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -30,6 +31,7 @@ class _AppShellScreenState extends State<AppShellScreen> {
   RealtimeChannel? _postSupportsChannel;
   RealtimeChannel? _commentsChannel;
   Timer? _trendingRefreshDebounce;
+  StreamSubscription<Uri>? _deepLinkSubscription;
 
   int _selectedIndex = 0;
   List<FeedPost> _posts = const [];
@@ -44,6 +46,7 @@ class _AppShellScreenState extends State<AppShellScreen> {
     super.initState();
     _loadFeed();
     _setupRealtimeSubscriptions();
+    _setupDeepLinks();
   }
 
   @override
@@ -61,7 +64,44 @@ class _AppShellScreenState extends State<AppShellScreen> {
       _supabase.removeChannel(commentsChannel);
     }
     _trendingRefreshDebounce?.cancel();
+    _deepLinkSubscription?.cancel();
     super.dispose();
+  }
+
+  void _setupDeepLinks() {
+    final appLinks = AppLinks();
+
+    appLinks.getInitialLink().then((uri) {
+      if (uri != null) _handleDeepLink(uri);
+    });
+
+    _deepLinkSubscription = appLinks.uriLinkStream.listen(
+      _handleDeepLink,
+      onError: (_) {},
+    );
+  }
+
+  Future<void> _handleDeepLink(Uri uri) async {
+    if (uri.scheme != 'urbapp' || uri.host != 'posts') return;
+
+    final rawId = uri.pathSegments.firstOrNull;
+    final postId = int.tryParse(rawId ?? '');
+    if (postId == null) return;
+
+    final existing = [
+      ..._posts,
+      ..._trendingPosts,
+    ].where((p) => p.id == postId).firstOrNull;
+
+    if (existing != null) {
+      if (!mounted) return;
+      await _openPostDetail(existing);
+      return;
+    }
+
+    final post = await _feedService.fetchPostById(postId);
+    if (!mounted || post == null) return;
+    await _openPostDetail(post);
   }
 
   void _setupRealtimeSubscriptions() {
@@ -427,6 +467,7 @@ class _AppShellScreenState extends State<AppShellScreen> {
                               profileUserId: currentUserId,
                               currentUserId: currentUserId,
                               onSignOut: _signOut,
+                              isActive: _selectedIndex == 3,
                             )
                           else
                             const _ProfileUnavailableState(),

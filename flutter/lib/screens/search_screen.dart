@@ -562,15 +562,16 @@ class _SearchHighlightCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                const Positioned(
-                  top: 16,
-                  left: 16,
-                  child: Icon(
-                    Icons.play_circle_outline_rounded,
-                    color: Colors.white,
-                    size: 28,
+                if (post.imageCount > 1)
+                  const Positioned(
+                    top: 16,
+                    left: 16,
+                    child: Icon(
+                      Icons.photo_library_outlined,
+                      color: Colors.white,
+                      size: 28,
+                    ),
                   ),
-                ),
                 Positioned(
                   left: 16,
                   right: 16,

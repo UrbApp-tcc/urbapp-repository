@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
-/// Campo de formulário padronizado para telas de autenticação.
-/// OutlineInputBorder arredondado, prefixIcon, contentPadding adequado.
-/// Para senha, use [obscureText] e [suffixIcon] (ícone de mostrar/ocultar).
 class AuthTextField extends StatelessWidget {
   const AuthTextField({
     super.key,
@@ -43,11 +40,16 @@ class AuthTextField extends StatelessWidget {
       keyboardType: keyboardType,
       textInputAction: textInputAction,
       onFieldSubmitted: onFieldSubmitted,
+      style: const TextStyle(
+        color: AppColors.textPrimary,
+        fontSize: 15,
+      ),
       decoration: InputDecoration(
         hintText: hintText,
         labelText: labelText,
+        hintStyle: const TextStyle(color: AppColors.textHint, fontSize: 15),
         filled: true,
-        fillColor: AppColors.background,
+        fillColor: Colors.white,
         contentPadding: contentPadding,
         prefixIcon: prefixIcon,
         suffixIcon: suffixIcon,

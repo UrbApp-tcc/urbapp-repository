@@ -240,7 +240,10 @@ class PostService {
             .uploadBinary(
               storagePath,
               bytes,
-              fileOptions: const FileOptions(upsert: false),
+              fileOptions: FileOptions(
+                upsert: false,
+                contentType: _mimeFromExtension(extension),
+              ),
             );
 
         await _supabase.from('post_images').insert({
@@ -554,6 +557,19 @@ class PostService {
     final parts = name.split('.');
     if (parts.length < 2) return 'bin';
     return parts.last.toLowerCase();
+  }
+
+  String _mimeFromExtension(String ext) {
+    switch (ext) {
+      case 'png':
+        return 'image/png';
+      case 'webp':
+        return 'image/webp';
+      case 'gif':
+        return 'image/gif';
+      default:
+        return 'image/jpeg';
+    }
   }
 
   String _normalizeText(String value) {

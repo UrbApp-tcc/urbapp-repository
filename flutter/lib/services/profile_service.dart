@@ -208,11 +208,12 @@ class ProfileService {
 
       final extension = _fileExtension(file.name);
       final storagePath = '$userId/avatar/avatar.$extension';
+      final contentType = _mimeFromExtension(extension);
 
       await _supabase.storage.from(_profileImagesBucket).uploadBinary(
             storagePath,
             bytes,
-            fileOptions: const FileOptions(upsert: true),
+            fileOptions: FileOptions(upsert: true, contentType: contentType),
           );
 
       final publicUrl = _supabase.storage.from(_profileImagesBucket).getPublicUrl(storagePath);
@@ -465,8 +466,8 @@ class ProfileService {
       createdAt: DateTime.parse(data['created_at'] as String),
       updatedAt: _parseDate(data['updated_at']),
       resolvedAt: _parseDate(data['resolved_at']),
-      latitude: (data['latitude'] as num).toDouble(),
-      longitude: (data['longitude'] as num).toDouble(),
+      latitude: (data['latitude'] as num?)?.toDouble() ?? 0.0,
+      longitude: (data['longitude'] as num?)?.toDouble() ?? 0.0,
       cityId: (data['city_id'] as num?)?.toInt() ?? 0,
       cityName: (city?['name'] as String?) ?? 'Cidade desconhecida',
       categoryId: (data['category_id'] as num?)?.toInt() ?? 0,
@@ -500,6 +501,19 @@ class ProfileService {
     final parts = name.split('.');
     if (parts.length < 2) return 'jpg';
     return parts.last.toLowerCase();
+  }
+
+  String _mimeFromExtension(String ext) {
+    switch (ext) {
+      case 'png':
+        return 'image/png';
+      case 'webp':
+        return 'image/webp';
+      case 'gif':
+        return 'image/gif';
+      default:
+        return 'image/jpeg';
+    }
   }
 
   Map<String, dynamic>? _asMap(dynamic value) {

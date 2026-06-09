@@ -27,10 +27,6 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
 
   static const double _maxContentWidth = 400;
-  static const double _spacingLogoTitle = 16;
-  static const double _spacingTitleForm = 24;
-  static const double _spacingBetweenFields = 16;
-  static const double _spacingFormButton = 24;
 
   @override
   void dispose() {
@@ -41,10 +37,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   String? _validateEmail(String? value) {
     if (value == null || value.trim().isEmpty) return 'Informe seu e-mail';
-
     final regex = RegExp(r'^[\w.-]+@[\w.-]+\.\w{2,}$');
     if (!regex.hasMatch(value.trim())) return 'E-mail inválido';
-
     return null;
   }
 
@@ -108,10 +102,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             if (!dialogContext.mounted) return;
                             Navigator.of(dialogContext).pop();
                             if (!mounted) return;
-                            _showSnack(
-                              friendlyError(error),
-                              AppColors.error,
-                            );
+                            _showSnack(friendlyError(error), AppColors.error);
                           }
                         },
                   child: isSending
@@ -145,16 +136,11 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } catch (error) {
       if (!mounted) return;
-      _showSnack(
-        friendlyError(error),
-        AppColors.error,
-      );
+      _showSnack(friendlyError(error), AppColors.error);
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
-  } 
+  }
 
   void _showSnack(String message, Color color) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -179,80 +165,84 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final padding = MediaQuery.paddingOf(context);
+    final availableHeight = size.height - padding.top - padding.bottom;
+    final isCompact = availableHeight < 680;
+    final waveHeight = isCompact ? 120.0 : 160.0;
+
     return Scaffold(
       backgroundColor: Colors.white,
       resizeToAvoidBottomInset: true,
       body: SafeArea(
-        child: Stack(
+        child: Column(
           children: [
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final minHeight = MediaQuery.of(context).size.height -
-                    MediaQuery.paddingOf(context).top -
-                    MediaQuery.paddingOf(context).bottom;
-                return SingleChildScrollView(
+            WaveHeader(height: waveHeight),
+            // Área do formulário: scrollável e centralizado verticalmente
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) => SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: ConstrainedBox(
-                    constraints: BoxConstraints(minHeight: minHeight),
+                    constraints: BoxConstraints(minHeight: constraints.maxHeight),
                     child: IntrinsicHeight(
-                      child: Column(
-                        children: [
-                          const WaveHeader(height: 180),
-                          Expanded(
-                            child: Center(
-                              child: ConstrainedBox(
-                                constraints: const BoxConstraints(maxWidth: _maxContentWidth),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                                  child: _buildContent(),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 32),
-                        ],
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: _maxContentWidth),
+                          child: _buildForm(isCompact: isCompact),
+                        ),
                       ),
                     ),
                   ),
-                );
-              },
+                ),
+              ),
             ),
-            _buildBottomWave(),
+            // Link "Não tem uma conta?" fixo na parte inferior — fora do scroll
+            Padding(
+              padding: const EdgeInsets.only(top: 8, bottom: 24),
+              child: _buildSignUpLink(),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildContent() {
+  Widget _buildForm({required bool isCompact}) {
+    final logoHeight = isCompact ? 76.0 : 96.0;
+    final spacingLogoTitle = isCompact ? 12.0 : 16.0;
+    final spacingTitleForm = isCompact ? 14.0 : 22.0;
+    final spacingFields = isCompact ? 12.0 : 16.0;
+    final spacingFormButton = isCompact ? 14.0 : 22.0;
+
     return Form(
       key: _formKey,
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const AppLogo(height: 115),
-          const SizedBox(height: _spacingLogoTitle),
+          AppLogo(height: logoHeight),
+          SizedBox(height: spacingLogoTitle),
           const Text(
             'Seja bem-vindo!',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: AppColors.textPrimary,
-              fontSize: 32,
+              fontSize: 28,
               fontWeight: FontWeight.w800,
               letterSpacing: -0.5,
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 5),
           const Text(
             'Faça login na sua conta',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: AppColors.textSecondary,
-              fontSize: 15,
+              fontSize: 14,
             ),
           ),
-          const SizedBox(height: _spacingTitleForm),
+          SizedBox(height: spacingTitleForm),
           AuthTextField(
             controller: _emailController,
             validator: _validateEmail,
@@ -261,7 +251,7 @@ class _LoginScreenState extends State<LoginScreen> {
             prefixIcon: const Icon(Icons.email_outlined, color: AppColors.textSecondary, size: 22),
             textInputAction: TextInputAction.next,
           ),
-          const SizedBox(height: _spacingBetweenFields),
+          SizedBox(height: spacingFields),
           AuthTextField(
             controller: _passwordController,
             validator: _validatePassword,
@@ -279,7 +269,7 @@ class _LoginScreenState extends State<LoginScreen> {
             textInputAction: TextInputAction.done,
             onFieldSubmitted: (_) => _signIn(),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
@@ -296,67 +286,36 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
           ),
-          const SizedBox(height: _spacingFormButton),
+          SizedBox(height: spacingFormButton),
           GradientButton(
             label: 'Entrar',
             loading: _isLoading,
             onPressed: _signIn,
           ),
-          const SizedBox(height: 28),
-          Center(
-            child: RichText(
-              text: TextSpan(
-                style: const TextStyle(color: AppColors.textSecondary, fontSize: 14),
-                children: [
-                  const TextSpan(text: "Não tem uma conta? "),
-                  TextSpan(
-                    text: 'Criar conta',
-                    style: const TextStyle(
-                      color: AppColors.primary,
-                      fontWeight: FontWeight.w700,
-                      decoration: TextDecoration.underline,
-                    ),
-                    recognizer: TapGestureRecognizer()..onTap = _openRegister,
-                  ),
-                ],
-              ),
-            ),
-          ),
+          const SizedBox(height: 16),
         ],
       ),
     );
   }
 
-  Widget _buildBottomWave() {
-    return Positioned(
-      left: -40,
-      bottom: -20,
-      child: CustomPaint(
-        size: const Size(180, 120),
-        painter: _BottomWavePainter(),
+  Widget _buildSignUpLink() {
+    return RichText(
+      textAlign: TextAlign.center,
+      text: TextSpan(
+        style: const TextStyle(color: AppColors.textSecondary, fontSize: 14),
+        children: [
+          const TextSpan(text: 'Não tem uma conta? '),
+          TextSpan(
+            text: 'Criar conta',
+            style: const TextStyle(
+              color: AppColors.primary,
+              fontWeight: FontWeight.w700,
+              decoration: TextDecoration.underline,
+            ),
+            recognizer: TapGestureRecognizer()..onTap = _openRegister,
+          ),
+        ],
       ),
     );
   }
-}
-
-class _BottomWavePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final path = Path()
-      ..moveTo(0, size.height)
-      ..lineTo(0, size.height * 0.4)
-      ..quadraticBezierTo(size.width * 0.3, 0, size.width * 0.6, size.height * 0.35)
-      ..quadraticBezierTo(size.width, size.height * 0.7, size.width, size.height)
-      ..lineTo(0, size.height)
-      ..close();
-
-    final paint = Paint()
-      ..color = AppColors.accentPurple.withValues(alpha: 0.85)
-      ..style = PaintingStyle.fill;
-
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

@@ -359,6 +359,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      enableDrag: false,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -562,6 +563,14 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     }).toList();
   }
 
+  void _popWithChanges() {
+    final hasChanges =
+        _hasStatusChanges ||
+        _supportsCount != widget.post.supportsCount ||
+        _commentsCount != widget.post.commentsCount;
+    Navigator.of(context).pop(hasChanges);
+  }
+
   @override
   Widget build(BuildContext context) {
     final imageUrls = _orderedImageUrls(widget.post);
@@ -572,18 +581,18 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         !isFinalStatus(widget.post.status);
     final isCompleted = widget.post.status == 'completed';
 
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _popWithChanges();
+      },
+      child: Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () {
-            final hasChanges =
-                _hasStatusChanges ||
-                _supportsCount != widget.post.supportsCount ||
-                _commentsCount != widget.post.commentsCount;
-            Navigator.of(context).pop(hasChanges);
-          },
+          onPressed: _popWithChanges,
         ),
         title: const Text('Reporte'),
         actions: [
@@ -777,6 +786,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
               ),
             ),
         ],
+      ),
       ),
     );
   }

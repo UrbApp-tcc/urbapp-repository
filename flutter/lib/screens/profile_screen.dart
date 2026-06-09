@@ -14,11 +14,13 @@ class ProfileScreen extends StatefulWidget {
     required this.profileUserId,
     required this.currentUserId,
     this.onSignOut,
+    this.isActive = false,
   });
 
   final String profileUserId;
   final String? currentUserId;
   final Future<void> Function()? onSignOut;
+  final bool isActive;
 
   static Future<void> open(
     BuildContext context, {
@@ -59,6 +61,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _loadProfile();
   }
 
+  @override
+  void didUpdateWidget(ProfileScreen old) {
+    super.didUpdateWidget(old);
+    if (widget.isActive && !old.isActive) {
+      _loadProfile();
+    }
+  }
+
   Future<void> _loadProfile() async {
     setState(() => _isLoading = true);
 
@@ -68,13 +78,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
         viewerUserId: widget.currentUserId,
       );
       final cities = _isOwnProfile ? await _profileService.fetchCities() : const <ProfileCityOption>[];
-      final badges = _isOwnProfile ? await _profileService.fetchBadgeCatalog() : const <ProfileBadge>[];
 
       if (!mounted) return;
       setState(() {
         _profile = profile;
         _cities = cities;
-        _availableBadges = badges;
+        _availableBadges = _isOwnProfile ? profile.badges : [];
         _isLoading = false;
       });
     } catch (error) {

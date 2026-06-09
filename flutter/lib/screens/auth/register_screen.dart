@@ -32,10 +32,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   int? _selectedCityId;
 
   static const double _maxContentWidth = 400;
-  static const double _spacingLogoTitle = 16;
-  static const double _spacingTitleForm = 24;
-  static const double _spacingBetweenFields = 16;
-  static const double _spacingFormButton = 24;
 
   @override
   void dispose() {
@@ -69,10 +65,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   String? _validateEmail(String? value) {
     if (value == null || value.trim().isEmpty) return 'Informe o e-mail';
-
     final regex = RegExp(r'^[\w.-]+@[\w.-]+\.\w{2,}$');
     if (!regex.hasMatch(value.trim())) return 'E-mail inválido';
-
     return null;
   }
 
@@ -139,7 +133,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
       Navigator.of(context).pop('Conta criada com sucesso!');
     } catch (error) {
       if (!mounted) return;
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(friendlyError(error)),
@@ -150,56 +143,53 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ),
       );
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final padding = MediaQuery.paddingOf(context);
+    final availableHeight = size.height - padding.top - padding.bottom;
+    final isCompact = availableHeight < 750;
+
     return Scaffold(
       backgroundColor: Colors.white,
       resizeToAvoidBottomInset: true,
       body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final minHeight = MediaQuery.of(context).size.height -
-                MediaQuery.paddingOf(context).top -
-                MediaQuery.paddingOf(context).bottom;
-            return SingleChildScrollView(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: minHeight),
-                child: IntrinsicHeight(
-                  child: Column(
-                    children: [
-                      _buildDecorativeShapes(),
-                      Expanded(
-                        child: Center(
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: _maxContentWidth),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 24),
-                              child: _buildContent(),
-                            ),
-                          ),
+        child: SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: availableHeight),
+            child: IntrinsicHeight(
+              child: Column(
+                children: [
+                  _buildDecorativeShapes(isCompact: isCompact),
+                  Expanded(
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: _maxContentWidth),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          child: _buildContent(isCompact: isCompact),
                         ),
                       ),
-                      const SizedBox(height: 32),
-                    ],
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 32),
+                ],
               ),
-            );
-          },
+            ),
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildDecorativeShapes() {
+  Widget _buildDecorativeShapes({required bool isCompact}) {
+    final headerHeight = isCompact ? 80.0 : 110.0;
     return SizedBox(
-      height: 120,
+      height: headerHeight,
       width: double.infinity,
       child: Stack(
         children: [
@@ -246,7 +236,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  Widget _buildContent() {
+  Widget _buildContent({required bool isCompact}) {
+    final logoHeight = isCompact ? 70.0 : 100.0;
+    final spacingLogoTitle = isCompact ? 10.0 : 16.0;
+    final spacingTitleForm = isCompact ? 14.0 : 24.0;
+    final spacingFields = isCompact ? 10.0 : 16.0;
+    final spacingFormButton = isCompact ? 16.0 : 24.0;
+
     return Form(
       key: _formKey,
       child: Column(
@@ -254,8 +250,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const AppLogo(height: 115),
-          const SizedBox(height: _spacingLogoTitle),
+          AppLogo(height: logoHeight),
+          SizedBox(height: spacingLogoTitle),
           const Text(
             'Criar conta',
             textAlign: TextAlign.center,
@@ -266,7 +262,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               letterSpacing: -0.5,
             ),
           ),
-          const SizedBox(height: _spacingTitleForm),
+          SizedBox(height: spacingTitleForm),
           AuthTextField(
             controller: _usernameController,
             validator: _validateUsername,
@@ -274,7 +270,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             prefixIcon: const Icon(Icons.person_outline_rounded, color: AppColors.textSecondary, size: 22),
             textInputAction: TextInputAction.next,
           ),
-          const SizedBox(height: _spacingBetweenFields),
+          SizedBox(height: spacingFields),
           AuthTextField(
             controller: _passwordController,
             validator: _validatePassword,
@@ -291,7 +287,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             ),
             textInputAction: TextInputAction.next,
           ),
-          const SizedBox(height: _spacingBetweenFields),
+          SizedBox(height: spacingFields),
           AuthTextField(
             controller: _emailController,
             validator: _validateEmail,
@@ -300,7 +296,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             prefixIcon: const Icon(Icons.email_outlined, color: AppColors.textSecondary, size: 22),
             textInputAction: TextInputAction.next,
           ),
-          const SizedBox(height: _spacingBetweenFields),
+          SizedBox(height: spacingFields),
           AuthTextField(
             controller: _mobileController,
             validator: _validateMobile,
@@ -309,7 +305,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             prefixIcon: const Icon(Icons.phone_android_rounded, color: AppColors.textSecondary, size: 22),
             textInputAction: TextInputAction.done,
           ),
-          const SizedBox(height: _spacingBetweenFields),
+          SizedBox(height: spacingFields),
           DropdownButtonFormField<int>(
             initialValue: _selectedCityId,
             items: _cities
@@ -334,7 +330,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
             ),
           ),
-          const SizedBox(height: _spacingFormButton),
+          SizedBox(height: spacingFormButton),
           GradientButton(
             label: 'Criar conta',
             loading: _isLoading || _isCitiesLoading,
@@ -364,5 +360,4 @@ class _RegisterScreenState extends State<RegisterScreen> {
       ),
     );
   }
-
 }
