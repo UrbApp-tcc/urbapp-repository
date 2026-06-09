@@ -449,7 +449,6 @@ class _AppShellScreenState extends State<AppShellScreen> {
                             likedPostIds: _likedPostIds,
                             isLoading: _isLoading,
                             isRefreshing: _isRefreshing,
-                            onCreatePost: _openCreatePost,
                             onOpenPost: _openPostDetail,
                           ),
                           SearchScreen(
@@ -475,9 +474,9 @@ class _AppShellScreenState extends State<AppShellScreen> {
                       ),
                     ),
                     Positioned(
-                      left: 44,
-                      right: 44,
-                      bottom: 24,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
                       child: _ShellBottomBar(
                         selectedIndex: _selectedIndex,
                         onSelect: _selectTab,
@@ -486,7 +485,7 @@ class _AppShellScreenState extends State<AppShellScreen> {
                     Positioned(
                       left: 0,
                       right: 0,
-                      bottom: 36,
+                      bottom: 3,
                       child: Center(
                         child: GestureDetector(
                           onTap: _openCreatePost,
@@ -494,11 +493,11 @@ class _AppShellScreenState extends State<AppShellScreen> {
                             width: 58,
                             height: 58,
                             decoration: BoxDecoration(
-                              color: AppColors.accentPink,
+                              color: const Color(0xFF18222E),
                               borderRadius: BorderRadius.circular(20),
                               boxShadow: [
                                 BoxShadow(
-                                  color: AppColors.accentPink.withValues(
+                                  color: const Color(0xFF18222E).withValues(
                                     alpha: 0.28,
                                   ),
                                   blurRadius: 24,
@@ -580,15 +579,15 @@ class _ShellBottomBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       height: 64,
-      padding: const EdgeInsets.symmetric(horizontal: 26),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(32),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF141E28).withValues(alpha: 0.14),
-            blurRadius: 32,
-            offset: const Offset(0, 16),
+            color: const Color(0xFF141E28).withValues(alpha: 0.10),
+            blurRadius: 20,
+            offset: const Offset(0, -4),
           ),
         ],
       ),
@@ -649,7 +648,7 @@ class _BottomIconButton extends StatelessWidget {
         height: 64,
         child: Icon(
           icon,
-          size: 25,
+          size: 29,
           color: isSelected ? const Color(0xFF141E28) : const Color(0xFFA2A7AF),
         ),
       ),

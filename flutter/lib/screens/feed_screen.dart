@@ -14,7 +14,6 @@ class FeedScreen extends StatefulWidget {
     required this.likedPostIds,
     required this.isLoading,
     required this.isRefreshing,
-    required this.onCreatePost,
     required this.onOpenPost,
   });
 
@@ -23,7 +22,6 @@ class FeedScreen extends StatefulWidget {
   final Set<int> likedPostIds;
   final bool isLoading;
   final bool isRefreshing;
-  final VoidCallback onCreatePost;
   final ValueChanged<FeedPost> onOpenPost;
 
   @override
@@ -51,14 +49,38 @@ class _FeedScreenState extends State<FeedScreen>
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(32, 40, 32, 0),
+          padding: const EdgeInsets.fromLTRB(0, 44, 0, 0),
           child: Column(
             children: [
-              _HomeHeader(
-                isRefreshing: widget.isRefreshing,
-                onCreatePost: widget.onCreatePost,
+              // Título centralizado, sem botões
+              Center(
+                child: RichText(
+                  text: const TextSpan(
+                    children: [
+                      TextSpan(
+                        text: 'Urb',
+                        style: TextStyle(
+                          color: Color(0xFF22252A),
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.3,
+                        ),
+                      ),
+                      TextSpan(
+                        text: 'App',
+                        style: TextStyle(
+                          color: Color(0xFF8A8F98),
+                          fontSize: 17,
+                          fontWeight: FontWeight.w300,
+                          letterSpacing: -0.3,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
+              // Tab bar de ponta a ponta (sem padding horizontal)
               _FeedTabBar(controller: _tabController),
             ],
           ),
@@ -249,24 +271,25 @@ class _FeedTabBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       height: 52,
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF4F6F8),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE3E7EC)),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      decoration: const BoxDecoration(
+        color: Color(0xFFF4F6F8),
+        border: Border(
+          bottom: BorderSide(color: Color(0xFFE3E7EC)),
+        ),
       ),
       child: TabBar(
         controller: controller,
-        indicator: BoxDecoration(
+        indicator: const BoxDecoration(
           color: Color(0xFF18222E),
           borderRadius: BorderRadius.all(Radius.circular(14)),
         ),
         indicatorSize: TabBarIndicatorSize.tab,
         dividerColor: Colors.transparent,
         labelColor: Colors.white,
-        unselectedLabelColor: Color(0xFF7A838E),
-        labelStyle: TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
-        unselectedLabelStyle: TextStyle(
+        unselectedLabelColor: const Color(0xFF7A838E),
+        labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+        unselectedLabelStyle: const TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.w700,
         ),
@@ -290,81 +313,6 @@ void _openProfileFromPost(BuildContext context, FeedPost post) {
   );
 }
 
-class _HomeHeader extends StatelessWidget {
-  const _HomeHeader({required this.isRefreshing, required this.onCreatePost});
-
-  final bool isRefreshing;
-  final VoidCallback onCreatePost;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          width: 40,
-          height: 40,
-          decoration: const BoxDecoration(
-            color: Color(0xFF18222E),
-            shape: BoxShape.circle,
-          ),
-          child: const Icon(
-            Icons.remove_rounded,
-            color: Colors.white,
-            size: 24,
-          ),
-        ),
-        const Spacer(),
-        RichText(
-          text: const TextSpan(
-            children: [
-              TextSpan(
-                text: 'Urb',
-                style: TextStyle(
-                  color: Color(0xFF22252A),
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.3,
-                ),
-              ),
-              TextSpan(
-                text: 'App',
-                style: TextStyle(
-                  color: Color(0xFF8A8F98),
-                  fontSize: 16,
-                  fontWeight: FontWeight.w300,
-                  letterSpacing: -0.3,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const Spacer(),
-        GestureDetector(
-          onTap: onCreatePost,
-          child: Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              border: Border.all(color: const Color(0xFF18222E), width: 1.6),
-            ),
-            child: isRefreshing
-                ? const Padding(
-                    padding: EdgeInsets.all(10),
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(
-                    Icons.add_rounded,
-                    color: Color(0xFF18222E),
-                    size: 22,
-                  ),
-          ),
-        ),
-      ],
-    );
-  }
-}
 
 class _FeaturedFeedCard extends StatelessWidget {
   const _FeaturedFeedCard({
