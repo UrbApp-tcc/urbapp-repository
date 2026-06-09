@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-/// Botão principal com gradiente roxo → rosa, bordas bem arredondadas (25).
-/// Cores: Color(0xFF7F5AF0) e Color(0xFFFF4D8D).
 class GradientButton extends StatelessWidget {
   const GradientButton({
     super.key,
@@ -18,12 +16,13 @@ class GradientButton extends StatelessWidget {
   final double height;
   final double borderRadius;
 
-  static const Color _startColor = Color(0xFF7F5AF0);
-  static const Color _endColor = Color(0xFFFF4D8D);
+  static const Color _bg = Color(0xFF18222E);
+  static const Color _bgLight = Color(0xFF2A3749);
 
   @override
   Widget build(BuildContext context) {
     return Material(
+      color: Colors.transparent,
       borderRadius: BorderRadius.circular(borderRadius),
       child: InkWell(
         onTap: loading ? null : onPressed,
@@ -33,14 +32,7 @@ class GradientButton extends StatelessWidget {
           height: height,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(borderRadius),
-            gradient: loading
-                ? null
-                : const LinearGradient(
-                    colors: [_startColor, _endColor],
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                  ),
-            color: loading ? Colors.grey.shade300 : null,
+            color: loading ? const Color(0xFFE8EAED) : _bg,
           ),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -53,7 +45,7 @@ class GradientButton extends StatelessWidget {
                     height: 22,
                     child: CircularProgressIndicator(
                       strokeWidth: 2.5,
-                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF7F5AF0)),
+                      valueColor: AlwaysStoppedAnimation<Color>(_bg),
                     ),
                   )
                 else ...[
@@ -70,10 +62,14 @@ class GradientButton extends StatelessWidget {
                     width: 36,
                     height: 36,
                     decoration: BoxDecoration(
-                      color: _startColor.withValues(alpha: 0.8),
+                      color: _bgLight,
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 20),
+                    child: const Icon(
+                      Icons.arrow_forward_rounded,
+                      color: Colors.white,
+                      size: 20,
+                    ),
                   ),
                 ],
               ],
