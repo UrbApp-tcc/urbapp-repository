@@ -37,6 +37,7 @@ class AuthService {
       return await _auth.signUp(
         email: email.trim(),
         password: password,
+        emailRedirectTo: 'urbapp://login-callback',
         data: {
           'username': username.trim(),
           'full_name': username.trim(),
