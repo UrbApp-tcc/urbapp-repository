@@ -63,7 +63,10 @@ class AuthService {
 
   Future<void> resetPassword(String email) async {
     try {
-      await _auth.resetPasswordForEmail(email.trim());
+      await _auth.resetPasswordForEmail(
+        email.trim(),
+        redirectTo: 'urbapp://login-callback',
+      );
     } on AuthException catch (error) {
       throw Exception(_mapAuthError(error));
     } catch (_) {
