@@ -1,36 +1,22 @@
 import 'package:flutter/material.dart';
-<<<<<<< HEAD
 import 'package:supabase_flutter/supabase_flutter.dart';
-=======
->>>>>>> 70001575e525ac37a38a7cdce0dc86ba5be77582
 
 import '../services/feed_service.dart';
 import '../theme/app_theme.dart';
 
-<<<<<<< HEAD
-class PostDetailScreen extends StatefulWidget {
-=======
 /// Abre o detalhe do reporte (fluxo tipo timeline).
-class PostDetailScreen extends StatelessWidget {
->>>>>>> 70001575e525ac37a38a7cdce0dc86ba5be77582
+class PostDetailScreen extends StatefulWidget {
   const PostDetailScreen({super.key, required this.post});
 
   final FeedPost post;
 
   static void open(BuildContext context, FeedPost post) {
     Navigator.of(context).push(
-<<<<<<< HEAD
       MaterialPageRoute<void>(builder: (_) => PostDetailScreen(post: post)),
-=======
-      MaterialPageRoute<void>(
-        builder: (_) => PostDetailScreen(post: post),
-      ),
->>>>>>> 70001575e525ac37a38a7cdce0dc86ba5be77582
     );
   }
 
   @override
-<<<<<<< HEAD
   State<PostDetailScreen> createState() => _PostDetailScreenState();
 }
 
@@ -133,10 +119,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final imageUrls = _orderedImageUrls(widget.post);
-=======
-  Widget build(BuildContext context) {
-    final imageUrls = _orderedImageUrls(post);
->>>>>>> 70001575e525ac37a38a7cdce0dc86ba5be77582
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -150,17 +132,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
         children: [
-<<<<<<< HEAD
           _AuthorHeader(post: widget.post),
           const SizedBox(height: 16),
           Text(
             widget.post.title,
-=======
-          _AuthorHeader(post: post),
-          const SizedBox(height: 16),
-          Text(
-            post.title,
->>>>>>> 70001575e525ac37a38a7cdce0dc86ba5be77582
             style: const TextStyle(
               color: Color(0xFF141E28),
               fontSize: 22,
@@ -169,17 +144,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
               letterSpacing: -0.4,
             ),
           ),
-<<<<<<< HEAD
           if (widget.post.description.trim().isNotEmpty) ...[
             const SizedBox(height: 12),
             Text(
               widget.post.description,
-=======
-          if (post.description.trim().isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Text(
-              post.description,
->>>>>>> 70001575e525ac37a38a7cdce0dc86ba5be77582
               style: const TextStyle(
                 color: Color(0xFF374151),
                 fontSize: 16,
@@ -197,7 +165,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             spacing: 8,
             runSpacing: 8,
             children: [
-<<<<<<< HEAD
               _MetaChip(
                 icon: Icons.label_outline_rounded,
                 label: widget.post.categoryName,
@@ -214,44 +181,23 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           ),
           if (widget.post.agencyName != null &&
               widget.post.agencyName!.trim().isNotEmpty)
-=======
-              _MetaChip(icon: Icons.label_outline_rounded, label: post.categoryName),
-              _MetaChip(icon: Icons.location_on_outlined, label: post.cityName),
-              _MetaChip(icon: Icons.flag_outlined, label: _statusLabel(post.status)),
-            ],
-          ),
-          if (post.agencyName != null && post.agencyName!.trim().isNotEmpty)
->>>>>>> 70001575e525ac37a38a7cdce0dc86ba5be77582
             Padding(
               padding: const EdgeInsets.only(top: 8),
               child: _MetaChip(
                 icon: Icons.account_balance_outlined,
-<<<<<<< HEAD
                 label: widget.post.agencyName!.trim(),
-=======
-                label: post.agencyName!.trim(),
->>>>>>> 70001575e525ac37a38a7cdce0dc86ba5be77582
               ),
             ),
           const SizedBox(height: 8),
           Text(
-<<<<<<< HEAD
             _formatPublishedAt(widget.post.createdAt),
             style: const TextStyle(color: AppColors.textHint, fontSize: 13),
-=======
-            _formatPublishedAt(post.createdAt),
-            style: const TextStyle(
-              color: AppColors.textHint,
-              fontSize: 13,
-            ),
->>>>>>> 70001575e525ac37a38a7cdce0dc86ba5be77582
           ),
           const SizedBox(height: 20),
           const Divider(height: 1, color: AppColors.border),
           const SizedBox(height: 16),
           Row(
             children: [
-<<<<<<< HEAD
               Icon(
                 Icons.mode_comment_outlined,
                 size: 22,
@@ -260,12 +206,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
               const SizedBox(width: 8),
               Text(
                 '${widget.post.commentsCount}',
-=======
-              Icon(Icons.mode_comment_outlined, size: 22, color: AppColors.textSecondary.withValues(alpha: 0.9)),
-              const SizedBox(width: 8),
-              Text(
-                '${post.commentsCount}',
->>>>>>> 70001575e525ac37a38a7cdce0dc86ba5be77582
                 style: const TextStyle(
                   color: AppColors.textPrimary,
                   fontSize: 15,
@@ -273,7 +213,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                 ),
               ),
               const SizedBox(width: 28),
-<<<<<<< HEAD
               GestureDetector(
                 onTap: _isLikeLoading ? null : _toggleLike,
                 child: Row(
@@ -307,16 +246,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                       ),
                     ),
                   ],
-=======
-              Icon(Icons.favorite_border_rounded, size: 22, color: AppColors.textSecondary.withValues(alpha: 0.9)),
-              const SizedBox(width: 8),
-              Text(
-                '${post.supportsCount}',
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
->>>>>>> 70001575e525ac37a38a7cdce0dc86ba5be77582
                 ),
               ),
             ],
@@ -340,7 +269,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             ),
             child: Column(
               children: [
-<<<<<<< HEAD
                 Icon(
                   Icons.chat_bubble_outline_rounded,
                   size: 36,
@@ -349,12 +277,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                 const SizedBox(height: 12),
                 Text(
                   widget.post.commentsCount == 0
-=======
-                Icon(Icons.chat_bubble_outline_rounded, size: 36, color: AppColors.textHint.withValues(alpha: 0.85)),
-                const SizedBox(height: 12),
-                Text(
-                  post.commentsCount == 0
->>>>>>> 70001575e525ac37a38a7cdce0dc86ba5be77582
                       ? 'Nenhum comentário ainda.'
                       : 'Lista de comentários em breve.',
                   textAlign: TextAlign.center,
@@ -373,18 +295,11 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   }
 
   static List<String> _orderedImageUrls(FeedPost post) {
-<<<<<<< HEAD
     final fromItems =
         post.images
             .where((e) => e.publicUrl != null && e.publicUrl!.isNotEmpty)
             .toList()
           ..sort((a, b) => a.position.compareTo(b.position));
-=======
-    final fromItems = post.images
-        .where((e) => e.publicUrl != null && e.publicUrl!.isNotEmpty)
-        .toList()
-      ..sort((a, b) => a.position.compareTo(b.position));
->>>>>>> 70001575e525ac37a38a7cdce0dc86ba5be77582
     final urls = fromItems.map((e) => e.publicUrl!).toList();
     if (urls.isNotEmpty) return urls;
     if (post.primaryImageUrl != null && post.primaryImageUrl!.isNotEmpty) {
@@ -398,19 +313,11 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       case 'open':
         return 'Aberto';
       case 'in_analysis':
-<<<<<<< HEAD
         return 'Em análise';
       case 'in_progress':
         return 'Em andamento';
       case 'completed':
         return 'Concluído';
-=======
-        return 'Em analise';
-      case 'in_progress':
-        return 'Em andamento';
-      case 'completed':
-        return 'Concluido';
->>>>>>> 70001575e525ac37a38a7cdce0dc86ba5be77582
       case 'closed':
         return 'Encerrado';
       case 'expired':
@@ -433,10 +340,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 
 class _AuthorHeader extends StatelessWidget {
   const _AuthorHeader({required this.post});
-<<<<<<< HEAD
-=======
 
->>>>>>> 70001575e525ac37a38a7cdce0dc86ba5be77582
   final FeedPost post;
 
   @override
@@ -481,13 +385,9 @@ class _AuthorHeader extends StatelessWidget {
 
 class _DetailAvatar extends StatelessWidget {
   const _DetailAvatar({required this.post});
-<<<<<<< HEAD
-  final FeedPost post;
-=======
 
   final FeedPost post;
 
->>>>>>> 70001575e525ac37a38a7cdce0dc86ba5be77582
   static const double radius = 24;
 
   @override
@@ -496,15 +396,11 @@ class _DetailAvatar extends StatelessWidget {
       return CircleAvatar(
         radius: radius,
         backgroundColor: AppColors.primaryLight,
-<<<<<<< HEAD
         child: Icon(
           Icons.visibility_off_outlined,
           size: 22,
           color: AppColors.primaryDark,
         ),
-=======
-        child: Icon(Icons.visibility_off_outlined, size: 22, color: AppColors.primaryDark),
->>>>>>> 70001575e525ac37a38a7cdce0dc86ba5be77582
       );
     }
     final url = post.authorAvatarUrl;
@@ -532,16 +428,12 @@ class _DetailAvatar extends StatelessWidget {
 
   Widget _initials() {
     final label = post.authorLabel;
-<<<<<<< HEAD
     final parts = label
         .trim()
         .split(RegExp(r'\s+'))
         .where((e) => e.isNotEmpty)
         .take(2)
         .toList();
-=======
-    final parts = label.trim().split(RegExp(r'\s+')).where((e) => e.isNotEmpty).take(2).toList();
->>>>>>> 70001575e525ac37a38a7cdce0dc86ba5be77582
     String t;
     if (parts.isEmpty) {
       t = '?';
@@ -563,10 +455,7 @@ class _DetailAvatar extends StatelessWidget {
 
 class _MetaChip extends StatelessWidget {
   const _MetaChip({required this.icon, required this.label});
-<<<<<<< HEAD
-=======
 
->>>>>>> 70001575e525ac37a38a7cdce0dc86ba5be77582
   final IconData icon;
   final String label;
 
@@ -603,10 +492,7 @@ class _MetaChip extends StatelessWidget {
 
 class _PostImageGallery extends StatefulWidget {
   const _PostImageGallery({required this.urls});
-<<<<<<< HEAD
-=======
 
->>>>>>> 70001575e525ac37a38a7cdce0dc86ba5be77582
   final List<String> urls;
 
   @override
@@ -628,7 +514,6 @@ class _PostImageGalleryState extends State<_PostImageGallery> {
             fit: BoxFit.cover,
             errorBuilder: (_, _, _) => const ColoredBox(
               color: AppColors.divider,
-<<<<<<< HEAD
               child: Center(
                 child: Icon(
                   Icons.broken_image_outlined,
@@ -636,9 +521,6 @@ class _PostImageGalleryState extends State<_PostImageGallery> {
                   color: AppColors.textHint,
                 ),
               ),
-=======
-              child: Center(child: Icon(Icons.broken_image_outlined, size: 48, color: AppColors.textHint)),
->>>>>>> 70001575e525ac37a38a7cdce0dc86ba5be77582
             ),
           ),
         ),
@@ -654,7 +536,6 @@ class _PostImageGalleryState extends State<_PostImageGallery> {
             child: PageView.builder(
               itemCount: widget.urls.length,
               onPageChanged: (i) => setState(() => _page = i),
-<<<<<<< HEAD
               itemBuilder: (context, i) => Image.network(
                 widget.urls[i],
                 fit: BoxFit.cover,
@@ -669,18 +550,6 @@ class _PostImageGalleryState extends State<_PostImageGallery> {
                   ),
                 ),
               ),
-=======
-              itemBuilder: (context, i) {
-                return Image.network(
-                  widget.urls[i],
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) => const ColoredBox(
-                    color: AppColors.divider,
-                    child: Center(child: Icon(Icons.broken_image_outlined, size: 48, color: AppColors.textHint)),
-                  ),
-                );
-              },
->>>>>>> 70001575e525ac37a38a7cdce0dc86ba5be77582
             ),
           ),
         ),
