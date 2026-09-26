@@ -46,6 +46,18 @@ class AuthService {
     }
   }
 
+  /// Envia o e-mail com o link para redefinir a senha.
+  /// Usado pela ForgotPasswordScreen.
+  Future<void> resetPassword({required String email}) async {
+    try {
+      await _auth.resetPasswordForEmail(email.trim());
+    } on AuthException catch (error) {
+      throw Exception(_mapAuthError(error));
+    } catch (_) {
+      throw Exception('Erro inesperado ao enviar o e-mail de redefinição.');
+    }
+  }
+
   Future<void> signOut() async {
     try {
       await _auth.signOut();
@@ -77,6 +89,12 @@ class AuthService {
 
     if (message.contains('signup is disabled')) {
       return 'O cadastro de novos usuarios esta desabilitado no momento.';
+    }
+
+    // Supabase limita quantos e-mails podem ser enviados em sequência.
+    if (message.contains('rate limit') ||
+        message.contains('for security purposes')) {
+      return 'Muitas tentativas seguidas. Aguarde um pouco e tente novamente.';
     }
 
     return error.message;
