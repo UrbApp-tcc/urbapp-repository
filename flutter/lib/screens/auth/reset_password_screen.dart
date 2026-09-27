@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../../services/auth_service.dart';
-import '../../theme/app_theme.dart';
+import '../../theme/urbapp_design.dart';
 import '../../utils/error_formatter.dart';
-import '../../widgets/app_logo.dart';
-import '../../widgets/auth_text_field.dart';
-import '../../widgets/gradient_button.dart';
-import '../../widgets/wave_header.dart';
+import '../../widgets/fade_slide_in.dart';
+import '../../widgets/urb_dialog.dart';
+import '../../widgets/urb_hero.dart';
+import '../../widgets/urb_primary_button.dart';
+import '../../widgets/urb_text_field.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
   const ResetPasswordScreen({super.key});
@@ -53,26 +54,10 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     try {
       await _authService.updatePassword(_passwordController.text);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Senha atualizada com sucesso!'),
-          backgroundColor: AppColors.resolved,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          margin: const EdgeInsets.all(16),
-        ),
-      );
+      showUrbSnack(context, 'Senha atualizada com sucesso!');
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(friendlyError(error)),
-          backgroundColor: AppColors.error,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          margin: const EdgeInsets.all(16),
-        ),
-      );
+      showUrbSnack(context, friendlyError(error), error: true);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -80,127 +65,92 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      resizeToAvoidBottomInset: true,
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final minHeight = MediaQuery.of(context).size.height -
-                MediaQuery.paddingOf(context).top -
-                MediaQuery.paddingOf(context).bottom;
-            return SingleChildScrollView(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: minHeight),
-                child: IntrinsicHeight(
-                  child: Column(
-                    children: [
-                      const WaveHeader(height: 180),
-                      Expanded(
-                        child: Center(
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 400),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 24),
-                              child: Form(
-                                key: _formKey,
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                                  children: [
-                                    const AppLogo(height: 115),
-                                    const SizedBox(height: 16),
-                                    const Text(
-                                      'Nova senha',
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        color: AppColors.textPrimary,
-                                        fontSize: 28,
-                                        fontWeight: FontWeight.w800,
-                                        letterSpacing: -0.5,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    const Text(
-                                      'Escolha uma senha forte para a sua conta',
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        color: AppColors.textSecondary,
-                                        fontSize: 15,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 32),
-                                    AuthTextField(
-                                      controller: _passwordController,
-                                      validator: _validatePassword,
-                                      hintText: 'Nova senha',
-                                      obscureText: !_isPasswordVisible,
-                                      prefixIcon: const Icon(
-                                        Icons.lock_outline_rounded,
-                                        color: AppColors.textSecondary,
-                                        size: 22,
-                                      ),
-                                      suffixIcon: IconButton(
-                                        onPressed: () => setState(
-                                          () => _isPasswordVisible = !_isPasswordVisible,
-                                        ),
-                                        icon: Icon(
-                                          _isPasswordVisible
-                                              ? Icons.visibility_off_outlined
-                                              : Icons.visibility_outlined,
-                                          color: AppColors.textSecondary,
-                                          size: 22,
-                                        ),
-                                      ),
-                                      textInputAction: TextInputAction.next,
-                                    ),
-                                    const SizedBox(height: 16),
-                                    AuthTextField(
-                                      controller: _confirmController,
-                                      validator: _validateConfirm,
-                                      hintText: 'Confirmar nova senha',
-                                      obscureText: !_isConfirmVisible,
-                                      prefixIcon: const Icon(
-                                        Icons.lock_outline_rounded,
-                                        color: AppColors.textSecondary,
-                                        size: 22,
-                                      ),
-                                      suffixIcon: IconButton(
-                                        onPressed: () => setState(
-                                          () => _isConfirmVisible = !_isConfirmVisible,
-                                        ),
-                                        icon: Icon(
-                                          _isConfirmVisible
-                                              ? Icons.visibility_off_outlined
-                                              : Icons.visibility_outlined,
-                                          color: AppColors.textSecondary,
-                                          size: 22,
-                                        ),
-                                      ),
-                                      textInputAction: TextInputAction.done,
-                                      onFieldSubmitted: (_) => _submit(),
-                                    ),
-                                    const SizedBox(height: 24),
-                                    GradientButton(
-                                      label: 'Salvar nova senha',
-                                      loading: _isLoading,
-                                      onPressed: _submit,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 32),
-                    ],
+    return UrbAuthScaffold(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FadeSlideIn(
+            offsetY: 12,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 76,
+                  height: 76,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(26),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.verified_user_outlined,
+                    color: Colors.white,
+                    size: 36,
                   ),
                 ),
+                const SizedBox(height: 24),
+                const UrbAuthTitle(
+                  title: 'Nova senha',
+                  subtitle: 'Escolha uma senha forte para a sua conta',
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 32),
+          FadeSlideIn(
+            delay: const Duration(milliseconds: 120),
+            child: UrbCard(
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    UrbTextField(
+                      label: 'Nova senha',
+                      controller: _passwordController,
+                      icon: Icons.lock_outline_rounded,
+                      hintText: 'Mínimo de 6 caracteres',
+                      validator: _validatePassword,
+                      obscureText: !_isPasswordVisible,
+                      autofillHints: const [AutofillHints.newPassword],
+                      suffix: PasswordVisibilityToggle(
+                        visible: _isPasswordVisible,
+                        onPressed: () => setState(
+                          () => _isPasswordVisible = !_isPasswordVisible,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+                    UrbTextField(
+                      label: 'Confirmar nova senha',
+                      controller: _confirmController,
+                      icon: Icons.lock_outline_rounded,
+                      hintText: 'Repita a nova senha',
+                      validator: _validateConfirm,
+                      obscureText: !_isConfirmVisible,
+                      textInputAction: TextInputAction.done,
+                      onFieldSubmitted: (_) => _submit(),
+                      suffix: PasswordVisibilityToggle(
+                        visible: _isConfirmVisible,
+                        onPressed: () => setState(
+                          () => _isConfirmVisible = !_isConfirmVisible,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+                    UrbPrimaryButton(
+                      label: 'Salvar nova senha',
+                      loading: _isLoading,
+                      onPressed: _submit,
+                    ),
+                  ],
+                ),
               ),
-            );
-          },
-        ),
+            ),
+          ),
+        ],
       ),
     );
   }

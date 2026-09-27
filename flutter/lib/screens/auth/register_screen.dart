@@ -1,13 +1,14 @@
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/auth_service.dart';
 import '../../services/profile_service.dart';
-import '../../theme/app_theme.dart';
+import '../../theme/urbapp_design.dart';
 import '../../utils/error_formatter.dart';
-import '../../widgets/app_logo.dart';
-import '../../widgets/auth_text_field.dart';
-import '../../widgets/gradient_button.dart';
+import '../../widgets/fade_slide_in.dart';
+import '../../widgets/urb_dialog.dart';
+import '../../widgets/urb_hero.dart';
+import '../../widgets/urb_primary_button.dart';
+import '../../widgets/urb_text_field.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -31,7 +32,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
   List<ProfileCityOption> _cities = const [];
   int? _selectedCityId;
 
-  static const double _maxContentWidth = 400;
+  @override
+  void initState() {
+    super.initState();
+    _loadCities();
+  }
 
   @override
   void dispose() {
@@ -42,14 +47,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
-  @override
-  void initState() {
-    super.initState();
-    _loadCities();
-  }
-
   String? _validateUsername(String? value) {
-    if (value == null || value.trim().isEmpty) return 'Informe o nome de usuário';
+    if (value == null || value.trim().isEmpty)
+      return 'Informe o nome de usuário';
     if (value.trim().length < 3) return 'Use pelo menos 3 caracteres';
     if (value.trim().length > 48) return 'Use no máximo 48 caracteres';
     if (!RegExp(r'^[a-zA-Z0-9._]+$').hasMatch(value.trim())) {
@@ -71,8 +71,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return null;
   }
 
-  String? _validateMobile(String? value) => null;
-
   Future<void> _loadCities() async {
     try {
       final cities = await _profileService.fetchCities();
@@ -85,29 +83,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _isCitiesLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(friendlyError(error)),
-          backgroundColor: AppColors.error,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          margin: const EdgeInsets.all(16),
-        ),
-      );
+      showUrbSnack(context, friendlyError(error), error: true);
     }
   }
 
   Future<void> _createAccount() async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedCityId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Selecione uma cidade para continuar.'),
-          backgroundColor: AppColors.error,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          margin: const EdgeInsets.all(16),
-        ),
+      showUrbSnack(
+        context,
+        'Selecione uma cidade para continuar.',
+        error: true,
       );
       return;
     }
@@ -127,22 +113,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
       if (!mounted) return;
 
       if (response.session == null) {
-        Navigator.of(context).pop('Conta criada. Confirme seu e-mail para entrar.');
+        Navigator.of(
+          context,
+        ).pop('Conta criada. Confirme seu e-mail para entrar.');
         return;
       }
 
       Navigator.of(context).pop('Conta criada com sucesso!');
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(friendlyError(error)),
-          backgroundColor: AppColors.error,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          margin: const EdgeInsets.all(16),
-        ),
-      );
+      showUrbSnack(context, friendlyError(error), error: true);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -150,215 +130,146 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
-    final padding = MediaQuery.paddingOf(context);
-    final availableHeight = size.height - padding.top - padding.bottom;
-    final isCompact = availableHeight < 750;
-
-    return Scaffold(
-      backgroundColor: Colors.white,
-      resizeToAvoidBottomInset: true,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: availableHeight),
-            child: IntrinsicHeight(
-              child: Column(
-                children: [
-                  _buildDecorativeShapes(isCompact: isCompact),
-                  Expanded(
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: _maxContentWidth),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 24),
-                          child: _buildContent(isCompact: isCompact),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDecorativeShapes({required bool isCompact}) {
-    final headerHeight = isCompact ? 80.0 : 110.0;
-    return SizedBox(
-      height: headerHeight,
-      width: double.infinity,
-      child: Stack(
+    return UrbAuthScaffold(
+      onBack: () => Navigator.of(context).maybePop(),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Positioned(
-            top: -30,
-            right: -40,
-            child: Container(
-              width: 160,
-              height: 160,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    AppColors.gradientViolet.withValues(alpha: 0.5),
-                    AppColors.gradientBlue.withValues(alpha: 0.4),
-                  ],
-                ),
-              ),
+          const FadeSlideIn(
+            offsetY: 12,
+            child: UrbAuthTitle(
+              title: 'Faça parte da sua cidade',
+              subtitle: 'Crie sua conta para reportar e acompanhar problemas.',
             ),
           ),
-          Positioned(
-            bottom: -20,
-            left: -30,
-            child: Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  begin: Alignment.topRight,
-                  end: Alignment.bottomLeft,
-                  colors: [
-                    AppColors.gradientViolet.withValues(alpha: 0.4),
-                    AppColors.accentPurple.withValues(alpha: 0.35),
-                  ],
-                ),
-              ),
-            ),
+          const SizedBox(height: 32),
+          FadeSlideIn(
+            delay: const Duration(milliseconds: 120),
+            child: UrbCard(child: _buildForm()),
+          ),
+          const SizedBox(height: 20),
+          UrbAuthFooterLink(
+            text: 'Já tem uma conta?',
+            action: 'Entrar',
+            onPressed: () => Navigator.of(context).maybePop(),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildContent({required bool isCompact}) {
-    final logoHeight = isCompact ? 70.0 : 100.0;
-    final spacingLogoTitle = isCompact ? 10.0 : 16.0;
-    final spacingTitleForm = isCompact ? 14.0 : 24.0;
-    final spacingFields = isCompact ? 10.0 : 16.0;
-    final spacingFormButton = isCompact ? 16.0 : 24.0;
-
+  Widget _buildForm() {
     return Form(
       key: _formKey,
       child: Column(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          AppLogo(height: logoHeight),
-          SizedBox(height: spacingLogoTitle),
-          const Text(
-            'Criar conta',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 26,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.5,
-            ),
-          ),
-          SizedBox(height: spacingTitleForm),
-          AuthTextField(
+          UrbTextField(
+            label: 'Nome de usuário',
             controller: _usernameController,
+            icon: Icons.alternate_email_rounded,
+            hintText: 'seu.usuario',
+            helperText: 'Use letras, números, pontos e _',
             validator: _validateUsername,
-            hintText: 'Nome de usuário',
-            prefixIcon: const Icon(Icons.person_outline_rounded, color: AppColors.textSecondary, size: 22),
-            textInputAction: TextInputAction.next,
+            autofillHints: const [AutofillHints.newUsername],
           ),
-          SizedBox(height: spacingFields),
-          AuthTextField(
-            controller: _passwordController,
-            validator: _validatePassword,
-            hintText: 'Senha',
-            obscureText: !_isPasswordVisible,
-            prefixIcon: const Icon(Icons.lock_outline_rounded, color: AppColors.textSecondary, size: 22),
-            suffixIcon: IconButton(
-              onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
-              icon: Icon(
-                _isPasswordVisible ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                color: AppColors.textSecondary,
-                size: 22,
-              ),
-            ),
-            textInputAction: TextInputAction.next,
-          ),
-          SizedBox(height: spacingFields),
-          AuthTextField(
+          const SizedBox(height: 22),
+          UrbTextField(
+            label: 'E-mail',
             controller: _emailController,
-            validator: _validateEmail,
-            hintText: 'E-mail',
+            icon: Icons.mail_outline_rounded,
+            hintText: 'seu@email.com',
             keyboardType: TextInputType.emailAddress,
-            prefixIcon: const Icon(Icons.email_outlined, color: AppColors.textSecondary, size: 22),
-            textInputAction: TextInputAction.next,
+            validator: _validateEmail,
+            autofillHints: const [AutofillHints.email],
           ),
-          SizedBox(height: spacingFields),
-          AuthTextField(
+          const SizedBox(height: 22),
+          UrbTextField(
+            label: 'Celular (opcional)',
             controller: _mobileController,
-            validator: _validateMobile,
-            hintText: 'Celular',
+            icon: Icons.phone_iphone_rounded,
+            hintText: '(15) 90000-0000',
             keyboardType: TextInputType.phone,
-            prefixIcon: const Icon(Icons.phone_android_rounded, color: AppColors.textSecondary, size: 22),
+            autofillHints: const [AutofillHints.telephoneNumber],
+          ),
+          const SizedBox(height: 22),
+          _buildCityField(),
+          const SizedBox(height: 22),
+          UrbTextField(
+            label: 'Senha',
+            controller: _passwordController,
+            icon: Icons.lock_outline_rounded,
+            hintText: 'Mínimo de 8 caracteres',
+            validator: _validatePassword,
+            obscureText: !_isPasswordVisible,
             textInputAction: TextInputAction.done,
-          ),
-          SizedBox(height: spacingFields),
-          DropdownButtonFormField<int>(
-            initialValue: _selectedCityId,
-            items: _cities
-                .map(
-                  (city) => DropdownMenuItem<int>(
-                    value: city.id,
-                    child: Text(city.name),
-                  ),
-                )
-                .toList(),
-            onChanged: _isCitiesLoading
-                ? null
-                : (value) => setState(() => _selectedCityId = value),
-            validator: (value) => value == null ? 'Selecione a sua cidade' : null,
-            decoration: InputDecoration(
-              labelText: 'Cidade',
-              hintText: _isCitiesLoading ? 'Carregando cidades...' : 'Selecione a sua cidade',
-              prefixIcon: const Icon(
-                Icons.location_city_outlined,
-                color: AppColors.textSecondary,
-                size: 22,
-              ),
+            onFieldSubmitted: (_) => _createAccount(),
+            autofillHints: const [AutofillHints.newPassword],
+            suffix: PasswordVisibilityToggle(
+              visible: _isPasswordVisible,
+              onPressed: () =>
+                  setState(() => _isPasswordVisible = !_isPasswordVisible),
             ),
           ),
-          SizedBox(height: spacingFormButton),
-          GradientButton(
+          const SizedBox(height: 30),
+          UrbPrimaryButton(
             label: 'Criar conta',
-            loading: _isLoading || _isCitiesLoading,
-            onPressed: (_isCitiesLoading || _cities.isEmpty) ? null : _createAccount,
-          ),
-          const SizedBox(height: 28),
-          Center(
-            child: RichText(
-              text: TextSpan(
-                style: const TextStyle(color: AppColors.textSecondary, fontSize: 14),
-                children: [
-                  const TextSpan(text: 'Já tem uma conta? '),
-                  TextSpan(
-                    text: 'Entrar',
-                    style: const TextStyle(
-                      color: AppColors.primary,
-                      fontWeight: FontWeight.w700,
-                      decoration: TextDecoration.underline,
-                    ),
-                    recognizer: TapGestureRecognizer()..onTap = () => Navigator.of(context).pop(),
-                  ),
-                ],
-              ),
-            ),
+            loading: _isLoading,
+            onPressed: (_isCitiesLoading || _cities.isEmpty)
+                ? null
+                : _createAccount,
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildCityField() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Cidade',
+          style: UrbText.body(
+            size: 13,
+            weight: FontWeight.w700,
+            color: const Color(0xFF374151),
+            height: 1.2,
+          ),
+        ),
+        const SizedBox(height: 10),
+        DropdownButtonFormField<int>(
+          initialValue: _selectedCityId,
+          isExpanded: true,
+          alignment: Alignment.center,
+          borderRadius: BorderRadius.circular(16),
+          icon: const Icon(
+            Icons.expand_more_rounded,
+            color: UrbColors.textMuted,
+          ),
+          style: UrbText.body(size: 15, color: UrbColors.ink, height: 1.3),
+          items: _cities
+              .map(
+                (city) => DropdownMenuItem<int>(
+                  value: city.id,
+                  alignment: Alignment.center,
+                  child: Text(city.name),
+                ),
+              )
+              .toList(),
+          onChanged: _isCitiesLoading
+              ? null
+              : (value) => setState(() => _selectedCityId = value),
+          validator: (value) => value == null ? 'Selecione a sua cidade' : null,
+          decoration: urbInputDecoration(
+            hintText: _isCitiesLoading
+                ? 'Carregando cidades...'
+                : 'Selecione a sua cidade',
+            icon: Icons.location_on_outlined,
+            suffix: const SizedBox(width: 0),
+          ),
+        ),
+      ],
     );
   }
 }

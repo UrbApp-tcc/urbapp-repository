@@ -4,11 +4,18 @@ import '../../theme/urbapp_design.dart';
 import 'onboarding_screen.dart';
 import 'onboarding_storage.dart';
 
-/// Mostra o primeiro acesso uma única vez e, depois, o [child]
-/// (normalmente o AuthGate).
+/// Depois do login, mostra o primeiro acesso uma única vez por usuário
+/// e, depois, o [child] (a tela principal do app).
 class OnboardingGate extends StatefulWidget {
-  const OnboardingGate({super.key, required this.child});
+  const OnboardingGate({
+    super.key,
+    required this.userId,
+    required this.metadata,
+    required this.child,
+  });
 
+  final String userId;
+  final Map<String, dynamic>? metadata;
   final Widget child;
 
   @override
@@ -28,21 +35,22 @@ class _OnboardingGateState extends State<OnboardingGate> {
   Future<void> _load() async {
     bool completed;
     try {
-      completed = await _storage.isCompleted();
+      completed = await _storage.isCompleted(
+        userId: widget.userId,
+        metadata: widget.metadata,
+      );
     } catch (_) {
-      // Se não der para ler o armazenamento, não trava o app.
+      // Se não der para verificar, não trava o app.
       completed = true;
     }
     if (mounted) setState(() => _completed = completed);
   }
 
   Future<void> _finish() async {
-    try {
-      await _storage.markCompleted();
-    } catch (_) {
-      // Mesmo sem salvar, segue para o app.
-    }
     if (mounted) setState(() => _completed = true);
+    try {
+      await _storage.markCompleted(userId: widget.userId);
+    } catch (_) {}
   }
 
   @override

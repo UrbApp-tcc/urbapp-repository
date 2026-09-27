@@ -12,18 +12,24 @@ const _legacyAnonKey = String.fromEnvironment('ANON_KEY');
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final resolvedAnonKey = _supabaseAnonKey.isNotEmpty ? _supabaseAnonKey : _legacyAnonKey;
+  final resolvedAnonKey = _supabaseAnonKey.isNotEmpty
+      ? _supabaseAnonKey
+      : _legacyAnonKey;
   final missingValues = <String>[
     if (_supabaseUrl.isEmpty) 'SUPABASE_URL',
     if (resolvedAnonKey.isEmpty) 'SUPABASE_ANON_KEY (ou ANON_KEY)',
   ];
 
-  if (missingValues.isNotEmpty || _looksLikePlaceholder(_supabaseUrl) || _looksLikePlaceholder(resolvedAnonKey)) {
+  if (missingValues.isNotEmpty ||
+      _looksLikePlaceholder(_supabaseUrl) ||
+      _looksLikePlaceholder(resolvedAnonKey)) {
     runApp(
       ConfigurationErrorApp(
         message: [
-          if (missingValues.isNotEmpty) 'Faltam as variáveis: ${missingValues.join(', ')}.',
-          if (_looksLikePlaceholder(_supabaseUrl) || _looksLikePlaceholder(resolvedAnonKey))
+          if (missingValues.isNotEmpty)
+            'Faltam as variáveis: ${missingValues.join(', ')}.',
+          if (_looksLikePlaceholder(_supabaseUrl) ||
+              _looksLikePlaceholder(resolvedAnonKey))
             'O arquivo de configuração ainda está com valores de exemplo.',
           'Crie flutter/dart_defines/dev.json a partir de dev.json.example e rode com '
               '--dart-define-from-file=dart_defines/dev.json.',
@@ -78,10 +84,7 @@ Future<String?> _validateSupabasePublicConfig({
   try {
     final response = await http.get(
       Uri.parse('$url/auth/v1/settings'),
-      headers: {
-        'apikey': anonKey,
-        'Authorization': 'Bearer $anonKey',
-      },
+      headers: {'apikey': anonKey, 'Authorization': 'Bearer $anonKey'},
     );
 
     if (response.statusCode == 200) return null;
@@ -123,10 +126,7 @@ class UrbappApp extends StatelessWidget {
 }
 
 class ConfigurationErrorApp extends StatelessWidget {
-  const ConfigurationErrorApp({
-    super.key,
-    required this.message,
-  });
+  const ConfigurationErrorApp({super.key, required this.message});
 
   final String message;
 

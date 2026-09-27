@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../services/auth_service.dart';
 import '../../widgets/gamification_listener.dart';
 import '../app_shell_screen.dart';
+import '../onboarding/onboarding_gate.dart';
 import 'login_screen.dart';
 import 'reset_password_screen.dart';
 
@@ -39,10 +40,18 @@ class _AuthGateState extends State<AuthGate> {
           return const LoginScreen();
         }
 
-        // A key com o id do usuário recria o listener ao trocar de conta.
-        return GamificationListener(
-          key: ValueKey(session.user.id),
-          child: const AppShellScreen(),
+        final user = session.user;
+
+        // Primeiro acesso: aparece só na primeira vez que o usuário entra.
+        // A key com o id recria tudo ao trocar de conta.
+        return OnboardingGate(
+          key: ValueKey('onboarding-${user.id}'),
+          userId: user.id,
+          metadata: user.userMetadata,
+          child: GamificationListener(
+            key: ValueKey(user.id),
+            child: const AppShellScreen(),
+          ),
         );
       },
     );

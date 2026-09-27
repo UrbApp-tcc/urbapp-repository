@@ -1,13 +1,15 @@
-import 'package:flutter/gestures.dart';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../services/auth_service.dart';
-import '../../theme/app_theme.dart';
+import '../../theme/urbapp_design.dart';
 import '../../utils/error_formatter.dart';
-import '../../widgets/app_logo.dart';
-import '../../widgets/auth_text_field.dart';
-import '../../widgets/gradient_button.dart';
-import '../../widgets/wave_header.dart';
+import '../../widgets/fade_slide_in.dart';
+import '../../widgets/urb_dialog.dart';
+import '../../widgets/urb_hero.dart';
+import '../../widgets/urb_primary_button.dart';
+import '../../widgets/urb_text_field.dart';
 import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -17,7 +19,8 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends State<LoginScreen>
+    with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -26,12 +29,17 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isPasswordVisible = false;
   bool _isLoading = false;
 
-  static const double _maxContentWidth = 400;
+  /// "Tremidinha" do cartão quando o login falha.
+  late final AnimationController _shake = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 420),
+  );
 
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _shake.dispose();
     super.dispose();
   }
 
@@ -60,89 +68,16 @@ class _LoginScreenState extends State<LoginScreen> {
     return null;
   }
 
-  Future<void> _showForgotPasswordDialog() async {
-    final currentIdentifier = _emailController.text.trim();
-    final emailController = TextEditingController(
-      text: currentIdentifier.contains('@') &&
-              !currentIdentifier.startsWith('@')
-          ? currentIdentifier
-          : '',
-    );
-    final formKey = GlobalKey<FormState>();
-    var isSending = false;
-
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (dialogContext, setDialogState) {
-            return AlertDialog(
-              title: const Text('Redefinir senha'),
-              content: Form(
-                key: formKey,
-                child: TextFormField(
-                  controller: emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
-                    labelText: 'E-mail',
-                    hintText: 'seu@email.com',
-                  ),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) return 'Informe seu e-mail';
-                    final regex = RegExp(r'^[\w.-]+@[\w.-]+\.\w{2,}$');
-                    if (!regex.hasMatch(value.trim())) return 'E-mail inválido';
-                    return null;
-                  },
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: isSending ? null : () => Navigator.of(dialogContext).pop(),
-                  child: const Text('Cancelar'),
-                ),
-                TextButton(
-                  onPressed: isSending
-                      ? null
-                      : () async {
-                          if (!formKey.currentState!.validate()) return;
-                          setDialogState(() => isSending = true);
-                          try {
-                            await _authService.resetPassword(emailController.text);
-                            if (!dialogContext.mounted) return;
-                            Navigator.of(dialogContext).pop();
-                            if (!mounted) return;
-                            _showSnack(
-                              'E-mail de redefinição enviado. Verifique sua caixa de entrada.',
-                              AppColors.primary,
-                            );
-                          } catch (error) {
-                            setDialogState(() => isSending = false);
-                            if (!dialogContext.mounted) return;
-                            Navigator.of(dialogContext).pop();
-                            if (!mounted) return;
-                            _showSnack(friendlyError(error), AppColors.error);
-                          }
-                        },
-                  child: isSending
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Enviar'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-
-    emailController.dispose();
+  void _playShake() {
+    if (MediaQuery.disableAnimationsOf(context)) return;
+    _shake.forward(from: 0);
   }
 
   Future<void> _signIn() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) {
+      _playShake();
+      return;
+    }
 
     FocusScope.of(context).unfocus();
     setState(() => _isLoading = true);
@@ -154,189 +89,280 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } catch (error) {
       if (!mounted) return;
-      _showSnack(friendlyError(error), AppColors.error);
+      _playShake();
+      showUrbSnack(context, friendlyError(error), error: true);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  void _showSnack(String message, Color color) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: color,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        margin: const EdgeInsets.all(16),
+  Future<void> _showForgotPasswordDialog() async {
+    final currentIdentifier = _emailController.text.trim();
+    final initialEmail =
+        currentIdentifier.contains('@') && !currentIdentifier.startsWith('@')
+        ? currentIdentifier
+        : '';
+
+    final sent = await showUrbDialog<bool>(
+      context: context,
+      builder: (_) => _ForgotPasswordDialog(
+        authService: _authService,
+        initialEmail: initialEmail,
       ),
     );
+
+    if (!mounted || sent == null) return;
+    if (sent) {
+      showUrbSnack(
+        context,
+        'E-mail de redefinição enviado. Verifique sua caixa de entrada.',
+      );
+    }
   }
 
   Future<void> _openRegister() async {
-    final message = await Navigator.of(context).push<String>(
-      MaterialPageRoute(builder: (_) => const RegisterScreen()),
-    );
+    final message = await Navigator.of(
+      context,
+    ).push<String>(MaterialPageRoute(builder: (_) => const RegisterScreen()));
 
     if (!mounted || message == null) return;
-    _showSnack(message, AppColors.primary);
+    showUrbSnack(context, message);
   }
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
-    final padding = MediaQuery.paddingOf(context);
-    final availableHeight = size.height - padding.top - padding.bottom;
-    final isCompact = availableHeight < 680;
-    final waveHeight = isCompact ? 120.0 : 160.0;
+    final compact = MediaQuery.sizeOf(context).height < 700;
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      resizeToAvoidBottomInset: true,
-      body: SafeArea(
+    return UrbAuthScaffold(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FadeSlideIn(
+            offsetY: 12,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                UrbLogoTile(size: compact ? 96 : 120),
+                SizedBox(height: compact ? 20 : 28),
+                const UrbAuthTitle(
+                  title: 'Seja bem-vindo!',
+                  subtitle: 'Faça login na sua conta',
+                ),
+              ],
+            ),
+          ),
+          SizedBox(height: compact ? 28 : 36),
+          FadeSlideIn(
+            delay: const Duration(milliseconds: 120),
+            child: AnimatedBuilder(
+              animation: _shake,
+              builder: (context, child) {
+                final dx =
+                    math.sin(_shake.value * math.pi * 5) *
+                    10 *
+                    (1 - _shake.value);
+                return Transform.translate(offset: Offset(dx, 0), child: child);
+              },
+              child: UrbCard(child: _buildForm()),
+            ),
+          ),
+          const SizedBox(height: 20),
+          FadeSlideIn(
+            delay: const Duration(milliseconds: 220),
+            child: UrbAuthFooterLink(
+              text: 'Não tem uma conta?',
+              action: 'Criar conta',
+              onPressed: _openRegister,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildForm() {
+    return Form(
+      key: _formKey,
+      child: AutofillGroup(
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            WaveHeader(height: waveHeight),
-            // Área do formulário: scrollável e centralizado verticalmente
-            Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) => SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                    child: IntrinsicHeight(
-                      child: Center(
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: _maxContentWidth),
-                          child: _buildForm(isCompact: isCompact),
-                        ),
-                      ),
-                    ),
+            UrbTextField(
+              label: 'E-mail ou nome de usuário',
+              controller: _emailController,
+              icon: Icons.person_outline_rounded,
+              hintText: 'seu@email.com ou @usuario',
+              validator: _validateIdentifier,
+              autofillHints: const [
+                AutofillHints.username,
+                AutofillHints.email,
+              ],
+            ),
+            const SizedBox(height: 22),
+            UrbTextField(
+              label: 'Senha',
+              controller: _passwordController,
+              icon: Icons.lock_outline_rounded,
+              hintText: 'Sua senha',
+              validator: _validatePassword,
+              obscureText: !_isPasswordVisible,
+              textInputAction: TextInputAction.done,
+              onFieldSubmitted: (_) => _signIn(),
+              autofillHints: const [AutofillHints.password],
+              suffix: PasswordVisibilityToggle(
+                visible: _isPasswordVisible,
+                onPressed: () =>
+                    setState(() => _isPasswordVisible = !_isPasswordVisible),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.center,
+              child: TextButton(
+                onPressed: _showForgotPasswordDialog,
+                child: Text(
+                  'Esqueceu sua senha?',
+                  style: UrbText.body(
+                    size: 14,
+                    weight: FontWeight.w700,
+                    color: UrbColors.violetDeep,
                   ),
                 ),
               ),
             ),
-            // Link "Não tem uma conta?" fixo na parte inferior — fora do scroll
-            Padding(
-              padding: const EdgeInsets.only(top: 8, bottom: 24),
-              child: _buildSignUpLink(),
+            const SizedBox(height: 12),
+            UrbPrimaryButton(
+              label: 'Entrar',
+              loading: _isLoading,
+              onPressed: _signIn,
             ),
           ],
         ),
       ),
     );
   }
+}
 
-  Widget _buildForm({required bool isCompact}) {
-    final logoHeight = isCompact ? 76.0 : 96.0;
-    final spacingLogoTitle = isCompact ? 12.0 : 16.0;
-    final spacingTitleForm = isCompact ? 14.0 : 22.0;
-    final spacingFields = isCompact ? 12.0 : 16.0;
-    final spacingFormButton = isCompact ? 14.0 : 22.0;
+/// Janela flutuante "Redefinir senha".
+class _ForgotPasswordDialog extends StatefulWidget {
+  const _ForgotPasswordDialog({
+    required this.authService,
+    required this.initialEmail,
+  });
 
-    return Form(
-      key: _formKey,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          AppLogo(height: logoHeight),
-          SizedBox(height: spacingLogoTitle),
-          const Text(
-            'Seja bem-vindo!',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 28,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.5,
-            ),
-          ),
-          const SizedBox(height: 5),
-          const Text(
-            'Faça login na sua conta',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 14,
-            ),
-          ),
-          SizedBox(height: spacingTitleForm),
-          AuthTextField(
-            controller: _emailController,
-            validator: _validateIdentifier,
-            hintText: 'E-mail ou nome de usuário',
-            keyboardType: TextInputType.text,
-            prefixIcon: const Icon(
-              Icons.person_outline_rounded,
-              color: AppColors.textSecondary,
-              size: 22,
-            ),
-            textInputAction: TextInputAction.next,
-          ),
-          SizedBox(height: spacingFields),
-          AuthTextField(
-            controller: _passwordController,
-            validator: _validatePassword,
-            hintText: 'Senha',
-            obscureText: !_isPasswordVisible,
-            prefixIcon: const Icon(Icons.lock_outline_rounded, color: AppColors.textSecondary, size: 22),
-            suffixIcon: IconButton(
-              onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
-              icon: Icon(
-                _isPasswordVisible ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                color: AppColors.textSecondary,
-                size: 22,
-              ),
-            ),
-            textInputAction: TextInputAction.done,
-            onFieldSubmitted: (_) => _signIn(),
-          ),
-          const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton(
-              onPressed: _showForgotPasswordDialog,
-              style: TextButton.styleFrom(
-                foregroundColor: AppColors.textHint,
-                padding: EdgeInsets.zero,
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              child: const Text(
-                'Esqueceu sua senha?',
-                style: TextStyle(fontSize: 13),
-              ),
-            ),
-          ),
-          SizedBox(height: spacingFormButton),
-          GradientButton(
-            label: 'Entrar',
-            loading: _isLoading,
-            onPressed: _signIn,
-          ),
-          const SizedBox(height: 16),
-        ],
-      ),
-    );
+  final AuthService authService;
+  final String initialEmail;
+
+  @override
+  State<_ForgotPasswordDialog> createState() => _ForgotPasswordDialogState();
+}
+
+class _ForgotPasswordDialogState extends State<_ForgotPasswordDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final _emailController = TextEditingController(
+    text: widget.initialEmail,
+  );
+  bool _isSending = false;
+  String? _errorMessage;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    super.dispose();
   }
 
-  Widget _buildSignUpLink() {
-    return RichText(
-      textAlign: TextAlign.center,
-      text: TextSpan(
-        style: const TextStyle(color: AppColors.textSecondary, fontSize: 14),
-        children: [
-          const TextSpan(text: 'Não tem uma conta? '),
-          TextSpan(
-            text: 'Criar conta',
-            style: const TextStyle(
-              color: AppColors.primary,
-              fontWeight: FontWeight.w700,
-              decoration: TextDecoration.underline,
+  Future<void> _send() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() {
+      _isSending = true;
+      _errorMessage = null;
+    });
+
+    try {
+      await widget.authService.resetPassword(_emailController.text);
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isSending = false;
+        _errorMessage = friendlyError(error);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(22),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            UrbDialogHeader(
+              icon: Icons.lock_outline_rounded,
+              title: 'Redefinir senha',
+              subtitle: 'Enviaremos um link para o seu e-mail.',
+              onClose: _isSending ? null : () => Navigator.of(context).pop(),
             ),
-            recognizer: TapGestureRecognizer()..onTap = _openRegister,
-          ),
-        ],
+            const SizedBox(height: 18),
+            UrbTextField(
+              label: 'E-mail',
+              controller: _emailController,
+              icon: Icons.mail_outline_rounded,
+              hintText: 'seu@email.com',
+              keyboardType: TextInputType.emailAddress,
+              textInputAction: TextInputAction.done,
+              onFieldSubmitted: (_) => _send(),
+              validator: (value) {
+                if (value == null || value.trim().isEmpty)
+                  return 'Informe seu e-mail';
+                final regex = RegExp(r'^[\w.-]+@[\w.-]+\.\w{2,}$');
+                if (!regex.hasMatch(value.trim())) return 'E-mail inválido';
+                return null;
+              },
+            ),
+            AnimatedSize(
+              duration: UrbMotion.of(context, UrbMotion.fast),
+              child: _errorMessage == null
+                  ? const SizedBox(width: double.infinity)
+                  : Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: Text(
+                        _errorMessage!,
+                        textAlign: TextAlign.center,
+                        style: UrbText.body(
+                          size: 13,
+                          color: const Color(0xFFDC2626),
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+            ),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                Expanded(
+                  child: UrbSecondaryButton(
+                    label: 'Cancelar',
+                    onPressed: _isSending
+                        ? null
+                        : () => Navigator.of(context).pop(),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: UrbPrimaryButton(
+                    label: 'Enviar',
+                    loading: _isSending,
+                    onPressed: _send,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

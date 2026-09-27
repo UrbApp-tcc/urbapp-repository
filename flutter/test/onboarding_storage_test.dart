@@ -3,24 +3,45 @@ import 'package:meu_app/screens/onboarding/onboarding_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  group('onboardingDoneInMetadata', () {
+    test('sem metadados, ainda não viu', () {
+      expect(onboardingDoneInMetadata(null), isFalse);
+      expect(onboardingDoneInMetadata({}), isFalse);
+    });
+
+    test('com a marcação na conta, já viu', () {
+      expect(onboardingDoneInMetadata({onboardingMetadataKey: true}), isTrue);
+    });
+
+    test('marcação desfeita conta como não visto', () {
+      expect(onboardingDoneInMetadata({onboardingMetadataKey: false}), isFalse);
+    });
+  });
+
   group('OnboardingStorage', () {
     setUp(() => SharedPreferences.setMockInitialValues({}));
 
-    test('primeiro acesso ainda não foi visto', () async {
-      expect(await OnboardingStorage().isCompleted(), isFalse);
+    test('usuário novo ainda não viu o primeiro acesso', () async {
+      expect(await OnboardingStorage().isCompleted(userId: 'u1'), isFalse);
     });
 
-    test('depois de concluir, fica marcado', () async {
+    test('marcar como visto vale só para aquele usuário', () async {
       final storage = OnboardingStorage();
-      await storage.markCompleted();
-      expect(await storage.isCompleted(), isTrue);
+      await storage.markCompleted(userId: 'u1');
+
+      expect(await storage.isCompleted(userId: 'u1'), isTrue);
+      expect(await storage.isCompleted(userId: 'u2'), isFalse);
     });
 
-    test('reset faz o primeiro acesso aparecer de novo', () async {
+    test('metadados da conta bastam, mesmo em outro aparelho', () async {
       final storage = OnboardingStorage();
-      await storage.markCompleted();
-      await storage.reset();
-      expect(await storage.isCompleted(), isFalse);
+      expect(
+        await storage.isCompleted(
+          userId: 'u1',
+          metadata: {onboardingMetadataKey: true},
+        ),
+        isTrue,
+      );
     });
   });
 }
