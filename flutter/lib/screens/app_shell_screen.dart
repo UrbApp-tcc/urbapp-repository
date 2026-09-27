@@ -514,6 +514,9 @@ class _AppShellScreenState extends State<AppShellScreen> {
                             posts: _posts,
                             isLoading: _isLoading,
                             currentUserId: currentUserId,
+                            cities: _cities,
+                            selectedCityId: _selectedCityId,
+                            onCityChanged: _changeCityFilter,
                           ),
                           NotificationsScreen(
                             currentUserId: currentUserId,
