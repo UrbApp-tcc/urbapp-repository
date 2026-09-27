@@ -35,10 +35,22 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  String? _validateEmail(String? value) {
-    if (value == null || value.trim().isEmpty) return 'Informe seu e-mail';
-    final regex = RegExp(r'^[\w.-]+@[\w.-]+\.\w{2,}$');
-    if (!regex.hasMatch(value.trim())) return 'E-mail inválido';
+  String? _validateIdentifier(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Informe seu e-mail ou nome de usuário';
+    }
+
+    final identifier = value.trim();
+    if (identifier.startsWith('@')) {
+      if (identifier.substring(1).trim().length < 3) {
+        return 'Nome de usuário muito curto';
+      }
+    } else if (identifier.contains('@')) {
+      final emailRegex = RegExp(r'^[\w.-]+@[\w.-]+\.\w{2,}$');
+      if (!emailRegex.hasMatch(identifier)) return 'E-mail inválido';
+    } else if (identifier.length < 3) {
+      return 'Nome de usuário muito curto';
+    }
     return null;
   }
 
@@ -49,7 +61,13 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _showForgotPasswordDialog() async {
-    final emailController = TextEditingController(text: _emailController.text.trim());
+    final currentIdentifier = _emailController.text.trim();
+    final emailController = TextEditingController(
+      text: currentIdentifier.contains('@') &&
+              !currentIdentifier.startsWith('@')
+          ? currentIdentifier
+          : '',
+    );
     final formKey = GlobalKey<FormState>();
     var isSending = false;
 
@@ -131,7 +149,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       await _authService.signIn(
-        email: _emailController.text,
+        identifier: _emailController.text,
         password: _passwordController.text,
       );
     } catch (error) {
@@ -245,10 +263,14 @@ class _LoginScreenState extends State<LoginScreen> {
           SizedBox(height: spacingTitleForm),
           AuthTextField(
             controller: _emailController,
-            validator: _validateEmail,
-            hintText: 'E-mail',
-            keyboardType: TextInputType.emailAddress,
-            prefixIcon: const Icon(Icons.email_outlined, color: AppColors.textSecondary, size: 22),
+            validator: _validateIdentifier,
+            hintText: 'E-mail ou nome de usuário',
+            keyboardType: TextInputType.text,
+            prefixIcon: const Icon(
+              Icons.person_outline_rounded,
+              color: AppColors.textSecondary,
+              size: 22,
+            ),
             textInputAction: TextInputAction.next,
           ),
           SizedBox(height: spacingFields),

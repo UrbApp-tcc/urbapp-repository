@@ -1202,38 +1202,42 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           alignment: Alignment.topLeft,
           child: Material(
             elevation: 8,
-            borderRadius: BorderRadius.circular(18),
-            child: Container(
+            color: Colors.white,
+            clipBehavior: Clip.antiAlias,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+              side: const BorderSide(color: AppColors.border),
+            ),
+            child: SizedBox(
               width: MediaQuery.sizeOf(context).width - 48,
-              constraints: const BoxConstraints(maxHeight: 220),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: items.isEmpty
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Text(
-                          emptyMessage,
-                          style: const TextStyle(color: AppColors.textSecondary),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 220),
+                child: items.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Text(
+                            emptyMessage,
+                            style: const TextStyle(
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
                         ),
+                      )
+                    : ListView.separated(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        shrinkWrap: true,
+                        itemCount: items.length,
+                        separatorBuilder: (_, _) => const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final option = items[index];
+                          return ListTile(
+                            title: Text(option.name),
+                            onTap: () => onSelected(option),
+                          );
+                        },
                       ),
-                    )
-                  : ListView.separated(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      shrinkWrap: true,
-                      itemCount: items.length,
-                      separatorBuilder: (_, _) => const Divider(height: 1),
-                      itemBuilder: (context, index) {
-                        final option = items[index];
-                        return ListTile(
-                          title: Text(option.name),
-                          onTap: () => onSelected(option),
-                        );
-                      },
-                    ),
+              ),
             ),
           ),
         );
