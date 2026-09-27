@@ -6,6 +6,7 @@ import '../services/city_service.dart';
 import '../services/feed_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/error_formatter.dart';
+import '../widgets/city_picker_sheet.dart';
 import 'post_detail_screen.dart';
 
 class CityMapScreen extends StatefulWidget {
@@ -142,62 +143,127 @@ class _CityMapScreenState extends State<CityMapScreen> {
     await _loadPosts();
   }
 
-  void _showPostPreview(FeedPost post) {
-    showModalBottomSheet<void>(
+  Future<void> _chooseCity() async {
+    final result = await showCityPickerSheet(
+      context,
+      cities: widget.cities,
+      selectedCityId: _selectedCityId,
+    );
+    final cityId = result?.cityId;
+    if (!mounted || cityId == null || cityId == _selectedCityId) return;
+    setState(() {
+      _selectedCityId = cityId;
+      _posts = const [];
+    });
+    await _loadPosts();
+  }
+
+  Future<void> _showPostPreview(FeedPost post) async {
+    final openPost = await showDialog<bool>(
       context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      builder: (context) => Padding(
-        padding: const EdgeInsets.fromLTRB(24, 22, 24, 28),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              post.categoryName,
-              style: const TextStyle(
-                color: AppColors.textHint,
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              post.title,
-              style: const TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            if (post.addressLabel.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(
-                post.addressLabel,
-                style: const TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 14,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.white,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 380),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (post.primaryImageUrl case final imageUrl?)
+                ClipRRect(
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(24),
+                  ),
+                  child: AspectRatio(
+                    aspectRatio: 16 / 9,
+                    child: Image.network(
+                      imageUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => const ColoredBox(
+                        color: AppColors.background,
+                        child: Center(
+                          child: Icon(
+                            Icons.image_not_supported_outlined,
+                            color: AppColors.textHint,
+                            size: 36,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(22, 20, 22, 22),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      post.title,
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.location_on_outlined,
+                          color: AppColors.textSecondary,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            post.neighborhood?.trim().isNotEmpty == true
+                                ? post.neighborhood!.trim()
+                                : 'Bairro não informado',
+                            style: const TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                        const Icon(
+                          Icons.favorite_border_rounded,
+                          color: AppColors.textSecondary,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          '${post.supportsCount}',
+                          style: const TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () => Navigator.of(context).pop(true),
+                        icon: const Icon(Icons.open_in_new_rounded),
+                        label: const Text('Ir para o reporte'),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  _openPost(post);
-                },
-                icon: const Icon(Icons.open_in_new_rounded),
-                label: const Text('Ver reporte'),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
+
+    if (openPost == true && mounted) {
+      await _openPost(post);
+    }
   }
 
   @override
@@ -214,32 +280,29 @@ class _CityMapScreenState extends State<CityMapScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
-            child: DropdownButtonFormField<int>(
-              key: ValueKey(_selectedCityId),
-              initialValue: _selectedCityId,
-              isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Cidade exibida',
-                prefixIcon: Icon(Icons.location_city_outlined),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: _isLoading ? null : _chooseCity,
+                icon: const Icon(Icons.location_on_outlined, size: 17),
+                label: Text(
+                  selectedCity == null
+                      ? 'Escolher cidade'
+                      : '${selectedCity.name} · ${selectedCity.stateAbbreviation}',
+                ),
+                style: OutlinedButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  minimumSize: const Size(0, 36),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 7,
+                  ),
+                  textStyle: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
-              items: widget.cities
-                  .map(
-                    (city) => DropdownMenuItem<int>(
-                      value: city.id,
-                      child: Text(city.name),
-                    ),
-                  )
-                  .toList(),
-              onChanged: _isLoading
-                  ? null
-                  : (cityId) {
-                      if (cityId == null || cityId == _selectedCityId) return;
-                      setState(() {
-                        _selectedCityId = cityId;
-                        _posts = const [];
-                      });
-                      _loadPosts();
-                    },
             ),
           ),
           Expanded(

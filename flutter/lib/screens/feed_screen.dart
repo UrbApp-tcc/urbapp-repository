@@ -5,6 +5,7 @@ import '../services/city_service.dart';
 import '../services/feed_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/date_formatter.dart';
+import '../widgets/city_picker_sheet.dart';
 import 'profile_screen.dart';
 
 class FeedScreen extends StatefulWidget {
@@ -51,6 +52,23 @@ class _FeedScreenState extends State<FeedScreen>
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  CityOption? get _selectedCity {
+    final selectedCityId = widget.selectedCityId;
+    if (selectedCityId == null) return null;
+    return widget.cities.where((city) => city.id == selectedCityId).firstOrNull;
+  }
+
+  Future<void> _chooseCity() async {
+    final result = await showCityPickerSheet(
+      context,
+      cities: widget.cities,
+      selectedCityId: widget.selectedCityId,
+      allowAllCities: true,
+    );
+    if (result == null || !mounted) return;
+    widget.onCityChanged(result.cityId);
   }
 
   @override
@@ -102,33 +120,27 @@ class _FeedScreenState extends State<FeedScreen>
                   ],
                 ),
               ),
-              const SizedBox(height: 12),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: DropdownButtonFormField<int?>(
-                  key: ValueKey(widget.selectedCityId),
-                  initialValue: widget.selectedCityId,
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Filtrar por cidade',
-                    prefixIcon: Icon(Icons.location_city_outlined),
+              const SizedBox(height: 8),
+              Center(
+                child: OutlinedButton.icon(
+                  onPressed: widget.cities.isEmpty ? null : _chooseCity,
+                  icon: const Icon(Icons.location_on_outlined, size: 16),
+                  label: Text(_selectedCity?.name ?? 'Todas as cidades'),
+                  style: OutlinedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    minimumSize: const Size(0, 34),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    textStyle: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                  items: [
-                    const DropdownMenuItem<int?>(
-                      value: null,
-                      child: Text('Todas as cidades'),
-                    ),
-                    ...widget.cities.map(
-                      (city) => DropdownMenuItem<int?>(
-                        value: city.id,
-                        child: Text(city.name),
-                      ),
-                    ),
-                  ],
-                  onChanged: widget.onCityChanged,
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 10),
               // Tab bar de ponta a ponta (sem padding horizontal)
               _FeedTabBar(controller: _tabController),
             ],

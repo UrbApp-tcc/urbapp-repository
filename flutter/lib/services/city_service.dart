@@ -1,11 +1,50 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class CityOption {
-  const CityOption({required this.id, required this.name});
+  const CityOption({
+    required this.id,
+    required this.name,
+    required this.stateCode,
+  });
 
   final int id;
   final String name;
+  final String stateCode;
+
+  String get stateAbbreviation => stateCode.toUpperCase();
+
+  String get stateName => brazilianStateNames[stateCode] ?? stateAbbreviation;
 }
+
+const brazilianStateNames = <String, String>{
+  'ac': 'Acre',
+  'al': 'Alagoas',
+  'ap': 'Amapá',
+  'am': 'Amazonas',
+  'ba': 'Bahia',
+  'ce': 'Ceará',
+  'df': 'Distrito Federal',
+  'es': 'Espírito Santo',
+  'go': 'Goiás',
+  'ma': 'Maranhão',
+  'mt': 'Mato Grosso',
+  'ms': 'Mato Grosso do Sul',
+  'mg': 'Minas Gerais',
+  'pa': 'Pará',
+  'pb': 'Paraíba',
+  'pr': 'Paraná',
+  'pe': 'Pernambuco',
+  'pi': 'Piauí',
+  'rj': 'Rio de Janeiro',
+  'rn': 'Rio Grande do Norte',
+  'rs': 'Rio Grande do Sul',
+  'ro': 'Rondônia',
+  'rr': 'Roraima',
+  'sc': 'Santa Catarina',
+  'sp': 'São Paulo',
+  'se': 'Sergipe',
+  'to': 'Tocantins',
+};
 
 class CityService {
   CityService({SupabaseClient? supabase})
@@ -17,7 +56,7 @@ class CityService {
     try {
       final response = await _supabase
           .from('cities')
-          .select('id, name')
+          .select('id, name, state')
           .order('name');
 
       return (response as List<dynamic>)
@@ -25,6 +64,7 @@ class CityService {
             (item) => CityOption(
               id: (item['id'] as num).toInt(),
               name: item['name'] as String,
+              stateCode: item['state'] as String,
             ),
           )
           .toList();
