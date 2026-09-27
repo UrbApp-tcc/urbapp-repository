@@ -142,12 +142,16 @@ class FeedService {
     int limit = 20,
     int offset = 0,
     int? cityId,
+    int? categoryId,
+    String? status,
   }) async {
     try {
       return await _fetchDirectFeed(
         limit: limit,
         offset: offset,
         cityId: cityId,
+        categoryId: categoryId,
+        status: status,
         includeAddress: true,
       );
     } on PostgrestException catch (error) {
@@ -156,6 +160,8 @@ class FeedService {
           limit: limit,
           offset: offset,
           cityId: cityId,
+          categoryId: categoryId,
+          status: status,
           includeAddress: false,
         );
       }
@@ -274,6 +280,8 @@ class FeedService {
 
   Future<List<FeedPost>> fetchAllCityPosts({
     required int cityId,
+    int? categoryId,
+    String? status,
     int pageSize = 100,
   }) async {
     final posts = <FeedPost>[];
@@ -284,6 +292,8 @@ class FeedService {
         limit: pageSize,
         offset: offset,
         cityId: cityId,
+        categoryId: categoryId,
+        status: status,
       );
       posts.addAll(page);
       if (page.length < pageSize) break;
@@ -297,6 +307,8 @@ class FeedService {
     required int limit,
     required int offset,
     required int? cityId,
+    required int? categoryId,
+    required String? status,
     required bool includeAddress,
   }) async {
     final addressColumns = includeAddress ? 'street, neighborhood,' : '';
@@ -311,6 +323,12 @@ class FeedService {
 
     if (cityId != null) {
       query = query.eq('city_id', cityId);
+    }
+    if (categoryId != null) {
+      query = query.eq('category_id', categoryId);
+    }
+    if (status != null) {
+      query = query.eq('status', status);
     }
 
     final response = await query

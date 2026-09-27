@@ -4,6 +4,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../services/city_service.dart';
 import '../services/feed_service.dart';
+import '../services/post_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/error_formatter.dart';
 import '../widgets/city_picker_sheet.dart';
@@ -34,9 +35,12 @@ class CityMapScreen extends StatefulWidget {
 
 class _CityMapScreenState extends State<CityMapScreen> {
   final _feedService = FeedService();
+  final _postService = PostService();
   final _mapController = MapController();
 
   int? _selectedCityId;
+  int? _selectedCategoryId;
+  List<LookupOption> _categories = const [];
   List<FeedPost> _posts = const [];
   bool _isLoading = true;
 
@@ -44,7 +48,7 @@ class _CityMapScreenState extends State<CityMapScreen> {
   void initState() {
     super.initState();
     _selectedCityId = _resolveInitialCityId();
-    _loadPosts();
+    _loadInitialData();
   }
 
   @override
@@ -68,6 +72,49 @@ class _CityMapScreenState extends State<CityMapScreen> {
     return widget.cities.where((city) => city.id == selectedId).firstOrNull;
   }
 
+  LookupOption? get _selectedCategory {
+    final selectedId = _selectedCategoryId;
+    if (selectedId == null) return null;
+    return _categories
+        .where((category) => category.id == selectedId)
+        .firstOrNull;
+  }
+
+  ButtonStyle get _filterButtonStyle => OutlinedButton.styleFrom(
+    visualDensity: VisualDensity.compact,
+    minimumSize: const Size(0, 36),
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+    textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+  );
+
+  Future<void> _loadInitialData() async {
+    final cityId = _selectedCityId;
+    if (cityId == null) {
+      setState(() => _isLoading = false);
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    try {
+      final categoriesFuture = _postService.fetchCategories();
+      final postsFuture = _feedService.fetchAllCityPosts(
+        cityId: cityId,
+        status: 'open',
+      );
+      final categories = await categoriesFuture;
+      final posts = await postsFuture;
+      if (!mounted) return;
+      setState(() {
+        _categories = categories;
+        _posts = posts;
+        _isLoading = false;
+      });
+      _centerMap(posts);
+    } catch (error) {
+      _handleLoadError(error);
+    }
+  }
+
   Future<void> _loadPosts() async {
     final cityId = _selectedCityId;
     if (cityId == null) {
@@ -77,7 +124,11 @@ class _CityMapScreenState extends State<CityMapScreen> {
 
     setState(() => _isLoading = true);
     try {
-      final posts = await _feedService.fetchAllCityPosts(cityId: cityId);
+      final posts = await _feedService.fetchAllCityPosts(
+        cityId: cityId,
+        categoryId: _selectedCategoryId,
+        status: 'open',
+      );
       if (!mounted) return;
       setState(() {
         _posts = posts;
@@ -85,15 +136,19 @@ class _CityMapScreenState extends State<CityMapScreen> {
       });
       _centerMap(posts);
     } catch (error) {
-      if (!mounted) return;
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(friendlyError(error)),
-          backgroundColor: AppColors.error,
-        ),
-      );
+      _handleLoadError(error);
     }
+  }
+
+  void _handleLoadError(Object error) {
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(friendlyError(error)),
+        backgroundColor: AppColors.error,
+      ),
+    );
   }
 
   void _centerMap(List<FeedPost> posts) {
@@ -153,6 +208,88 @@ class _CityMapScreenState extends State<CityMapScreen> {
     if (!mounted || cityId == null || cityId == _selectedCityId) return;
     setState(() {
       _selectedCityId = cityId;
+      _posts = const [];
+    });
+    await _loadPosts();
+  }
+
+  Future<void> _chooseCategory() async {
+    final selectedId = await showModalBottomSheet<int>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (context) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * 0.68,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(24, 22, 24, 12),
+                child: Text(
+                  'Modalidade do reporte',
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 19,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                  children: [
+                    ListTile(
+                      onTap: () => Navigator.of(context).pop(0),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      leading: Icon(
+                        _selectedCategoryId == null
+                            ? Icons.check_circle_rounded
+                            : Icons.category_outlined,
+                        color: _selectedCategoryId == null
+                            ? AppColors.primary
+                            : AppColors.textSecondary,
+                      ),
+                      title: const Text('Todas as modalidades'),
+                    ),
+                    ..._categories.map(
+                      (category) => ListTile(
+                        onTap: () => Navigator.of(context).pop(category.id),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        leading: Icon(
+                          category.id == _selectedCategoryId
+                              ? Icons.check_circle_rounded
+                              : Icons.label_outline_rounded,
+                          color: category.id == _selectedCategoryId
+                              ? AppColors.primary
+                              : AppColors.textSecondary,
+                        ),
+                        title: Text(category.name),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (!mounted || selectedId == null) return;
+    final categoryId = selectedId == 0 ? null : selectedId;
+    if (categoryId == _selectedCategoryId) return;
+    setState(() {
+      _selectedCategoryId = categoryId;
       _posts = const [];
     });
     await _loadPosts();
@@ -243,6 +380,15 @@ class _CityMapScreenState extends State<CityMapScreen> {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 7),
+                    Text(
+                      post.categoryName,
+                      style: const TextStyle(
+                        color: AppColors.textHint,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                     const SizedBox(height: 20),
                     SizedBox(
                       width: double.infinity,
@@ -280,29 +426,38 @@ class _CityMapScreenState extends State<CityMapScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton.icon(
-                onPressed: _isLoading ? null : _chooseCity,
-                icon: const Icon(Icons.location_on_outlined, size: 17),
-                label: Text(
-                  selectedCity == null
-                      ? 'Escolher cidade'
-                      : '${selectedCity.name} · ${selectedCity.stateAbbreviation}',
-                ),
-                style: OutlinedButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  minimumSize: const Size(0, 36),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 7,
-                  ),
-                  textStyle: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _isLoading ? null : _chooseCity,
+                    icon: const Icon(Icons.location_on_outlined, size: 17),
+                    label: Text(
+                      selectedCity == null
+                          ? 'Cidade'
+                          : '${selectedCity.name} · ${selectedCity.stateAbbreviation}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    style: _filterButtonStyle,
                   ),
                 ),
-              ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _isLoading || _categories.isEmpty
+                        ? null
+                        : _chooseCategory,
+                    icon: const Icon(Icons.category_outlined, size: 17),
+                    label: Text(
+                      _selectedCategory?.name ?? 'Todas',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    style: _filterButtonStyle,
+                  ),
+                ),
+              ],
             ),
           ),
           Expanded(
@@ -388,7 +543,7 @@ class _CityMapScreenState extends State<CityMapScreen> {
                       child: Text(
                         _isLoading
                             ? 'Carregando reportes...'
-                            : '${_posts.length} reportes em ${selectedCity?.name ?? 'cidade selecionada'}',
+                            : '${_posts.length} reportes abertos em ${selectedCity?.name ?? 'cidade selecionada'}',
                         textAlign: TextAlign.center,
                         style: const TextStyle(
                           color: AppColors.textPrimary,

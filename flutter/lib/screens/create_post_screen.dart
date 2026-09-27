@@ -1147,7 +1147,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
         final query = textEditingValue.text.trim().toLowerCase();
         if (query.isEmpty) {
-          return options.take(8);
+          return options;
         }
 
         return options.where(
