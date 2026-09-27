@@ -3,9 +3,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/city_service.dart';
 import '../services/feed_service.dart';
-import '../theme/app_theme.dart';
+import '../theme/urbapp_design.dart';
 import '../utils/date_formatter.dart';
 import '../widgets/city_picker_sheet.dart';
+import '../widgets/city_skyline.dart';
+import '../widgets/fade_slide_in.dart';
+import '../widgets/urb_status_chip.dart';
 import 'profile_screen.dart';
 
 class FeedScreen extends StatefulWidget {
@@ -73,248 +76,37 @@ class _FeedScreenState extends State<FeedScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(0, 44, 0, 0),
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Row(
-                  children: [
-                    const SizedBox(width: 44),
-                    Expanded(
-                      child: Center(
-                        child: RichText(
-                          text: const TextSpan(
-                            children: [
-                              TextSpan(
-                                text: 'Urb',
-                                style: TextStyle(
-                                  color: Color(0xFF22252A),
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: -0.3,
-                                ),
-                              ),
-                              TextSpan(
-                                text: 'App',
-                                style: TextStyle(
-                                  color: Color(0xFF8A8F98),
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w300,
-                                  letterSpacing: -0.3,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: 'Abrir mapa da cidade',
-                      onPressed: widget.onOpenMap,
-                      icon: const Icon(Icons.map_outlined),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-              Center(
-                child: OutlinedButton.icon(
-                  onPressed: widget.cities.isEmpty ? null : _chooseCity,
-                  icon: const Icon(Icons.location_on_outlined, size: 16),
-                  label: Text(_selectedCity?.name ?? 'Todas as cidades'),
-                  style: OutlinedButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    minimumSize: const Size(0, 34),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    textStyle: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
-              // Tab bar de ponta a ponta (sem padding horizontal)
-              _FeedTabBar(controller: _tabController),
-            ],
-          ),
-        ),
-        Expanded(
-          child: TabBarView(
-            controller: _tabController,
-            children: [
-              _FeedPostsList(
-                posts: widget.posts,
-                likedPostIds: widget.likedPostIds,
-                isLoading: widget.isLoading,
-                isTrending: false,
-                sectionTitle: 'Ultimos reportes',
-                emptyHero: const _FeedEmptyHero(),
-                emptyList: const _FeedEmptyList(),
-                onOpenPost: widget.onOpenPost,
-              ),
-              _FeedPostsList(
-                posts: widget.trendingPosts,
-                likedPostIds: widget.likedPostIds,
-                isLoading: widget.isLoading,
-                isTrending: true,
-                sectionTitle: 'Top 20 da comunidade',
-                emptyHero: const _TrendingEmptyHero(),
-                emptyList: const _TrendingEmptyList(),
-                onOpenPost: widget.onOpenPost,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
+    final cityName = _selectedCity?.name;
 
-class _FeedPostsList extends StatelessWidget {
-  const _FeedPostsList({
-    required this.posts,
-    required this.likedPostIds,
-    required this.isLoading,
-    required this.isTrending,
-    required this.sectionTitle,
-    required this.emptyHero,
-    required this.emptyList,
-    required this.onOpenPost,
-  });
-
-  final List<FeedPost> posts;
-  final Set<int> likedPostIds;
-  final bool isLoading;
-  final bool isTrending;
-  final String sectionTitle;
-  final Widget emptyHero;
-  final Widget emptyList;
-  final ValueChanged<FeedPost> onOpenPost;
-
-  @override
-  Widget build(BuildContext context) {
-    final featuredPost = posts.isNotEmpty ? posts.first : null;
-    final latestPosts = posts.length > 1
-        ? posts.skip(1).toList()
-        : const <FeedPost>[];
-
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        if (isTrending) const _TrendingFeedBackdrop(),
-        ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(32, 28, 32, 132),
-          children: [
-            if (isLoading)
-              const _FeaturedCardSkeleton()
-            else if (featuredPost != null)
-              _FeaturedFeedCard(
-                post: featuredPost,
-                isLiked: likedPostIds.contains(featuredPost.id),
-                onOpen: () => onOpenPost(featuredPost),
-              )
-            else
-              emptyHero,
-            const SizedBox(height: 34),
-            _SectionTitle(title: sectionTitle, trailing: '${posts.length}'),
-            const SizedBox(height: 18),
-            if (isLoading)
-              ...List.generate(
-                4,
-                (index) => Padding(
-                  padding: EdgeInsets.only(bottom: index == 3 ? 0 : 24),
-                  child: const _LatestPostSkeleton(),
-                ),
-              )
-            else if (posts.isEmpty)
-              emptyList
-            else
-              ...latestPosts.asMap().entries.map(
-                (entry) => Padding(
-                  padding: EdgeInsets.only(
-                    bottom: entry.key == latestPosts.length - 1 ? 0 : 24,
-                  ),
-                  child: _LatestPostRow(
-                    post: entry.value,
-                    isLiked: likedPostIds.contains(entry.value.id),
-                    onOpen: () => onOpenPost(entry.value),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _TrendingFeedBackdrop extends StatelessWidget {
-  const _TrendingFeedBackdrop();
-
-  @override
-  Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: Stack(
+    return ColoredBox(
+      color: UrbColors.surface,
+      child: Column(
         children: [
-          const Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topRight,
-                  end: Alignment.bottomLeft,
-                  colors: [
-                    Color(0x10FF9A4D),
-                    Color(0x06FFC786),
-                    Color(0x00FFFFFF),
-                  ],
-                  stops: [0.0, 0.22, 0.58],
-                ),
-              ),
-            ),
+          _FeedHeader(
+            title: cityName == null
+                ? 'O que está rolando nas cidades'
+                : 'O que está rolando em $cityName',
+            cityLabel: cityName ?? 'Todas as cidades',
+            onChooseCity: widget.cities.isEmpty ? null : _chooseCity,
+            onOpenMap: widget.onOpenMap,
+            tabController: _tabController,
           ),
-          Positioned(
-            top: 24,
-            right: -42,
-            child: Container(
-              width: 170,
-              height: 170,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    Color(0x18FF8B2D),
-                    Color(0x08FFB35C),
-                    Color(0x00FFFFFF),
-                  ],
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _RecentList(
+                  posts: widget.posts,
+                  likedPostIds: widget.likedPostIds,
+                  isLoading: widget.isLoading,
+                  onOpenPost: widget.onOpenPost,
                 ),
-              ),
-            ),
-          ),
-          Positioned(
-            top: 260,
-            left: -76,
-            child: Container(
-              width: 220,
-              height: 220,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    Color(0x10FFB14A),
-                    Color(0x06FFD7A0),
-                    Color(0x00FFFFFF),
-                  ],
+                _TrendingList(
+                  posts: widget.trendingPosts,
+                  isLoading: widget.isLoading,
+                  onOpenPost: widget.onOpenPost,
                 ),
-              ),
+              ],
             ),
           ),
         ],
@@ -323,44 +115,663 @@ class _TrendingFeedBackdrop extends StatelessWidget {
   }
 }
 
-class _FeedTabBar extends StatelessWidget {
-  const _FeedTabBar({required this.controller});
+// ──────────────────────────────────────────────────────────
+// Topo roxo
+// ──────────────────────────────────────────────────────────
+
+class _FeedHeader extends StatelessWidget {
+  const _FeedHeader({
+    required this.title,
+    required this.cityLabel,
+    required this.onChooseCity,
+    required this.onOpenMap,
+    required this.tabController,
+  });
+
+  final String title;
+  final String cityLabel;
+  final VoidCallback? onChooseCity;
+  final VoidCallback onOpenMap;
+  final TabController tabController;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        color: UrbColors.hero,
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(32)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        children: [
+          const Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: 110,
+            child: CitySkyline(),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    _GlassChip(
+                      icon: Icons.location_on_outlined,
+                      label: cityLabel,
+                      trailing: Icons.expand_more_rounded,
+                      onPressed: onChooseCity,
+                    ),
+                    const Spacer(),
+                    _GlassIconButton(
+                      icon: Icons.map_outlined,
+                      tooltip: 'Abrir mapa da cidade',
+                      onPressed: onOpenMap,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: UrbText.display(
+                    size: 24,
+                    weight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                _FeedTabs(controller: tabController),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FeedTabs extends StatelessWidget {
+  const _FeedTabs({required this.controller});
 
   final TabController controller;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 52,
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-      decoration: const BoxDecoration(
-        color: Color(0xFFF4F6F8),
-        border: Border(
-          bottom: BorderSide(color: Color(0xFFE3E7EC)),
-        ),
+      height: 48,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: TabBar(
         controller: controller,
-        indicator: const BoxDecoration(
-          color: Color(0xFF18222E),
-          borderRadius: BorderRadius.all(Radius.circular(14)),
-        ),
         indicatorSize: TabBarIndicatorSize.tab,
         dividerColor: Colors.transparent,
-        labelColor: Colors.white,
-        unselectedLabelColor: const Color(0xFF7A838E),
-        labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
-        unselectedLabelStyle: const TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
+        indicator: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
         ),
+        labelColor: UrbColors.violetDeep,
+        unselectedLabelColor: Colors.white,
+        labelStyle: UrbText.body(
+          size: 14,
+          weight: FontWeight.w700,
+          height: 1.2,
+        ),
+        unselectedLabelStyle: UrbText.body(
+          size: 14,
+          weight: FontWeight.w600,
+          height: 1.2,
+        ),
+        splashBorderRadius: BorderRadius.circular(12),
         tabs: const [
           Tab(text: 'Recentes'),
-          Tab(text: 'Em Alta'),
+          Tab(text: 'Em alta'),
         ],
       ),
     );
   }
+}
+
+class _GlassChip extends StatelessWidget {
+  const _GlassChip({
+    required this.icon,
+    required this.label,
+    required this.trailing,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final IconData trailing;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white.withValues(alpha: 0.14),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: Colors.white.withValues(alpha: 0.28)),
+      ),
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: Colors.white, size: 18),
+              const SizedBox(width: 6),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 170),
+                child: Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: UrbText.body(
+                    size: 14,
+                    weight: FontWeight.w700,
+                    color: Colors.white,
+                    height: 1.2,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 2),
+              Icon(trailing, color: Colors.white, size: 18),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GlassIconButton extends StatelessWidget {
+  const _GlassIconButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.white.withValues(alpha: 0.14),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: Colors.white.withValues(alpha: 0.28)),
+        ),
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(14),
+          child: SizedBox(
+            width: 44,
+            height: 44,
+            child: Icon(icon, color: Colors.white, size: 21),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ──────────────────────────────────────────────────────────
+// Aba "Recentes": cartões grandes
+// ──────────────────────────────────────────────────────────
+
+class _RecentList extends StatelessWidget {
+  const _RecentList({
+    required this.posts,
+    required this.likedPostIds,
+    required this.isLoading,
+    required this.onOpenPost,
+  });
+
+  final List<FeedPost> posts;
+  final Set<int> likedPostIds;
+  final bool isLoading;
+  final ValueChanged<FeedPost> onOpenPost;
+
+  @override
+  Widget build(BuildContext context) {
+    if (isLoading) {
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 132),
+        children: const [
+          _CardSkeleton(),
+          SizedBox(height: 16),
+          _CardSkeleton(),
+        ],
+      );
+    }
+
+    if (posts.isEmpty) {
+      return const _EmptyState(
+        icon: Icons.location_city_rounded,
+        title: 'Nenhum reporte publicado ainda',
+        text:
+            'Use o botão central para criar o primeiro reporte da comunidade.',
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 132),
+      itemCount: posts.length + 1,
+      separatorBuilder: (_, index) => SizedBox(height: index == 0 ? 14 : 16),
+      itemBuilder: (context, index) {
+        if (index == 0) {
+          return _SectionTitle(title: 'Últimos reportes', count: posts.length);
+        }
+        final post = posts[index - 1];
+        final card = _PostCard(
+          post: post,
+          isLiked: likedPostIds.contains(post.id),
+          onOpen: () => onOpenPost(post),
+        );
+        // Só os primeiros cartões animam ao abrir, para não pesar.
+        return index <= 4
+            ? FadeSlideIn(
+                delay: Duration(milliseconds: 60 * (index - 1)),
+                child: card,
+              )
+            : card;
+      },
+    );
+  }
+}
+
+class _PostCard extends StatelessWidget {
+  const _PostCard({
+    required this.post,
+    required this.isLiked,
+    required this.onOpen,
+  });
+
+  final FeedPost post;
+  final bool isLiked;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(24),
+      child: InkWell(
+        onTap: onOpen,
+        borderRadius: BorderRadius.circular(24),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x0F1A1A2E),
+                blurRadius: 20,
+                offset: Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  _AuthorAvatar(post: post, size: 40),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => _openProfileFromPost(context, post),
+                      behavior: HitTestBehavior.opaque,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _authorName(post),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: UrbText.body(
+                              size: 15,
+                              weight: FontWeight.w700,
+                              color: UrbColors.ink,
+                              height: 1.3,
+                            ),
+                          ),
+                          Text(
+                            '${formatRelativeTime(post.createdAt)} · ${post.cityName}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: UrbText.body(
+                              size: 12,
+                              color: UrbColors.textMuted,
+                              height: 1.3,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  UrbStatusChip(status: post.status),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _PostImage(url: post.primaryImageUrl, height: 180, radius: 18),
+              const SizedBox(height: 12),
+              Text(
+                post.title,
+                style: UrbText.display(size: 18, weight: FontWeight.w700),
+              ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  const Icon(
+                    Icons.sell_outlined,
+                    size: 15,
+                    color: UrbColors.violet,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      post.categoryName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: UrbText.body(size: 13, height: 1.3),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  _CountPill(
+                    icon: isLiked
+                        ? Icons.favorite_rounded
+                        : Icons.favorite_border_rounded,
+                    color: UrbColors.heart,
+                    count: post.supportsCount,
+                    highlighted: isLiked,
+                    semanticLabel: 'apoios',
+                  ),
+                  const SizedBox(width: 8),
+                  _CountPill(
+                    icon: Icons.chat_bubble_outline_rounded,
+                    color: UrbColors.commentBlue,
+                    count: post.commentsCount,
+                    semanticLabel: 'comentários',
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CountPill extends StatelessWidget {
+  const _CountPill({
+    required this.icon,
+    required this.color,
+    required this.count,
+    required this.semanticLabel,
+    this.highlighted = false,
+  });
+
+  final IconData icon;
+  final Color color;
+  final int count;
+  final String semanticLabel;
+  final bool highlighted;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: '$count $semanticLabel',
+      excludeSemantics: true,
+      child: AnimatedContainer(
+        duration: UrbMotion.of(context, UrbMotion.fast),
+        height: 38,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(
+          color: highlighted ? const Color(0xFFFDE8F0) : UrbColors.surface,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 19, color: color),
+            const SizedBox(width: 6),
+            Text(
+              '$count',
+              style: UrbText.body(
+                size: 14,
+                weight: FontWeight.w700,
+                color: highlighted
+                    ? const Color(0xFFB0164F)
+                    : const Color(0xFF374151),
+                height: 1.2,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ──────────────────────────────────────────────────────────
+// Aba "Em alta": ranking com medalhas
+// ──────────────────────────────────────────────────────────
+
+class _TrendingList extends StatelessWidget {
+  const _TrendingList({
+    required this.posts,
+    required this.isLoading,
+    required this.onOpenPost,
+  });
+
+  final List<FeedPost> posts;
+  final bool isLoading;
+  final ValueChanged<FeedPost> onOpenPost;
+
+  @override
+  Widget build(BuildContext context) {
+    if (isLoading) {
+      return ListView.separated(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 132),
+        itemCount: 4,
+        separatorBuilder: (_, _) => const SizedBox(height: 12),
+        itemBuilder: (_, _) => const _RowSkeleton(),
+      );
+    }
+
+    if (posts.isEmpty) {
+      return const _EmptyState(
+        icon: Icons.local_fire_department_outlined,
+        title: 'Ainda não há reportes em alta',
+        text:
+            'Assim que os reportes acumularem apoios, comentários e engajamento, eles aparecem aqui.',
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 132),
+      itemCount: posts.length + 1,
+      separatorBuilder: (_, _) => const SizedBox(height: 12),
+      itemBuilder: (context, index) {
+        if (index == 0) {
+          return Row(
+            children: [
+              const Icon(
+                Icons.local_fire_department_rounded,
+                color: Color(0xFFE8590C),
+                size: 22,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Top 20 da comunidade',
+                  style: UrbText.display(size: 20, weight: FontWeight.w700),
+                ),
+              ),
+              _CountBadge(count: posts.length),
+            ],
+          );
+        }
+        final row = _RankRow(
+          position: index,
+          post: posts[index - 1],
+          onOpen: () => onOpenPost(posts[index - 1]),
+        );
+        return index <= 6
+            ? FadeSlideIn(
+                delay: Duration(milliseconds: 50 * (index - 1)),
+                child: row,
+              )
+            : row;
+      },
+    );
+  }
+}
+
+class _RankRow extends StatelessWidget {
+  const _RankRow({
+    required this.position,
+    required this.post,
+    required this.onOpen,
+  });
+
+  final int position;
+  final FeedPost post;
+  final VoidCallback onOpen;
+
+  static const _medals = {
+    1: [Color(0xFFF6D365), Color(0xFFD4A017)],
+    2: [Color(0xFFE3E7EC), Color(0xFF9AA3AD)],
+    3: [Color(0xFFF0C08F), Color(0xFFB7773F)],
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final medal = _medals[position];
+
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: onOpen,
+        borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                alignment: Alignment.center,
+                decoration: medal == null
+                    ? null
+                    : BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: medal,
+                        ),
+                      ),
+                child: Text(
+                  '$position',
+                  style: UrbText.display(
+                    size: 16,
+                    weight: FontWeight.w800,
+                    color: medal == null ? UrbColors.textMuted : Colors.white,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              _PostImage(
+                url: post.primaryImageUrl,
+                height: 64,
+                width: 64,
+                radius: 14,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      post.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: UrbText.display(size: 16, weight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _authorName(post),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: UrbText.body(
+                        size: 12,
+                        color: UrbColors.textMuted,
+                        height: 1.3,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Flexible(child: UrbStatusChip(status: post.status)),
+                        const SizedBox(width: 8),
+                        const Icon(
+                          Icons.favorite_rounded,
+                          size: 14,
+                          color: UrbColors.heart,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${post.supportsCount}',
+                          style: UrbText.body(
+                            size: 13,
+                            weight: FontWeight.w700,
+                            color: const Color(0xFFB0164F),
+                            height: 1.2,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ──────────────────────────────────────────────────────────
+// Peças compartilhadas
+// ──────────────────────────────────────────────────────────
+
+String _authorName(FeedPost post) {
+  if (post.isAnonymous) return 'Usuário anônimo';
+  final username = post.authorUsername?.trim();
+  if (username != null && username.isNotEmpty) return '@$username';
+  return post.authorLabel;
 }
 
 void _openProfileFromPost(BuildContext context, FeedPost post) {
@@ -374,516 +785,11 @@ void _openProfileFromPost(BuildContext context, FeedPost post) {
   );
 }
 
-
-class _FeaturedFeedCard extends StatelessWidget {
-  const _FeaturedFeedCard({
-    required this.post,
-    required this.isLiked,
-    required this.onOpen,
-  });
-
-  final FeedPost post;
-  final bool isLiked;
-  final VoidCallback onOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    final isCompleted = post.status == 'completed';
-
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: onOpen,
-        behavior: HitTestBehavior.opaque,
-        child: SizedBox(
-          height: 311,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                if (post.primaryImageUrl != null &&
-                    post.primaryImageUrl!.isNotEmpty)
-                  Image.network(
-                    post.primaryImageUrl!,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return _HeroFallback(category: post.categoryName);
-                    },
-                  )
-                else
-                  _HeroFallback(category: post.categoryName),
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        const Color(0xFF141E28).withValues(alpha: 0.18),
-                        const Color(0xFF141E28).withValues(alpha: 0.12),
-                        const Color(0xFF141E28).withValues(alpha: 0.86),
-                      ],
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              post.categoryName.toUpperCase(),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ),
-                          if (isCompleted) ...[
-                            const SizedBox(width: 8),
-                            const _CompletedBadge(onDarkBackground: true),
-                          ],
-                          const SizedBox(width: 8),
-                          Text(
-                            formatRelativeTime(post.createdAt),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 8,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      _FeedAuthorRow(
-                        post: post,
-                        onDarkBackground: true,
-                        onTap: () => _openProfileFromPost(context, post),
-                      ),
-                      const Spacer(),
-                      Text(
-                        post.title,
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          height: 1.2,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.3,
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.mode_comment_outlined,
-                            color: Colors.white,
-                            size: 24,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            '${post.commentsCount}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(width: 24),
-                          Icon(
-                            isLiked
-                                ? Icons.favorite_rounded
-                                : Icons.favorite_border_rounded,
-                            color: isLiked ? AppColors.error : Colors.white,
-                            size: 24,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            '${post.supportsCount}',
-                            style: TextStyle(
-                              color: isLiked ? AppColors.error : Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const Spacer(),
-                          const Icon(
-                            Icons.reply_outlined,
-                            color: Colors.white,
-                            size: 24,
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _LatestPostRow extends StatelessWidget {
-  const _LatestPostRow({
-    required this.post,
-    required this.isLiked,
-    required this.onOpen,
-  });
-
-  final FeedPost post;
-  final bool isLiked;
-  final VoidCallback onOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    final isCompleted = post.status == 'completed';
-
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onOpen,
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: SizedBox(
-                    width: 100,
-                    height: 100,
-                    child:
-                        post.primaryImageUrl != null &&
-                            post.primaryImageUrl!.isNotEmpty
-                        ? Image.network(
-                            post.primaryImageUrl!,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return _ThumbFallback(
-                                category: post.categoryName,
-                              );
-                            },
-                          )
-                        : _ThumbFallback(category: post.categoryName),
-                  ),
-                ),
-                const SizedBox(width: 24),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _FeedAuthorRow(
-                          post: post,
-                          onDarkBackground: false,
-                          onTap: () => _openProfileFromPost(context, post),
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                post.categoryName.toUpperCase(),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Color(0xFF9CA3AD),
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ),
-                            if (isCompleted) ...[
-                              const SizedBox(width: 8),
-                              const _CompletedBadge(),
-                            ],
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          post.title,
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Color(0xFF141E28),
-                            fontSize: 18,
-                            height: 1.2,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.3,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.mode_comment_outlined,
-                              size: 16,
-                              color: const Color(
-                                0xFF8F949D,
-                              ).withValues(alpha: 0.92),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              '${post.commentsCount}',
-                              style: const TextStyle(
-                                color: Color(0xFF8F949D),
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            Icon(
-                              isLiked
-                                  ? Icons.favorite_rounded
-                                  : Icons.favorite_border_rounded,
-                              size: 16,
-                              color: isLiked
-                                  ? AppColors.error
-                                  : const Color(
-                                      0xFF8F949D,
-                                    ).withValues(alpha: 0.92),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              '${post.supportsCount}',
-                              style: TextStyle(
-                                color: isLiked
-                                    ? AppColors.error
-                                    : const Color(0xFF8F949D),
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            Icon(
-                              Icons.schedule_rounded,
-                              size: 16,
-                              color: const Color(
-                                0xFF8F949D,
-                              ).withValues(alpha: 0.92),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              formatRelativeTime(post.createdAt),
-                              style: const TextStyle(
-                                color: Color(0xFF8F949D),
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CompletedBadge extends StatelessWidget {
-  const _CompletedBadge({this.onDarkBackground = false});
-
-  final bool onDarkBackground;
-
-  @override
-  Widget build(BuildContext context) {
-    final backgroundColor = onDarkBackground
-        ? AppColors.resolved.withValues(alpha: 0.92)
-        : AppColors.resolved.withValues(alpha: 0.12);
-    final foregroundColor = onDarkBackground
-        ? Colors.white
-        : AppColors.resolved;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-      decoration: BoxDecoration(
-        color: backgroundColor,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: onDarkBackground
-              ? Colors.white.withValues(alpha: 0.28)
-              : AppColors.resolved.withValues(alpha: 0.22),
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.check_circle_rounded, size: 13, color: foregroundColor),
-          const SizedBox(width: 4),
-          Text(
-            'Concluida',
-            style: TextStyle(
-              color: foregroundColor,
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _FeedAuthorRow extends StatelessWidget {
-  const _FeedAuthorRow({
-    required this.post,
-    required this.onDarkBackground,
-    this.onTap,
-  });
-
-  final FeedPost post;
-  final bool onDarkBackground;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final textColor = onDarkBackground
-        ? Colors.white.withValues(alpha: 0.92)
-        : const Color(0xFF4B5563);
-    final avatarBg = onDarkBackground
-        ? Colors.white.withValues(alpha: 0.22)
-        : const Color(0xFFE8ECF0);
-    final iconColor = onDarkBackground
-        ? Colors.white.withValues(alpha: 0.85)
-        : const Color(0xFF8F949D);
-
-    final child = Row(
-      children: [
-        _AuthorAvatar(
-          post: post,
-          backgroundColor: avatarBg,
-          iconColor: iconColor,
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            post.authorLabel,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: textColor,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-      ],
-    );
-
-    if (onTap == null || post.isAnonymous || post.authorId == null) {
-      return child;
-    }
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(999),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2),
-        child: child,
-      ),
-    );
-  }
-}
-
-class _AuthorAvatar extends StatelessWidget {
-  const _AuthorAvatar({
-    required this.post,
-    required this.backgroundColor,
-    required this.iconColor,
-  });
-
-  final FeedPost post;
-  final Color backgroundColor;
-  final Color iconColor;
-
-  static const double _radius = 14;
-
-  @override
-  Widget build(BuildContext context) {
-    if (post.isAnonymous) {
-      return CircleAvatar(
-        radius: _radius,
-        backgroundColor: backgroundColor,
-        child: Icon(Icons.visibility_off_outlined, size: 16, color: iconColor),
-      );
-    }
-
-    final url = post.authorAvatarUrl;
-    if (url != null && url.isNotEmpty) {
-      return CircleAvatar(
-        radius: _radius,
-        backgroundColor: backgroundColor,
-        child: ClipOval(
-          child: Image.network(
-            url,
-            width: _radius * 2,
-            height: _radius * 2,
-            fit: BoxFit.cover,
-            errorBuilder: (_, _, _) => _initials(),
-          ),
-        ),
-      );
-    }
-
-    return CircleAvatar(
-      radius: _radius,
-      backgroundColor: backgroundColor,
-      child: _initials(),
-    );
-  }
-
-  Widget _initials() {
-    final label = post.authorLabel;
-    final parts = label
-        .trim()
-        .split(RegExp(r'\s+'))
-        .where((e) => e.isNotEmpty)
-        .take(2)
-        .toList();
-    String t;
-    if (parts.isEmpty) {
-      t = '?';
-    } else if (parts.length == 1) {
-      t = parts[0].substring(0, 1).toUpperCase();
-    } else {
-      t = '${parts[0][0]}${parts[1][0]}'.toUpperCase();
-    }
-    return Text(
-      t,
-      style: TextStyle(
-        fontSize: 11,
-        fontWeight: FontWeight.w700,
-        color: iconColor,
-      ),
-    );
-  }
-}
-
 class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({required this.title, required this.trailing});
+  const _SectionTitle({required this.title, required this.count});
 
   final String title;
-  final String trailing;
+  final int count;
 
   @override
   Widget build(BuildContext context) {
@@ -892,157 +798,200 @@ class _SectionTitle extends StatelessWidget {
         Expanded(
           child: Text(
             title,
-            style: const TextStyle(
-              color: Color(0xFF8F949D),
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-            ),
+            style: UrbText.display(size: 20, weight: FontWeight.w700),
           ),
         ),
-        Container(
-          width: 22,
-          height: 22,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: const Color(0xFFB9BEC6), width: 1.4),
-          ),
-          alignment: Alignment.center,
-          child: Text(
-            trailing,
-            style: const TextStyle(
-              color: Color(0xFF8F949D),
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
+        _CountBadge(count: count),
       ],
     );
   }
 }
 
-IconData _iconForCategory(String categoryName) {
-  final normalized = categoryName.toLowerCase();
-  if (normalized.contains('luz')) return Icons.lightbulb_outline_rounded;
-  if (normalized.contains('buraco')) return Icons.construction_rounded;
-  if (normalized.contains('lixo')) return Icons.delete_outline_rounded;
-  if (normalized.contains('agua') || normalized.contains('esgoto')) {
-    return Icons.water_drop_outlined;
-  }
-  return Icons.location_city_outlined;
-}
+class _CountBadge extends StatelessWidget {
+  const _CountBadge({required this.count});
 
-class _HeroFallback extends StatelessWidget {
-  const _HeroFallback({required this.category});
-
-  final String category;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0xFF303B49), Color(0xFF18222E)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
-      child: Center(
-        child: Icon(
-          _iconForCategory(category),
-          color: Colors.white.withValues(alpha: 0.88),
-          size: 72,
-        ),
-      ),
-    );
-  }
-}
-
-class _ThumbFallback extends StatelessWidget {
-  const _ThumbFallback({required this.category});
-
-  final String category;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0xFFF4F6FA), Color(0xFFE9EEF5)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
-      child: Center(
-        child: Icon(
-          _iconForCategory(category),
-          color: const Color(0xFF4B6078),
-          size: 34,
-        ),
-      ),
-    );
-  }
-}
-
-class _FeaturedCardSkeleton extends StatelessWidget {
-  const _FeaturedCardSkeleton();
+  final int count;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 311,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
       decoration: BoxDecoration(
-        color: const Color(0xFFF1F3F6),
-        borderRadius: BorderRadius.circular(16),
+        color: UrbColors.lavender,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        '$count',
+        style: UrbText.body(
+          size: 13,
+          weight: FontWeight.w700,
+          color: UrbColors.violetDeep,
+          height: 1.3,
+        ),
       ),
     );
   }
 }
 
-class _LatestPostSkeleton extends StatelessWidget {
-  const _LatestPostSkeleton();
+class _AuthorAvatar extends StatelessWidget {
+  const _AuthorAvatar({required this.post, required this.size});
+
+  final FeedPost post;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          width: 100,
-          height: 100,
-          decoration: BoxDecoration(
-            color: const Color(0xFFF1F3F6),
-            borderRadius: BorderRadius.circular(16),
-          ),
+    final url = post.authorAvatarUrl;
+
+    Widget content;
+    if (post.isAnonymous) {
+      content = Icon(
+        Icons.visibility_off_outlined,
+        size: size * 0.45,
+        color: UrbColors.violetDeep,
+      );
+    } else if (url != null && url.isNotEmpty) {
+      content = ClipOval(
+        child: Image.network(
+          url,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => _initials(),
         ),
-        const SizedBox(width: 24),
-        Expanded(
+      );
+    } else {
+      content = _initials();
+    }
+
+    return Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          colors: [Color(0xFFEDE7FB), Color(0xFFDDF1FD)],
+        ),
+      ),
+      child: content,
+    );
+  }
+
+  Widget _initials() {
+    final parts = post.authorLabel
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((e) => e.isNotEmpty)
+        .take(2)
+        .toList();
+    final text = parts.isEmpty
+        ? '?'
+        : parts.length == 1
+        ? parts.first.substring(0, 1).toUpperCase()
+        : '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    return Text(
+      text,
+      style: UrbText.display(
+        size: size * 0.4,
+        weight: FontWeight.w700,
+        color: UrbColors.violetDeep,
+      ),
+    );
+  }
+}
+
+class _PostImage extends StatelessWidget {
+  const _PostImage({
+    required this.url,
+    required this.height,
+    this.width,
+    required this.radius,
+  });
+
+  final String? url;
+  final double height;
+  final double? width;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final fallback = DecoratedBox(
+      decoration: const BoxDecoration(gradient: UrbGradients.photo),
+      child: Center(
+        child: Icon(
+          Icons.image_outlined,
+          color: const Color(0xFF9FB0C6),
+          size: height > 100 ? 32 : 20,
+        ),
+      ),
+    );
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(radius),
+      child: SizedBox(
+        height: height,
+        width: width ?? double.infinity,
+        child: url == null || url!.isEmpty
+            ? fallback
+            : Image.network(
+                url!,
+                fit: BoxFit.cover,
+                // A foto aparece suavemente quando termina de carregar.
+                frameBuilder: (context, child, frame, loadedSync) {
+                  if (loadedSync) return child;
+                  return AnimatedOpacity(
+                    opacity: frame == null ? 0 : 1,
+                    duration: UrbMotion.of(context, UrbMotion.medium),
+                    child: child,
+                  );
+                },
+                errorBuilder: (_, _, _) => fallback,
+              ),
+      ),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({
+    required this.icon,
+    required this.title,
+    required this.text,
+  });
+
+  final IconData icon;
+  final String title;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(32, 48, 32, 132),
+      children: [
+        FadeSlideIn(
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 86,
-                height: 12,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF1F3F6),
-                  borderRadius: BorderRadius.circular(999),
+                width: 150,
+                height: 150,
+                decoration: const BoxDecoration(
+                  color: UrbColors.lavender,
+                  shape: BoxShape.circle,
                 ),
+                child: Icon(icon, size: 64, color: UrbColors.violetDeep),
               ),
-              const SizedBox(height: 12),
-              Container(
-                height: 18,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF1F3F6),
-                  borderRadius: BorderRadius.circular(999),
-                ),
+              const SizedBox(height: 22),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: UrbText.display(size: 22, weight: FontWeight.w700),
               ),
-              const SizedBox(height: 8),
-              Container(
-                width: 140,
-                height: 18,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF1F3F6),
-                  borderRadius: BorderRadius.circular(999),
-                ),
+              const SizedBox(height: 10),
+              Text(
+                text,
+                textAlign: TextAlign.center,
+                style: UrbText.body(size: 15),
               ),
             ],
           ),
@@ -1052,114 +1001,91 @@ class _LatestPostSkeleton extends StatelessWidget {
   }
 }
 
-class _FeedEmptyHero extends StatelessWidget {
-  const _FeedEmptyHero();
+class _Skeleton extends StatelessWidget {
+  const _Skeleton({this.width, required this.height, this.radius = 8});
+
+  final double? width;
+  final double height;
+  final double radius;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 220,
-      padding: const EdgeInsets.all(28),
+      width: width,
+      height: height,
       decoration: BoxDecoration(
-        color: const Color(0xFFF7F8FA),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: const Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.forum_outlined, size: 32, color: Color(0xFF9097A1)),
-          Spacer(),
-          Text(
-            'Nenhum reporte publicado ainda',
-            style: TextStyle(
-              color: Color(0xFF141E28),
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          SizedBox(height: 8),
-          Text(
-            'Use o botao central para criar o primeiro reporte da comunidade.',
-            style: TextStyle(
-              color: Color(0xFF8F949D),
-              fontSize: 14,
-              height: 1.45,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _FeedEmptyList extends StatelessWidget {
-  const _FeedEmptyList();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Text(
-      'Quando novos reportes forem criados, eles vao aparecer aqui.',
-      style: TextStyle(color: Color(0xFF8F949D), fontSize: 15, height: 1.45),
-    );
-  }
-}
-
-class _TrendingEmptyHero extends StatelessWidget {
-  const _TrendingEmptyHero();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 220,
-      padding: const EdgeInsets.all(28),
-      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(radius),
         gradient: const LinearGradient(
-          colors: [Color(0xFFFDF6EC), Color(0xFFF8E8D0)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+          colors: [Color(0xFFE6E8EE), Color(0xFFF3F4F8), Color(0xFFE6E8EE)],
         ),
-        borderRadius: BorderRadius.circular(20),
+      ),
+    );
+  }
+}
+
+class _CardSkeleton extends StatelessWidget {
+  const _CardSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
       ),
       child: const Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            Icons.local_fire_department_rounded,
-            size: 34,
-            color: Color(0xFFCB6A12),
+          Row(
+            children: [
+              _Skeleton(width: 40, height: 40, radius: 20),
+              SizedBox(width: 10),
+              Expanded(child: _Skeleton(height: 12)),
+              SizedBox(width: 60),
+            ],
           ),
-          Spacer(),
-          Text(
-            'Ainda nao ha posts em alta',
-            style: TextStyle(
-              color: Color(0xFF141E28),
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
+          SizedBox(height: 12),
+          _Skeleton(height: 170, radius: 18),
+          SizedBox(height: 12),
+          _Skeleton(width: 200, height: 16),
           SizedBox(height: 8),
-          Text(
-            'Assim que os reportes acumularem apoios, comentarios e engajamento, eles aparecem aqui.',
-            style: TextStyle(
-              color: Color(0xFF6B7280),
-              fontSize: 14,
-              height: 1.45,
-            ),
-          ),
+          _Skeleton(width: 120, height: 12),
         ],
       ),
     );
   }
 }
 
-class _TrendingEmptyList extends StatelessWidget {
-  const _TrendingEmptyList();
+class _RowSkeleton extends StatelessWidget {
+  const _RowSkeleton();
 
   @override
   Widget build(BuildContext context) {
-    return const Text(
-      'Esse ranking considera comentarios, apoios, seguidores do autor e o tempo no status atual.',
-      style: TextStyle(color: Color(0xFF8F949D), fontSize: 15, height: 1.45),
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: const Row(
+        children: [
+          _Skeleton(width: 36, height: 36, radius: 18),
+          SizedBox(width: 12),
+          _Skeleton(width: 64, height: 64, radius: 14),
+          SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _Skeleton(height: 14),
+                SizedBox(height: 8),
+                _Skeleton(width: 90, height: 10),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

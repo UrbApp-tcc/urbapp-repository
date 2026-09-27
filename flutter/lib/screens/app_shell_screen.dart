@@ -8,6 +8,8 @@ import '../services/auth_service.dart';
 import '../services/city_service.dart';
 import '../services/feed_service.dart';
 import '../theme/app_theme.dart';
+import '../theme/urbapp_design.dart';
+import '../widgets/urb_bottom_bar.dart';
 import '../utils/error_formatter.dart';
 import 'create_post_screen.dart';
 import 'city_map_screen.dart';
@@ -460,7 +462,7 @@ class _AppShellScreenState extends State<AppShellScreen> {
     final currentUserId = _resolveCurrentUserId();
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF3F5F8),
+      backgroundColor: UrbColors.surface,
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -477,7 +479,7 @@ class _AppShellScreenState extends State<AppShellScreen> {
                   vertical: useFramedLayout ? 18 : 0,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: UrbColors.surface,
                   borderRadius: BorderRadius.circular(useFramedLayout ? 34 : 0),
                   boxShadow: useFramedLayout
                       ? [
@@ -531,45 +533,13 @@ class _AppShellScreenState extends State<AppShellScreen> {
                       ),
                     ),
                     Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      child: _ShellBottomBar(
+                      left: 16,
+                      right: 16,
+                      bottom: 14,
+                      child: UrbBottomBar(
                         selectedIndex: _selectedIndex,
                         onSelect: _selectTab,
-                      ),
-                    ),
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 3,
-                      child: Center(
-                        child: GestureDetector(
-                          onTap: _openCreatePost,
-                          child: Container(
-                            width: 58,
-                            height: 58,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF18222E),
-                              borderRadius: BorderRadius.circular(20),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: const Color(0xFF18222E).withValues(
-                                    alpha: 0.28,
-                                  ),
-                                  blurRadius: 24,
-                                  offset: const Offset(0, 12),
-                                ),
-                              ],
-                            ),
-                            alignment: Alignment.center,
-                            child: const Icon(
-                              Icons.add_rounded,
-                              color: Colors.white,
-                              size: 30,
-                            ),
-                          ),
-                        ),
+                        onCreate: _openCreatePost,
                       ),
                     ),
                   ],
@@ -620,93 +590,6 @@ class _ProfileUnavailableState extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ShellBottomBar extends StatelessWidget {
-  const _ShellBottomBar({required this.selectedIndex, required this.onSelect});
-
-  final int selectedIndex;
-  final ValueChanged<int> onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 64,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF141E28).withValues(alpha: 0.10),
-            blurRadius: 20,
-            offset: const Offset(0, -4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _BottomIconButton(
-              icon: Icons.home_outlined,
-              isSelected: selectedIndex == 0,
-              onTap: () => onSelect(0),
-            ),
-          ),
-          Expanded(
-            child: _BottomIconButton(
-              icon: Icons.search_rounded,
-              isSelected: selectedIndex == 1,
-              onTap: () => onSelect(1),
-            ),
-          ),
-          const SizedBox(width: 44),
-          Expanded(
-            child: _BottomIconButton(
-              icon: Icons.notifications_none_rounded,
-              isSelected: selectedIndex == 2,
-              onTap: () => onSelect(2),
-            ),
-          ),
-          Expanded(
-            child: _BottomIconButton(
-              icon: Icons.person_outline_rounded,
-              isSelected: selectedIndex == 3,
-              onTap: () => onSelect(3),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _BottomIconButton extends StatelessWidget {
-  const _BottomIconButton({
-    required this.icon,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: SizedBox(
-        height: 64,
-        child: Icon(
-          icon,
-          size: 29,
-          color: isSelected ? const Color(0xFF141E28) : const Color(0xFFA2A7AF),
         ),
       ),
     );
