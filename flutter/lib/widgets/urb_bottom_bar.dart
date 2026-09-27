@@ -20,10 +20,10 @@ class UrbBottomBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 96,
+      height: 72,
       child: Stack(
         clipBehavior: Clip.none,
-        alignment: Alignment.bottomCenter,
+        alignment: Alignment.center,
         children: [
           Positioned(
             left: 0,
@@ -79,7 +79,8 @@ class UrbBottomBar extends StatelessWidget {
               ),
             ),
           ),
-          Positioned(bottom: 34, child: _CreateButton(onPressed: onCreate)),
+          // O "+" fica centralizado dentro da barra.
+          _CreateButton(onPressed: onCreate),
         ],
       ),
     );
@@ -159,24 +160,24 @@ class _CreateButtonState extends State<_CreateButton> {
           duration: UrbMotion.of(context, const Duration(milliseconds: 120)),
           scale: _pressed ? 0.9 : 1,
           child: Container(
-            width: 62,
-            height: 62,
+            width: 56,
+            height: 56,
             decoration: BoxDecoration(
               gradient: UrbGradients.primary,
               shape: BoxShape.circle,
               border: Border.all(
                 color: Colors.white.withValues(alpha: 0.9),
-                width: 4,
+                width: 3,
               ),
               boxShadow: const [
                 BoxShadow(
-                  color: Color(0x663B3FA0),
-                  blurRadius: 22,
-                  offset: Offset(0, 10),
+                  color: Color(0x553B3FA0),
+                  blurRadius: 16,
+                  offset: Offset(0, 6),
                 ),
               ],
             ),
-            child: const Icon(Icons.add_rounded, color: Colors.white, size: 30),
+            child: const Icon(Icons.add_rounded, color: Colors.white, size: 28),
           ),
         ),
       ),
