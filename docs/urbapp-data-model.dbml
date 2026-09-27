@@ -110,7 +110,7 @@ Table posts {
   status report_status [not null, default: 'open']
   latitude numeric(10, 7) [not null]
   longitude numeric(10, 7) [not null]
-  is_anonymous boolean [not null, default: false]
+  anonymity boolean [not null, default: false]
   supports_count integer [not null, default: 0]
   comments_count integer [not null, default: 0]
   created_at timestamptz [not null, default: `now()`]

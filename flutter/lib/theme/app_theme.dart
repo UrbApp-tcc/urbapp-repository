@@ -13,9 +13,9 @@ class AppColors {
   static const Color accentOrange = Color(0xFFFF7B54);
 
   // Tema geral (primary = violeta para inputs, links, etc.)
-  static const Color primary = Color(0xFF9A80D9);
-  static const Color primaryLight = Color(0xFFE9E5F5);
-  static const Color primaryDark = Color(0xFF7B6BB8);
+  static const Color primary = Color(0xFF18222E);
+  static const Color primaryLight = Color(0xFFECEEF1);
+  static const Color primaryDark = Color(0xFF0D1520);
 
   static const Color background = Color(0xFFF8F9FC);
   static const Color surface = Color(0xFFFFFFFF);
@@ -105,6 +105,22 @@ class AppTheme {
             fontWeight: FontWeight.w600,
           ),
         ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.primary,
+          side: const BorderSide(color: AppColors.primary),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          textStyle: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+      progressIndicatorTheme: const ProgressIndicatorThemeData(
+        color: AppColors.primary,
       ),
       checkboxTheme: CheckboxThemeData(
         fillColor: WidgetStateProperty.resolveWith((states) {

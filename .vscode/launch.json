@@ -1,0 +1,16 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Urbapp (Chrome com dev.json)",
+      "request": "launch",
+      "type": "dart",
+      "deviceId": "chrome",
+      "cwd": "flutter",
+      "program": "lib/main.dart",
+      "toolArgs": [
+        "--dart-define-from-file=dart_defines/dev.json"
+      ]
+    }
+  ]
+}

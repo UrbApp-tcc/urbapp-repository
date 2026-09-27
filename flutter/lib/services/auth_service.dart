@@ -1,7 +1,10 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AuthService {
-  final GoTrueClient _auth = Supabase.instance.client.auth;
+  AuthService({SupabaseClient? supabase})
+      : _auth = (supabase ?? Supabase.instance.client).auth;
+
+  final GoTrueClient _auth;
 
   Stream<AuthState> get onAuthStateChange => _auth.onAuthStateChange;
   Session? get currentSession => _auth.currentSession;
@@ -27,15 +30,18 @@ class AuthService {
     required String email,
     required String password,
     required String username,
+    required int cityId,
     String? phone,
   }) async {
     try {
       return await _auth.signUp(
         email: email.trim(),
         password: password,
+        emailRedirectTo: 'urbapp://login-callback',
         data: {
           'username': username.trim(),
           'full_name': username.trim(),
+          'city_id': cityId,
           if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
         },
       );
@@ -46,15 +52,26 @@ class AuthService {
     }
   }
 
-  /// Envia o e-mail com o link para redefinir a senha.
-  /// Usado pela ForgotPasswordScreen.
-  Future<void> resetPassword({required String email}) async {
+  Future<void> updatePassword(String newPassword) async {
     try {
-      await _auth.resetPasswordForEmail(email.trim());
+      await _auth.updateUser(UserAttributes(password: newPassword));
     } on AuthException catch (error) {
       throw Exception(_mapAuthError(error));
     } catch (_) {
-      throw Exception('Erro inesperado ao enviar o e-mail de redefinição.');
+      throw Exception('Erro inesperado ao atualizar a senha.');
+    }
+  }
+
+  Future<void> resetPassword(String email) async {
+    try {
+      await _auth.resetPasswordForEmail(
+        email.trim(),
+        redirectTo: 'urbapp://login-callback',
+      );
+    } on AuthException catch (error) {
+      throw Exception(_mapAuthError(error));
+    } catch (_) {
+      throw Exception('Erro inesperado ao solicitar redefinição de senha.');
     }
   }
 
@@ -72,7 +89,11 @@ class AuthService {
     final message = error.message.toLowerCase();
 
     if (message.contains('invalid login credentials')) {
-      return 'E-mail ou senha invalidos.';
+      return 'E-mail ou senha inválidos.';
+    }
+
+    if (message.contains('unregistered api key')) {
+      return 'A Publishable key configurada no app não é mais válida para este projeto Supabase.';
     }
 
     if (message.contains('email not confirmed')) {
@@ -80,7 +101,7 @@ class AuthService {
     }
 
     if (message.contains('user already registered')) {
-      return 'Ja existe uma conta cadastrada com este e-mail.';
+      return 'Já existe uma conta cadastrada com este e-mail.';
     }
 
     if (message.contains('password should be at least')) {
@@ -88,15 +109,9 @@ class AuthService {
     }
 
     if (message.contains('signup is disabled')) {
-      return 'O cadastro de novos usuarios esta desabilitado no momento.';
+      return 'O cadastro de novos usuários está desabilitado no momento.';
     }
 
-    // Supabase limita quantos e-mails podem ser enviados em sequência.
-    if (message.contains('rate limit') ||
-        message.contains('for security purposes')) {
-      return 'Muitas tentativas seguidas. Aguarde um pouco e tente novamente.';
-    }
-
-    return error.message;
+    return 'Erro de autenticação: ${error.message}';
   }
 }

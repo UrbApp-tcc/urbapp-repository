@@ -25,7 +25,7 @@ class SettingsScreen extends StatelessWidget {
         _SettingsTopBar(onOpenSearch: onOpenSearch),
         const SizedBox(height: 28),
         const Text(
-          'Settings',
+          'Configurações',
           style: TextStyle(
             color: Color(0xFF141E28),
             fontSize: 36,
@@ -41,8 +41,8 @@ class SettingsScreen extends StatelessWidget {
         const SizedBox(height: 22),
         _SettingsItem(
           icon: Icons.person_outline_rounded,
-          title: 'Profile settings',
-          subtitle: 'Settings regarding your profile',
+          title: 'Configurações do perfil',
+          subtitle: 'Opções relacionadas ao seu perfil',
           onTap: () => _showProfileSheet(context, displayName, email),
         ),
         const SizedBox(height: 28),
@@ -64,7 +64,7 @@ class SettingsScreen extends StatelessWidget {
     if (fullName != null && fullName.isNotEmpty) return fullName;
     if (username != null && username.isNotEmpty) return username;
     if (email != null && email.isNotEmpty) return email.split('@').first;
-    return 'Usuario UrbApp';
+    return 'Usuário UrbApp';
   }
 
   void _showProfileSheet(BuildContext context, String displayName, String email) {
@@ -93,7 +93,7 @@ class SettingsScreen extends StatelessWidget {
               ),
               const SizedBox(height: 20),
               const Text(
-                'Profile settings',
+                'Configurações do perfil',
                 style: TextStyle(
                   color: Color(0xFF141E28),
                   fontSize: 22,
@@ -107,7 +107,7 @@ class SettingsScreen extends StatelessWidget {
               const SizedBox(height: 14),
               _SheetInfo(
                 label: 'Status',
-                value: 'Tela inicial pronta para futuras configuracoes de perfil',
+                value: 'Tela inicial pronta para futuras configurações de perfil',
               ),
             ],
           ),

@@ -2,7 +2,9 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/auth_service.dart';
+import '../../services/profile_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/error_formatter.dart';
 import '../../widgets/app_logo.dart';
 import '../../widgets/auth_text_field.dart';
 import '../../widgets/gradient_button.dart';
@@ -21,15 +23,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _emailController = TextEditingController();
   final _mobileController = TextEditingController();
   final _authService = AuthService();
+  final _profileService = ProfileService();
 
   bool _isPasswordVisible = false;
   bool _isLoading = false;
+  bool _isCitiesLoading = true;
+  List<ProfileCityOption> _cities = const [];
+  int? _selectedCityId;
 
   static const double _maxContentWidth = 400;
-  static const double _spacingLogoTitle = 16;
-  static const double _spacingTitleForm = 24;
-  static const double _spacingBetweenFields = 16;
-  static const double _spacingFormButton = 24;
 
   @override
   void dispose() {
@@ -40,34 +42,74 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
+  @override
+  void initState() {
+    super.initState();
+    _loadCities();
+  }
+
   String? _validateUsername(String? value) {
-    if (value == null || value.trim().isEmpty) return 'Informe o nome de usuario';
+    if (value == null || value.trim().isEmpty) return 'Informe o nome de usuário';
     if (value.trim().length < 3) return 'Use pelo menos 3 caracteres';
+    if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(value.trim())) {
+      return 'Use apenas letras, números e _';
+    }
     return null;
   }
 
   String? _validatePassword(String? value) {
     if (value == null || value.isEmpty) return 'Informe uma senha';
-    if (value.length < 8) return 'Minimo 8 caracteres';
+    if (value.length < 8) return 'Mínimo de 8 caracteres';
     return null;
   }
 
   String? _validateEmail(String? value) {
     if (value == null || value.trim().isEmpty) return 'Informe o e-mail';
-
     final regex = RegExp(r'^[\w.-]+@[\w.-]+\.\w{2,}$');
-    if (!regex.hasMatch(value.trim())) return 'E-mail invalido';
-
+    if (!regex.hasMatch(value.trim())) return 'E-mail inválido';
     return null;
   }
 
-  String? _validateMobile(String? value) {
-    if (value == null || value.trim().isEmpty) return 'Informe o celular';
-    return null;
+  String? _validateMobile(String? value) => null;
+
+  Future<void> _loadCities() async {
+    try {
+      final cities = await _profileService.fetchCities();
+      if (!mounted) return;
+      setState(() {
+        _cities = cities;
+        _selectedCityId = cities.isNotEmpty ? cities.first.id : null;
+        _isCitiesLoading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _isCitiesLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(friendlyError(error)),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+    }
   }
 
   Future<void> _createAccount() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_selectedCityId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Selecione uma cidade para continuar.'),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+      return;
+    }
 
     FocusScope.of(context).unfocus();
     setState(() => _isLoading = true);
@@ -77,6 +119,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         email: _emailController.text,
         password: _passwordController.text,
         username: _usernameController.text,
+        cityId: _selectedCityId!,
         phone: _mobileController.text,
       );
 
@@ -90,10 +133,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
       Navigator.of(context).pop('Conta criada com sucesso!');
     } catch (error) {
       if (!mounted) return;
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(error.toString().replaceFirst('Exception: ', '')),
+          content: Text(friendlyError(error)),
           backgroundColor: AppColors.error,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -101,56 +143,53 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ),
       );
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final padding = MediaQuery.paddingOf(context);
+    final availableHeight = size.height - padding.top - padding.bottom;
+    final isCompact = availableHeight < 750;
+
     return Scaffold(
       backgroundColor: Colors.white,
       resizeToAvoidBottomInset: true,
       body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final minHeight = MediaQuery.of(context).size.height -
-                MediaQuery.paddingOf(context).top -
-                MediaQuery.paddingOf(context).bottom;
-            return SingleChildScrollView(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: minHeight),
-                child: IntrinsicHeight(
-                  child: Column(
-                    children: [
-                      _buildDecorativeShapes(),
-                      Expanded(
-                        child: Center(
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: _maxContentWidth),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 24),
-                              child: _buildContent(),
-                            ),
-                          ),
+        child: SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: availableHeight),
+            child: IntrinsicHeight(
+              child: Column(
+                children: [
+                  _buildDecorativeShapes(isCompact: isCompact),
+                  Expanded(
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: _maxContentWidth),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          child: _buildContent(isCompact: isCompact),
                         ),
                       ),
-                      const SizedBox(height: 32),
-                    ],
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 32),
+                ],
               ),
-            );
-          },
+            ),
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildDecorativeShapes() {
+  Widget _buildDecorativeShapes({required bool isCompact}) {
+    final headerHeight = isCompact ? 80.0 : 110.0;
     return SizedBox(
-      height: 120,
+      height: headerHeight,
       width: double.infinity,
       child: Stack(
         children: [
@@ -197,7 +236,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  Widget _buildContent() {
+  Widget _buildContent({required bool isCompact}) {
+    final logoHeight = isCompact ? 70.0 : 100.0;
+    final spacingLogoTitle = isCompact ? 10.0 : 16.0;
+    final spacingTitleForm = isCompact ? 14.0 : 24.0;
+    final spacingFields = isCompact ? 10.0 : 16.0;
+    final spacingFormButton = isCompact ? 16.0 : 24.0;
+
     return Form(
       key: _formKey,
       child: Column(
@@ -205,10 +250,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const AppLogo(height: 115),
-          const SizedBox(height: _spacingLogoTitle),
+          AppLogo(height: logoHeight),
+          SizedBox(height: spacingLogoTitle),
           const Text(
-            'Create account',
+            'Criar conta',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: AppColors.textPrimary,
@@ -217,19 +262,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
               letterSpacing: -0.5,
             ),
           ),
-          const SizedBox(height: _spacingTitleForm),
+          SizedBox(height: spacingTitleForm),
           AuthTextField(
             controller: _usernameController,
             validator: _validateUsername,
-            hintText: 'Username',
+            hintText: 'Nome de usuário',
             prefixIcon: const Icon(Icons.person_outline_rounded, color: AppColors.textSecondary, size: 22),
             textInputAction: TextInputAction.next,
           ),
-          const SizedBox(height: _spacingBetweenFields),
+          SizedBox(height: spacingFields),
           AuthTextField(
             controller: _passwordController,
             validator: _validatePassword,
-            hintText: 'Password',
+            hintText: 'Senha',
             obscureText: !_isPasswordVisible,
             prefixIcon: const Icon(Icons.lock_outline_rounded, color: AppColors.textSecondary, size: 22),
             suffixIcon: IconButton(
@@ -242,7 +287,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             ),
             textInputAction: TextInputAction.next,
           ),
-          const SizedBox(height: _spacingBetweenFields),
+          SizedBox(height: spacingFields),
           AuthTextField(
             controller: _emailController,
             validator: _validateEmail,
@@ -251,38 +296,45 @@ class _RegisterScreenState extends State<RegisterScreen> {
             prefixIcon: const Icon(Icons.email_outlined, color: AppColors.textSecondary, size: 22),
             textInputAction: TextInputAction.next,
           ),
-          const SizedBox(height: _spacingBetweenFields),
+          SizedBox(height: spacingFields),
           AuthTextField(
             controller: _mobileController,
             validator: _validateMobile,
-            hintText: 'Mobile',
+            hintText: 'Celular',
             keyboardType: TextInputType.phone,
             prefixIcon: const Icon(Icons.phone_android_rounded, color: AppColors.textSecondary, size: 22),
             textInputAction: TextInputAction.done,
-            onFieldSubmitted: (_) => _createAccount(),
           ),
-          const SizedBox(height: _spacingFormButton),
+          SizedBox(height: spacingFields),
+          DropdownButtonFormField<int>(
+            initialValue: _selectedCityId,
+            items: _cities
+                .map(
+                  (city) => DropdownMenuItem<int>(
+                    value: city.id,
+                    child: Text(city.name),
+                  ),
+                )
+                .toList(),
+            onChanged: _isCitiesLoading
+                ? null
+                : (value) => setState(() => _selectedCityId = value),
+            validator: (value) => value == null ? 'Selecione a sua cidade' : null,
+            decoration: InputDecoration(
+              labelText: 'Cidade',
+              hintText: _isCitiesLoading ? 'Carregando cidades...' : 'Selecione a sua cidade',
+              prefixIcon: const Icon(
+                Icons.location_city_outlined,
+                color: AppColors.textSecondary,
+                size: 22,
+              ),
+            ),
+          ),
+          SizedBox(height: spacingFormButton),
           GradientButton(
-            label: 'Create',
-            loading: _isLoading,
-            onPressed: _createAccount,
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            'Or create account using social media',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: AppColors.textHint, fontSize: 13),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _buildSocialButton(const Color(0xFF1877F2), Icons.facebook_rounded),
-              const SizedBox(width: 20),
-              _buildSocialButton(const Color(0xFF1DA1F2), Icons.alternate_email_rounded),
-              const SizedBox(width: 20),
-              _buildSocialButton(Colors.white, Icons.g_mobiledata_rounded, isGoogle: true),
-            ],
+            label: 'Criar conta',
+            loading: _isLoading || _isCitiesLoading,
+            onPressed: (_isCitiesLoading || _cities.isEmpty) ? null : _createAccount,
           ),
           const SizedBox(height: 28),
           Center(
@@ -290,9 +342,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
               text: TextSpan(
                 style: const TextStyle(color: AppColors.textSecondary, fontSize: 14),
                 children: [
-                  const TextSpan(text: 'Already have an account? '),
+                  const TextSpan(text: 'Já tem uma conta? '),
                   TextSpan(
-                    text: 'Sign in',
+                    text: 'Entrar',
                     style: const TextStyle(
                       color: AppColors.primary,
                       fontWeight: FontWeight.w700,
@@ -305,33 +357,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildSocialButton(Color bgColor, IconData icon, {bool isGoogle = false}) {
-    return Material(
-      color: bgColor,
-      shape: const CircleBorder(),
-      elevation: 1,
-      shadowColor: Colors.black26,
-      child: InkWell(
-        onTap: () {},
-        customBorder: const CircleBorder(),
-        child: Container(
-          width: 48,
-          height: 48,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: isGoogle ? Border.all(color: AppColors.border) : null,
-          ),
-          child: Icon(
-            icon,
-            color: isGoogle ? AppColors.textPrimary : Colors.white,
-            size: 26,
-          ),
-        ),
       ),
     );
   }

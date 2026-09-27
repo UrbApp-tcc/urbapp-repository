@@ -4,15 +4,12 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   app_links
+  file_selector_windows
   geolocator_windows
   url_launcher_windows
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
-<<<<<<< HEAD
-  jni
-=======
->>>>>>> 70001575e525ac37a38a7cdce0dc86ba5be77582
 )
 
 set(PLUGIN_BUNDLED_LIBRARIES)
