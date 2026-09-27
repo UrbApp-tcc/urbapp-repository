@@ -36,6 +36,7 @@ class UserProfileData {
     required this.id,
     required this.fullName,
     required this.username,
+    this.biography,
     this.avatarUrl,
     this.cityId,
     this.cityName,
@@ -53,6 +54,7 @@ class UserProfileData {
   final String id;
   final String fullName;
   final String username;
+  final String? biography;
   final String? avatarUrl;
   final int? cityId;
   final String? cityName;
@@ -114,6 +116,7 @@ class ProfileService {
         id: profileResponse['id'] as String,
         fullName: fullName,
         username: username,
+        biography: profileResponse['biography'] as String?,
         avatarUrl: avatarUrl,
         cityId: (profileResponse['city_id'] as num?)?.toInt(),
         cityName: city?['name'] as String?,
@@ -170,6 +173,7 @@ class ProfileService {
     required String userId,
     required String fullName,
     required String username,
+    String? biography,
     int? cityId,
     int? featuredBadgeId,
     String? avatarUrl,
@@ -180,6 +184,7 @@ class ProfileService {
       final payload = {
         'full_name': fullName.trim(),
         'username': username.trim(),
+        'biography': _nullIfEmpty(biography),
         'city_id': cityId,
         'featured_badge_id': featuredBadgeId,
         ...?switch (avatarUrl) {
@@ -372,6 +377,7 @@ class ProfileService {
           id,
           full_name,
           username,
+          biography,
           avatar_url,
           city_id,
           current_xp,
@@ -544,6 +550,11 @@ class ProfileService {
     if (username != null && username.isNotEmpty) return username;
 
     return 'Usuario';
+  }
+
+  String? _nullIfEmpty(String? value) {
+    final normalized = value?.trim();
+    return normalized == null || normalized.isEmpty ? null : normalized;
   }
 
   bool _isMissingOptionalProfileFeature(PostgrestException error) {

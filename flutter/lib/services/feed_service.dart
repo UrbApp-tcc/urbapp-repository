@@ -29,6 +29,8 @@ class FeedPost {
     required this.longitude,
     required this.cityId,
     required this.cityName,
+    this.street,
+    this.neighborhood,
     required this.categoryId,
     required this.categoryName,
     this.agencyId,
@@ -56,6 +58,8 @@ class FeedPost {
   final double longitude;
   final int cityId;
   final String cityName;
+  final String? street;
+  final String? neighborhood;
   final int categoryId;
   final String categoryName;
   final int? agencyId;
@@ -70,6 +74,14 @@ class FeedPost {
   final int imageCount;
   final String? primaryImageUrl;
   final List<FeedImage> images;
+
+  String get addressLabel {
+    return [
+      street?.trim() ?? '',
+      neighborhood?.trim() ?? '',
+      cityName.trim(),
+    ].where((part) => part.isNotEmpty).toSet().join(' - ');
+  }
 
   String get authorLabel {
     if (isAnonymous) return 'Usuario Anonimo';
@@ -99,6 +111,8 @@ class FeedPost {
       longitude: longitude,
       cityId: cityId,
       cityName: cityName,
+      street: street,
+      neighborhood: neighborhood,
       categoryId: categoryId,
       categoryName: categoryName,
       agencyId: agencyId,
@@ -124,17 +138,27 @@ class FeedService {
   final SupabaseClient _supabase;
   static const String _postImagesBucket = 'post-images';
 
-  Future<List<FeedPost>> fetchFeed({int limit = 20, int offset = 0}) async {
+  Future<List<FeedPost>> fetchFeed({
+    int limit = 20,
+    int offset = 0,
+    int? cityId,
+  }) async {
     try {
-      final response = await _supabase.rpc(
-        'get_feed_posts',
-        params: {'page_size': limit, 'page_offset': offset},
+      return await _fetchDirectFeed(
+        limit: limit,
+        offset: offset,
+        cityId: cityId,
+        includeAddress: true,
       );
-
-      return (response as List<dynamic>)
-          .map((item) => _mapFeedPost(item as Map<String, dynamic>))
-          .toList();
     } on PostgrestException catch (error) {
+      if (error.code == '42703') {
+        return _fetchDirectFeed(
+          limit: limit,
+          offset: offset,
+          cityId: cityId,
+          includeAddress: false,
+        );
+      }
       throw Exception('Erro ao carregar a lista de reportes: ${error.message}');
     } catch (_) {
       throw Exception('Erro inesperado ao carregar a lista de reportes.');
@@ -144,7 +168,16 @@ class FeedService {
   Future<List<FeedPost>> fetchTrendingFeed({
     int limit = 20,
     int offset = 0,
+    int? cityId,
   }) async {
+    if (cityId != null) {
+      return _fetchTrendingFeedFallback(
+        limit: limit,
+        offset: offset,
+        cityId: cityId,
+      );
+    }
+
     try {
       final response = await _supabase.rpc(
         'get_trending_feed_posts',
@@ -156,7 +189,11 @@ class FeedService {
           .toList();
     } on PostgrestException catch (error) {
       if (_shouldUseTrendingFallback(error)) {
-        return _fetchTrendingFeedFallback(limit: limit, offset: offset);
+        return _fetchTrendingFeedFallback(
+          limit: limit,
+          offset: offset,
+          cityId: cityId,
+        );
       }
       throw Exception(
         'Erro ao carregar a lista de reportes em alta: ${error.message}',
@@ -171,8 +208,13 @@ class FeedService {
   Future<List<FeedPost>> _fetchTrendingFeedFallback({
     required int limit,
     required int offset,
+    int? cityId,
   }) async {
-    final candidatePosts = await fetchFeed(limit: 100, offset: 0);
+    final candidatePosts = await fetchFeed(
+      limit: 100,
+      offset: 0,
+      cityId: cityId,
+    );
     if (candidatePosts.isEmpty) return const <FeedPost>[];
 
     final postIds = candidatePosts.map((post) => post.id).toList();
@@ -227,6 +269,57 @@ class FeedService {
         .skip(offset)
         .take(limit)
         .map((entry) => entry.post)
+        .toList();
+  }
+
+  Future<List<FeedPost>> fetchAllCityPosts({
+    required int cityId,
+    int pageSize = 100,
+  }) async {
+    final posts = <FeedPost>[];
+    var offset = 0;
+
+    while (true) {
+      final page = await fetchFeed(
+        limit: pageSize,
+        offset: offset,
+        cityId: cityId,
+      );
+      posts.addAll(page);
+      if (page.length < pageSize) break;
+      offset += page.length;
+    }
+
+    return posts;
+  }
+
+  Future<List<FeedPost>> _fetchDirectFeed({
+    required int limit,
+    required int offset,
+    required int? cityId,
+    required bool includeAddress,
+  }) async {
+    final addressColumns = includeAddress ? 'street, neighborhood,' : '';
+    var query = _supabase.from('posts').select('''
+      id, title, description, status, created_at, updated_at, resolved_at,
+      latitude, longitude, city_id, $addressColumns category_id, agency_id,
+      supports_count, comments_count, anonymity, user_id,
+      cities(name), problem_categories(name), public_agencies(name),
+      profiles!posts_user_id_fkey(full_name, username, avatar_url),
+      post_images(id, storage_path, caption, position)
+    ''');
+
+    if (cityId != null) {
+      query = query.eq('city_id', cityId);
+    }
+
+    final response = await query
+        .order('created_at', ascending: false)
+        .order('id', ascending: false)
+        .range(offset, offset + limit - 1);
+
+    return (response as List<dynamic>)
+        .map((item) => _mapDirectPost(item as Map<String, dynamic>))
         .toList();
   }
 
@@ -556,6 +649,8 @@ class FeedService {
       longitude: (data['longitude'] as num?)?.toDouble() ?? 0.0,
       cityId: (data['city_id'] as num?)?.toInt() ?? 0,
       cityName: (cityMap?['name'] as String?) ?? 'Cidade desconhecida',
+      street: data['street'] as String?,
+      neighborhood: data['neighborhood'] as String?,
       categoryId: (data['category_id'] as num?)?.toInt() ?? 0,
       categoryName: (categoryMap?['name'] as String?) ?? 'Categoria',
       agencyId: (data['agency_id'] as num?)?.toInt(),

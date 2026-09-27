@@ -169,6 +169,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         userId: widget.profileUserId,
         fullName: result.fullName,
         username: result.username,
+        biography: result.biography,
         cityId: result.cityId,
         featuredBadgeId: result.featuredBadgeId,
         avatarUrl: avatarUrl,
@@ -423,6 +424,21 @@ class _ProfileHeader extends StatelessWidget {
               color: AppColors.textHint,
               fontSize: 14,
               fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+        if ((profile.biography ?? '').trim().isNotEmpty) ...[
+          const SizedBox(height: 12),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 320),
+            child: Text(
+              profile.biography!.trim(),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 14,
+                height: 1.45,
+              ),
             ),
           ),
         ],
@@ -1454,6 +1470,7 @@ class _EditProfileResult {
   const _EditProfileResult({
     required this.fullName,
     required this.username,
+    required this.biography,
     required this.cityId,
     required this.featuredBadgeId,
     this.avatarFile,
@@ -1461,6 +1478,7 @@ class _EditProfileResult {
 
   final String fullName;
   final String username;
+  final String biography;
   final int? cityId;
   final int? featuredBadgeId;
   final PlatformFile? avatarFile;
@@ -1484,6 +1502,7 @@ class _EditProfileSheet extends StatefulWidget {
 class _EditProfileSheetState extends State<_EditProfileSheet> {
   late final TextEditingController _fullNameController;
   late final TextEditingController _usernameController;
+  late final TextEditingController _biographyController;
   int? _selectedCityId;
   int? _selectedBadgeId;
   PlatformFile? _avatarFile;
@@ -1500,6 +1519,9 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     super.initState();
     _fullNameController = TextEditingController(text: widget.profile.fullName);
     _usernameController = TextEditingController(text: widget.profile.username);
+    _biographyController = TextEditingController(
+      text: widget.profile.biography ?? '',
+    );
     _selectedCityId = widget.profile.cityId;
     _selectedBadgeId = widget.profile.featuredBadge?.id;
   }
@@ -1508,6 +1530,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
   void dispose() {
     _fullNameController.dispose();
     _usernameController.dispose();
+    _biographyController.dispose();
     super.dispose();
   }
 
@@ -1542,6 +1565,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
       _EditProfileResult(
         fullName: _fullNameController.text.trim(),
         username: _usernameController.text.trim(),
+        biography: _biographyController.text.trim(),
         cityId: _selectedCityId,
         featuredBadgeId: _selectedBadgeId,
         avatarFile: _avatarFile,
@@ -1589,6 +1613,18 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
               controller: _usernameController,
               decoration: const InputDecoration(
                 labelText: 'Nome de usuário',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _biographyController,
+              maxLength: 240,
+              minLines: 3,
+              maxLines: 5,
+              decoration: const InputDecoration(
+                labelText: 'Biografia',
+                hintText: 'Conte um pouco sobre sua participação na cidade',
+                alignLabelWithHint: true,
               ),
             ),
             const SizedBox(height: 12),

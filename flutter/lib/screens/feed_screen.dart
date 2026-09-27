@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../services/city_service.dart';
 import '../services/feed_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/date_formatter.dart';
@@ -15,6 +16,10 @@ class FeedScreen extends StatefulWidget {
     required this.isLoading,
     required this.isRefreshing,
     required this.onOpenPost,
+    required this.cities,
+    required this.selectedCityId,
+    required this.onCityChanged,
+    required this.onOpenMap,
   });
 
   final List<FeedPost> posts;
@@ -23,6 +28,10 @@ class FeedScreen extends StatefulWidget {
   final bool isLoading;
   final bool isRefreshing;
   final ValueChanged<FeedPost> onOpenPost;
+  final List<CityOption> cities;
+  final int? selectedCityId;
+  final ValueChanged<int?> onCityChanged;
+  final VoidCallback onOpenMap;
 
   @override
   State<FeedScreen> createState() => _FeedScreenState();
@@ -52,34 +61,74 @@ class _FeedScreenState extends State<FeedScreen>
           padding: const EdgeInsets.fromLTRB(0, 44, 0, 0),
           child: Column(
             children: [
-              // Título centralizado, sem botões
-              Center(
-                child: RichText(
-                  text: const TextSpan(
-                    children: [
-                      TextSpan(
-                        text: 'Urb',
-                        style: TextStyle(
-                          color: Color(0xFF22252A),
-                          fontSize: 17,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.3,
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    const SizedBox(width: 44),
+                    Expanded(
+                      child: Center(
+                        child: RichText(
+                          text: const TextSpan(
+                            children: [
+                              TextSpan(
+                                text: 'Urb',
+                                style: TextStyle(
+                                  color: Color(0xFF22252A),
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.3,
+                                ),
+                              ),
+                              TextSpan(
+                                text: 'App',
+                                style: TextStyle(
+                                  color: Color(0xFF8A8F98),
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w300,
+                                  letterSpacing: -0.3,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                      TextSpan(
-                        text: 'App',
-                        style: TextStyle(
-                          color: Color(0xFF8A8F98),
-                          fontSize: 17,
-                          fontWeight: FontWeight.w300,
-                          letterSpacing: -0.3,
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                    IconButton(
+                      tooltip: 'Abrir mapa da cidade',
+                      onPressed: widget.onOpenMap,
+                      icon: const Icon(Icons.map_outlined),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: DropdownButtonFormField<int?>(
+                  key: ValueKey(widget.selectedCityId),
+                  initialValue: widget.selectedCityId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Filtrar por cidade',
+                    prefixIcon: Icon(Icons.location_city_outlined),
+                  ),
+                  items: [
+                    const DropdownMenuItem<int?>(
+                      value: null,
+                      child: Text('Todas as cidades'),
+                    ),
+                    ...widget.cities.map(
+                      (city) => DropdownMenuItem<int?>(
+                        value: city.id,
+                        child: Text(city.name),
+                      ),
+                    ),
+                  ],
+                  onChanged: widget.onCityChanged,
+                ),
+              ),
+              const SizedBox(height: 16),
               // Tab bar de ponta a ponta (sem padding horizontal)
               _FeedTabBar(controller: _tabController),
             ],

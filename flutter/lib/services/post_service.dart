@@ -159,6 +159,8 @@ class PostService {
     required String description,
     required double latitude,
     required double longitude,
+    String? street,
+    String? neighborhood,
     int? agencyId,
     bool isAnonymous = false,
   }) async {
@@ -175,6 +177,8 @@ class PostService {
             'description': description.trim(),
             'latitude': latitude,
             'longitude': longitude,
+            'street': _nullIfEmpty(street),
+            'neighborhood': _nullIfEmpty(neighborhood),
             'anonymity': isAnonymous,
             'status': 'open',
           })
@@ -187,6 +191,11 @@ class PostService {
     } catch (error) {
       throw Exception('Erro inesperado ao criar o reporte: $error');
     }
+  }
+
+  String? _nullIfEmpty(String? value) {
+    final normalized = value?.trim();
+    return normalized == null || normalized.isEmpty ? null : normalized;
   }
 
   Future<void> deletePost(int postId) async {

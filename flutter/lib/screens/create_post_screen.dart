@@ -52,6 +52,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   LatLng? _selectedPoint;
   String _locationLabel = 'Buscando sua localizacao atual...';
   String _cityLabel = 'Cidade nao identificada';
+  String? _resolvedStreet;
+  String? _resolvedNeighborhood;
   String? _resolvedStateCode;
   bool _locationIsApproximate = false;
 
@@ -153,6 +155,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         _locationLabel =
             'Nao foi possivel usar sua localizacao atual. Ajuste o pin manualmente no mapa.';
         _cityLabel = 'Cidade nao identificada';
+        _resolvedStreet = null;
+        _resolvedNeighborhood = null;
         _resolvedStateCode = null;
         _locationIsApproximate = true;
       });
@@ -204,6 +208,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         _selectedCity = matchedCity;
         _selectedAgency = null;
         _cityLabel = locality.isNotEmpty ? locality : 'Cidade nao identificada';
+        _resolvedStreet = street.isEmpty ? null : street;
+        _resolvedNeighborhood = neighborhood.isEmpty ? null : neighborhood;
         _resolvedStateCode = stateCode;
         _locationIsApproximate =
             matchedCity == null || locality == 'Localizacao nao identificada';
@@ -228,6 +234,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         _agencies = const [];
         _cityLabel = 'Cidade nao identificada';
         _locationLabel = 'Localizacao aproximada';
+        _resolvedStreet = null;
+        _resolvedNeighborhood = null;
         _resolvedStateCode = null;
         _locationIsApproximate = true;
       });
@@ -518,6 +526,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         description: _descriptionController.text,
         latitude: _selectedPoint!.latitude,
         longitude: _selectedPoint!.longitude,
+        street: _resolvedStreet,
+        neighborhood: _resolvedNeighborhood,
         agencyId: _selectedAgency?.id,
         isAnonymous: _isAnonymous,
       );
