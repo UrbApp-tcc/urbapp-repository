@@ -1,13 +1,11 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../logic/app_rules.dart';
 import 'feed_service.dart';
 
 class ProfileCityOption {
-  const ProfileCityOption({
-    required this.id,
-    required this.name,
-  });
+  const ProfileCityOption({required this.id, required this.name});
 
   final int id;
   final String name;
@@ -41,6 +39,7 @@ class UserProfileData {
     this.cityName,
     required this.currentXp,
     required this.currentLevel,
+    required this.levelProgress,
     required this.currentPoints,
     required this.followersCount,
     required this.likesReceived,
@@ -58,6 +57,7 @@ class UserProfileData {
   final String? cityName;
   final int currentXp;
   final int currentLevel;
+  final LevelProgress levelProgress;
   final int currentPoints;
   final int followersCount;
   final int likesReceived;
@@ -66,13 +66,13 @@ class UserProfileData {
   final List<ProfileBadge> badges;
   final List<FeedPost> posts;
 
-  int get xpIntoCurrentLevel => currentXp % 1000;
-  int get xpToNextLevel => 1000 - xpIntoCurrentLevel;
+  int get xpIntoCurrentLevel => levelProgress.xpIntoLevel;
+  int get xpToNextLevel => levelProgress.xpToNextLevel;
 }
 
 class ProfileService {
   ProfileService({SupabaseClient? supabase})
-      : _supabase = supabase ?? Supabase.instance.client;
+    : _supabase = supabase ?? Supabase.instance.client;
 
   final SupabaseClient _supabase;
 
@@ -90,7 +90,8 @@ class ProfileService {
 
       final profileResponse = await _fetchProfileRow(profileUserId);
       final fullName = _resolveDisplayName(profileResponse);
-      final username = (profileResponse['username'] as String?)?.trim() ?? 'usuario';
+      final username =
+          (profileResponse['username'] as String?)?.trim() ?? 'usuario';
       final avatarUrl = profileResponse['avatar_url'] as String?;
 
       final posts = await _fetchProfilePosts(
@@ -107,7 +108,12 @@ class ProfileService {
         viewerUserId: viewerUserId,
       );
       final badges = await _fetchBadgesSafely(profileUserId);
-      final likesReceived = posts.fold<int>(0, (sum, post) => sum + post.supportsCount);
+      final levels = await _fetchLevelsSafely();
+      final currentXp = (profileResponse['current_xp'] as num?)?.toInt() ?? 0;
+      final likesReceived = posts.fold<int>(
+        0,
+        (sum, post) => sum + post.supportsCount,
+      );
       final city = _asMap(profileResponse['cities']);
 
       return UserProfileData(
@@ -117,9 +123,11 @@ class ProfileService {
         avatarUrl: avatarUrl,
         cityId: (profileResponse['city_id'] as num?)?.toInt(),
         cityName: city?['name'] as String?,
-        currentXp: (profileResponse['current_xp'] as num?)?.toInt() ?? 0,
+        currentXp: currentXp,
         currentLevel: (profileResponse['current_level'] as num?)?.toInt() ?? 1,
-        currentPoints: (profileResponse['current_points'] as num?)?.toInt() ?? 0,
+        levelProgress: calculateLevelProgress(currentXp, levels),
+        currentPoints:
+            (profileResponse['current_points'] as num?)?.toInt() ?? 0,
         followersCount: followersCount,
         likesReceived: likesReceived,
         isFollowing: isFollowing,
@@ -135,7 +143,10 @@ class ProfileService {
   }
 
   Future<List<ProfileCityOption>> fetchCities() async {
-    final response = await _supabase.from('cities').select('id, name').order('name');
+    final response = await _supabase
+        .from('cities')
+        .select('id, name')
+        .order('name');
 
     return (response as List<dynamic>)
         .map(
@@ -159,7 +170,8 @@ class ProfileService {
           .whereType<ProfileBadge>()
           .toList();
     } on PostgrestException catch (error) {
-      if (_isMissingOptionalProfileFeature(error)) return const <ProfileBadge>[];
+      if (_isMissingOptionalProfileFeature(error))
+        return const <ProfileBadge>[];
       throw Exception('Erro ao carregar insignias: ${error.message}');
     } catch (error) {
       throw Exception('Erro inesperado ao carregar insignias: $error');
@@ -210,13 +222,17 @@ class ProfileService {
       final storagePath = '$userId/avatar/avatar.$extension';
       final contentType = _mimeFromExtension(extension);
 
-      await _supabase.storage.from(_profileImagesBucket).uploadBinary(
+      await _supabase.storage
+          .from(_profileImagesBucket)
+          .uploadBinary(
             storagePath,
             bytes,
             fileOptions: FileOptions(upsert: true, contentType: contentType),
           );
 
-      final publicUrl = _supabase.storage.from(_profileImagesBucket).getPublicUrl(storagePath);
+      final publicUrl = _supabase.storage
+          .from(_profileImagesBucket)
+          .getPublicUrl(storagePath);
       final cacheBuster = DateTime.now().millisecondsSinceEpoch;
       return '$publicUrl?v=$cacheBuster';
     } on StorageException catch (error) {
@@ -306,11 +322,35 @@ class ProfileService {
         .toList();
   }
 
+  /// Lê a tabela `levels`. Se falhar, usa a cópia local de [defaultLevels].
+  Future<List<LevelThreshold>> _fetchLevelsSafely() async {
+    try {
+      final response = await _supabase
+          .from('levels')
+          .select('level, min_xp, title')
+          .order('level');
+
+      final levels = (response as List<dynamic>).map((item) {
+        final row = item as Map<String, dynamic>;
+        return LevelThreshold(
+          level: (row['level'] as num).toInt(),
+          minXp: (row['min_xp'] as num).toInt(),
+          title: (row['title'] as String?) ?? '',
+        );
+      }).toList();
+
+      return levels.isEmpty ? defaultLevels : levels;
+    } catch (_) {
+      return defaultLevels;
+    }
+  }
+
   Future<List<ProfileBadge>> _fetchBadgesSafely(String userId) async {
     try {
       return await _fetchBadges(userId);
     } on PostgrestException catch (error) {
-      if (_isMissingOptionalProfileFeature(error)) return const <ProfileBadge>[];
+      if (_isMissingOptionalProfileFeature(error))
+        return const <ProfileBadge>[];
       rethrow;
     }
   }
@@ -392,7 +432,9 @@ class ProfileService {
     required String authorUsername,
     String? authorAvatarUrl,
   }) async {
-    var query = _supabase.from('posts').select('''
+    var query = _supabase
+        .from('posts')
+        .select('''
           id,
           title,
           description,
@@ -413,7 +455,8 @@ class ProfileService {
           problem_categories(name),
           public_agencies(name),
           post_images(id, storage_path, caption, position)
-        ''').eq('user_id', profileUserId);
+        ''')
+        .eq('user_id', profileUserId);
 
     if (!includeAnonymous) {
       query = query.eq('anonymity', false);
@@ -439,19 +482,20 @@ class ProfileService {
     required String authorUsername,
     String? authorAvatarUrl,
   }) {
-    final imageItems = (data['post_images'] as List<dynamic>? ?? const [])
-        .map((item) => item as Map<String, dynamic>)
-        .map(
-          (item) => FeedImage(
-            id: (item['id'] as num).toInt(),
-            storagePath: item['storage_path'] as String,
-            publicUrl: _resolveImageUrl(item['storage_path'] as String?),
-            caption: item['caption'] as String?,
-            position: (item['position'] as num?)?.toInt() ?? 0,
-          ),
-        )
-        .toList()
-      ..sort((a, b) => a.position.compareTo(b.position));
+    final imageItems =
+        (data['post_images'] as List<dynamic>? ?? const [])
+            .map((item) => item as Map<String, dynamic>)
+            .map(
+              (item) => FeedImage(
+                id: (item['id'] as num).toInt(),
+                storagePath: item['storage_path'] as String,
+                publicUrl: _resolveImageUrl(item['storage_path'] as String?),
+                caption: item['caption'] as String?,
+                position: (item['position'] as num?)?.toInt() ?? 0,
+              ),
+            )
+            .toList()
+          ..sort((a, b) => a.position.compareTo(b.position));
 
     final city = _asMap(data['cities']);
     final category = _asMap(data['problem_categories']);
@@ -482,7 +526,9 @@ class ProfileService {
       authorUsername: isAnonymous ? null : authorUsername,
       authorAvatarUrl: isAnonymous ? null : authorAvatarUrl,
       imageCount: imageItems.length,
-      primaryImageUrl: imageItems.isNotEmpty ? imageItems.first.publicUrl : null,
+      primaryImageUrl: imageItems.isNotEmpty
+          ? imageItems.first.publicUrl
+          : null,
       images: imageItems,
     );
   }

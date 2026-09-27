@@ -109,14 +109,13 @@ void main() {
       int currentPoints = 0,
       int currentXp = 0,
       DateTime? createdAt,
-    }) =>
-        RankingCandidate(
-          profileId: profileId,
-          rankingScore: rankingScore,
-          currentPoints: currentPoints,
-          currentXp: currentXp,
-          createdAt: createdAt ?? baseDate,
-        );
+    }) => RankingCandidate(
+      profileId: profileId,
+      rankingScore: rankingScore,
+      currentPoints: currentPoints,
+      currentXp: currentXp,
+      createdAt: createdAt ?? baseDate,
+    );
 
     test('quem tem maior ranking_score vem primeiro', () {
       final a = candidate(profileId: 'a', rankingScore: 300);
@@ -132,44 +131,47 @@ void main() {
       expect(sorted.first.profileId, 'a');
     });
 
-    test('empate em score e points: desempata por current_xp (maior primeiro)',
-        () {
-      final a = candidate(
-        profileId: 'a',
-        rankingScore: 100,
-        currentPoints: 50,
-        currentXp: 500,
-      );
-      final b = candidate(
-        profileId: 'b',
-        rankingScore: 100,
-        currentPoints: 50,
-        currentXp: 200,
-      );
-      final sorted = [b, a]..sort(rankingComparator);
-      expect(sorted.first.profileId, 'a');
-    });
+    test(
+      'empate em score e points: desempata por current_xp (maior primeiro)',
+      () {
+        final a = candidate(
+          profileId: 'a',
+          rankingScore: 100,
+          currentPoints: 50,
+          currentXp: 500,
+        );
+        final b = candidate(
+          profileId: 'b',
+          rankingScore: 100,
+          currentPoints: 50,
+          currentXp: 200,
+        );
+        final sorted = [b, a]..sort(rankingComparator);
+        expect(sorted.first.profileId, 'a');
+      },
+    );
 
     test(
-        'empate em score, points e xp: perfil mais antigo vem primeiro (created_at asc)',
-        () {
-      final a = candidate(
-        profileId: 'a',
-        rankingScore: 100,
-        currentPoints: 50,
-        currentXp: 200,
-        createdAt: DateTime(2022, 3, 15),
-      );
-      final b = candidate(
-        profileId: 'b',
-        rankingScore: 100,
-        currentPoints: 50,
-        currentXp: 200,
-        createdAt: DateTime(2024, 6, 1),
-      );
-      final sorted = [b, a]..sort(rankingComparator);
-      expect(sorted.first.profileId, 'a');
-    });
+      'empate em score, points e xp: perfil mais antigo vem primeiro (created_at asc)',
+      () {
+        final a = candidate(
+          profileId: 'a',
+          rankingScore: 100,
+          currentPoints: 50,
+          currentXp: 200,
+          createdAt: DateTime(2022, 3, 15),
+        );
+        final b = candidate(
+          profileId: 'b',
+          rankingScore: 100,
+          currentPoints: 50,
+          currentXp: 200,
+          createdAt: DateTime(2024, 6, 1),
+        );
+        final sorted = [b, a]..sort(rankingComparator);
+        expect(sorted.first.profileId, 'a');
+      },
+    );
 
     test('empate total: desempata por profile_id em ordem alfabética', () {
       final a = candidate(
@@ -239,6 +241,51 @@ void main() {
 
     test('IDs distintos com prefixo comum não são considerados o mesmo', () {
       expect(isSelfSupport('user-1', 'user-10'), isFalse);
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────
+  // Níveis de XP
+  // ──────────────────────────────────────────────────────────
+  group('calculateLevelProgress', () {
+    test('0 XP fica no nível 1, sem progresso', () {
+      final p = calculateLevelProgress(0, defaultLevels);
+      expect(p.level, 1);
+      expect(p.xpIntoLevel, 0);
+      expect(p.xpForLevel, 100);
+      expect(p.xpToNextLevel, 100);
+      expect(p.nextLevelTitle, 'Morador Atento');
+    });
+
+    test('XP no meio do nível calcula o progresso relativo', () {
+      final p = calculateLevelProgress(150, defaultLevels);
+      expect(p.level, 2);
+      expect(p.xpIntoLevel, 50);
+      expect(p.xpForLevel, 200);
+      expect(p.fraction, closeTo(0.25, 0.0001));
+    });
+
+    test('XP exatamente no limite já conta como o nível seguinte', () {
+      expect(calculateLevelProgress(300, defaultLevels).level, 3);
+      expect(calculateLevelProgress(299, defaultLevels).level, 2);
+    });
+
+    test('nível máximo não tem próximo nível', () {
+      final p = calculateLevelProgress(5000, defaultLevels);
+      expect(p.level, 5);
+      expect(p.isMaxLevel, isTrue);
+      expect(p.xpToNextLevel, 0);
+      expect(p.fraction, 1.0);
+      expect(p.nextLevelTitle, isNull);
+    });
+
+    test('XP negativo é tratado como zero', () {
+      expect(calculateLevelProgress(-10, defaultLevels).level, 1);
+    });
+
+    test('a ordem da lista de níveis não importa', () {
+      final shuffled = defaultLevels.reversed.toList();
+      expect(calculateLevelProgress(650, shuffled).level, 4);
     });
   });
 }
