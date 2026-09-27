@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../services/city_service.dart';
 import '../services/feed_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/date_formatter.dart';
+import '../widgets/city_picker_sheet.dart';
 import 'profile_screen.dart';
 
 class FeedScreen extends StatefulWidget {
@@ -15,6 +17,10 @@ class FeedScreen extends StatefulWidget {
     required this.isLoading,
     required this.isRefreshing,
     required this.onOpenPost,
+    required this.cities,
+    required this.selectedCityId,
+    required this.onCityChanged,
+    required this.onOpenMap,
   });
 
   final List<FeedPost> posts;
@@ -23,6 +29,10 @@ class FeedScreen extends StatefulWidget {
   final bool isLoading;
   final bool isRefreshing;
   final ValueChanged<FeedPost> onOpenPost;
+  final List<CityOption> cities;
+  final int? selectedCityId;
+  final ValueChanged<int?> onCityChanged;
+  final VoidCallback onOpenMap;
 
   @override
   State<FeedScreen> createState() => _FeedScreenState();
@@ -44,6 +54,23 @@ class _FeedScreenState extends State<FeedScreen>
     super.dispose();
   }
 
+  CityOption? get _selectedCity {
+    final selectedCityId = widget.selectedCityId;
+    if (selectedCityId == null) return null;
+    return widget.cities.where((city) => city.id == selectedCityId).firstOrNull;
+  }
+
+  Future<void> _chooseCity() async {
+    final result = await showCityPickerSheet(
+      context,
+      cities: widget.cities,
+      selectedCityId: widget.selectedCityId,
+      allowAllCities: true,
+    );
+    if (result == null || !mounted) return;
+    widget.onCityChanged(result.cityId);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -52,34 +79,68 @@ class _FeedScreenState extends State<FeedScreen>
           padding: const EdgeInsets.fromLTRB(0, 44, 0, 0),
           child: Column(
             children: [
-              // Título centralizado, sem botões
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    const SizedBox(width: 44),
+                    Expanded(
+                      child: Center(
+                        child: RichText(
+                          text: const TextSpan(
+                            children: [
+                              TextSpan(
+                                text: 'Urb',
+                                style: TextStyle(
+                                  color: Color(0xFF22252A),
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.3,
+                                ),
+                              ),
+                              TextSpan(
+                                text: 'App',
+                                style: TextStyle(
+                                  color: Color(0xFF8A8F98),
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w300,
+                                  letterSpacing: -0.3,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Abrir mapa da cidade',
+                      onPressed: widget.onOpenMap,
+                      icon: const Icon(Icons.map_outlined),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
               Center(
-                child: RichText(
-                  text: const TextSpan(
-                    children: [
-                      TextSpan(
-                        text: 'Urb',
-                        style: TextStyle(
-                          color: Color(0xFF22252A),
-                          fontSize: 17,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.3,
-                        ),
-                      ),
-                      TextSpan(
-                        text: 'App',
-                        style: TextStyle(
-                          color: Color(0xFF8A8F98),
-                          fontSize: 17,
-                          fontWeight: FontWeight.w300,
-                          letterSpacing: -0.3,
-                        ),
-                      ),
-                    ],
+                child: OutlinedButton.icon(
+                  onPressed: widget.cities.isEmpty ? null : _chooseCity,
+                  icon: const Icon(Icons.location_on_outlined, size: 16),
+                  label: Text(_selectedCity?.name ?? 'Todas as cidades'),
+                  style: OutlinedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    minimumSize: const Size(0, 34),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    textStyle: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 10),
               // Tab bar de ponta a ponta (sem padding horizontal)
               _FeedTabBar(controller: _tabController),
             ],

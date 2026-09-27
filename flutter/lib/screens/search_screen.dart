@@ -45,20 +45,56 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   static String _haystack(FeedPost post) {
-    return [
+    return _normalizeSearchText([
       post.title,
       post.description,
       post.categoryName,
       post.cityName,
+      post.street ?? '',
+      post.neighborhood ?? '',
       post.authorDisplayName,
       post.agencyName ?? '',
-    ].join(' ').toLowerCase();
+    ].join(' '));
+  }
+
+  static String _normalizeSearchText(String value) {
+    const replacements = {
+      'á': 'a',
+      'à': 'a',
+      'â': 'a',
+      'ã': 'a',
+      'ä': 'a',
+      'é': 'e',
+      'è': 'e',
+      'ê': 'e',
+      'ë': 'e',
+      'í': 'i',
+      'ì': 'i',
+      'î': 'i',
+      'ï': 'i',
+      'ó': 'o',
+      'ò': 'o',
+      'ô': 'o',
+      'õ': 'o',
+      'ö': 'o',
+      'ú': 'u',
+      'ù': 'u',
+      'û': 'u',
+      'ü': 'u',
+      'ç': 'c',
+    };
+
+    var normalized = value.trim().toLowerCase();
+    replacements.forEach((source, target) {
+      normalized = normalized.replaceAll(source, target);
+    });
+    return normalized;
   }
 
   bool get _hasActiveSearch => _query.trim().isNotEmpty;
 
   List<FeedPost> get _textResults {
-    final raw = _query.trim().toLowerCase();
+    final raw = _normalizeSearchText(_query);
     if (raw.isEmpty) return widget.posts;
 
     final terms = raw.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
@@ -356,7 +392,7 @@ class _SearchField extends StatelessWidget {
                   horizontal: 10,
                   vertical: 10,
                 ),
-                hintText: 'Pesquisar reportes',
+                hintText: 'Pesquisar por reporte, rua ou bairro',
                 hintStyle: TextStyle(
                   color: Color(0xFF8F949D),
                   fontSize: 15,

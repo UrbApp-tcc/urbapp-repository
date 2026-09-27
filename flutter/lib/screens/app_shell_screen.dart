@@ -5,10 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/auth_service.dart';
+import '../services/city_service.dart';
 import '../services/feed_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/error_formatter.dart';
 import 'create_post_screen.dart';
+import 'city_map_screen.dart';
 import 'feed_screen.dart';
 import 'notifications_screen.dart';
 import 'post_detail_screen.dart';
@@ -24,6 +26,7 @@ class AppShellScreen extends StatefulWidget {
 
 class _AppShellScreenState extends State<AppShellScreen> {
   final _feedService = FeedService();
+  final _cityService = CityService();
   final _authService = AuthService();
   final _supabase = Supabase.instance.client;
 
@@ -37,6 +40,8 @@ class _AppShellScreenState extends State<AppShellScreen> {
   List<FeedPost> _posts = const [];
   List<FeedPost> _trendingPosts = const [];
   Set<int> _likedPostIds = const <int>{};
+  List<CityOption> _cities = const [];
+  int? _selectedCityId;
   bool _isLoading = true;
   bool _isRefreshing = false;
   bool _hasShownTrendingWarning = false;
@@ -44,9 +49,34 @@ class _AppShellScreenState extends State<AppShellScreen> {
   @override
   void initState() {
     super.initState();
-    _loadFeed();
+    _initializeCityFilter();
     _setupRealtimeSubscriptions();
     _setupDeepLinks();
+  }
+
+  Future<void> _initializeCityFilter() async {
+    try {
+      final results = await Future.wait<dynamic>([
+        _cityService.fetchCities(),
+        _cityService.fetchCurrentUserCityId(),
+      ]);
+      final cities = results[0] as List<CityOption>;
+      final profileCityId = results[1] as int?;
+
+      if (!mounted) return;
+      setState(() {
+        _cities = cities;
+        _selectedCityId = cities.any((city) => city.id == profileCityId)
+            ? profileCityId
+            : null;
+      });
+    } catch (error) {
+      if (mounted) {
+        _showErrorSnackBar(friendlyError(error));
+      }
+    }
+
+    await _loadFeed();
   }
 
   @override
@@ -219,12 +249,14 @@ class _AppShellScreenState extends State<AppShellScreen> {
     }
 
     try {
-      final posts = await _feedService.fetchFeed();
+      final posts = await _feedService.fetchFeed(cityId: _selectedCityId);
       List<FeedPost> trendingPosts = const [];
       Object? trendingError;
 
       try {
-        trendingPosts = await _feedService.fetchTrendingFeed();
+        trendingPosts = await _feedService.fetchTrendingFeed(
+          cityId: _selectedCityId,
+        );
       } catch (error) {
         trendingError = error;
       }
@@ -254,6 +286,25 @@ class _AppShellScreenState extends State<AppShellScreen> {
         });
       }
     }
+  }
+
+  Future<void> _changeCityFilter(int? cityId) async {
+    if (cityId == _selectedCityId) return;
+    setState(() => _selectedCityId = cityId);
+    await _loadFeed();
+  }
+
+  Future<void> _openCityMap() async {
+    if (_cities.isEmpty) {
+      _showErrorSnackBar('Nenhuma cidade está disponível para exibir no mapa.');
+      return;
+    }
+
+    await CityMapScreen.open(
+      context,
+      cities: _cities,
+      initialCityId: _selectedCityId,
+    );
   }
 
   Future<void> _openCreatePost() async {
@@ -296,7 +347,9 @@ class _AppShellScreenState extends State<AppShellScreen> {
 
   Future<void> _refreshTrendingFeed() async {
     try {
-      final trendingPosts = await _feedService.fetchTrendingFeed();
+      final trendingPosts = await _feedService.fetchTrendingFeed(
+        cityId: _selectedCityId,
+      );
       final likedPostIds = await _feedService.fetchLikedPostIds(
         _mergePostIds(posts: _posts, trendingPosts: trendingPosts),
       );
@@ -450,6 +503,10 @@ class _AppShellScreenState extends State<AppShellScreen> {
                             isLoading: _isLoading,
                             isRefreshing: _isRefreshing,
                             onOpenPost: _openPostDetail,
+                            cities: _cities,
+                            selectedCityId: _selectedCityId,
+                            onCityChanged: _changeCityFilter,
+                            onOpenMap: _openCityMap,
                           ),
                           SearchScreen(
                             posts: _posts,

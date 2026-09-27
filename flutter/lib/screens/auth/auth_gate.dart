@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../services/auth_service.dart';
+import '../../widgets/gamification_listener.dart';
 import '../app_shell_screen.dart';
 import 'login_screen.dart';
 import 'reset_password_screen.dart';
@@ -27,11 +28,10 @@ class _AuthGateState extends State<AuthGate> {
 
         final session = snapshot.data?.session ?? _authService.currentSession;
 
-        if (snapshot.connectionState == ConnectionState.waiting && session == null) {
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            session == null) {
           return const Scaffold(
-            body: Center(
-              child: CircularProgressIndicator(),
-            ),
+            body: Center(child: CircularProgressIndicator()),
           );
         }
 
@@ -39,7 +39,11 @@ class _AuthGateState extends State<AuthGate> {
           return const LoginScreen();
         }
 
-        return const AppShellScreen();
+        // A key com o id do usuário recria o listener ao trocar de conta.
+        return GamificationListener(
+          key: ValueKey(session.user.id),
+          child: const AppShellScreen(),
+        );
       },
     );
   }

@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../logic/app_rules.dart';
 import '../services/feed_service.dart';
+import '../services/moderation_service.dart';
 import '../services/post_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/error_formatter.dart';
@@ -34,6 +35,7 @@ class PostDetailScreen extends StatefulWidget {
 class _PostDetailScreenState extends State<PostDetailScreen> {
   final _supabase = Supabase.instance.client;
   final _postService = PostService();
+  final _moderationService = ModerationService();
   final _commentController = TextEditingController();
 
   late int _supportsCount;
@@ -44,6 +46,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   bool _isCommentsLoading = true;
   bool _isSubmittingComment = false;
   bool _isResolvingAddress = true;
+  bool _isSubmittingReport = false;
   bool _hasStatusChanges = false;
 
   int? _replyParentCommentId;
@@ -275,6 +278,18 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   }
 
   Future<void> _loadAddress() async {
+    final storedStreet = widget.post.street?.trim();
+    final storedNeighborhood = widget.post.neighborhood?.trim();
+    if ((storedStreet != null && storedStreet.isNotEmpty) ||
+        (storedNeighborhood != null && storedNeighborhood.isNotEmpty)) {
+      setState(() {
+        _resolvedStreet = storedStreet;
+        _resolvedNeighborhood = storedNeighborhood;
+        _isResolvingAddress = false;
+      });
+      return;
+    }
+
     try {
       final address = await _fetchAddressFromCoordinates(
         widget.post.latitude,
@@ -519,6 +534,51 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     );
   }
 
+  Future<void> _showReportPostSheet() async {
+    final draft = await showModalBottomSheet<_PostReportDraft>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (context) => const _ReportPostSheet(),
+    );
+
+    if (draft == null || _isSubmittingReport) return;
+
+    setState(() => _isSubmittingReport = true);
+    try {
+      await _moderationService.reportPost(
+        postId: widget.post.id,
+        reason: draft.reason,
+        details: draft.details,
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Denúncia enviada. Nossa equipe poderá analisar este reporte.',
+          ),
+          backgroundColor: AppColors.resolved,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(friendlyError(error)),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmittingReport = false);
+      }
+    }
+  }
+
   void _openProfile(String userId) {
     ProfileScreen.open(
       context,
@@ -596,6 +656,12 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         ),
         title: const Text('Reporte'),
         actions: [
+          if (currentUserId != null && widget.post.authorId != currentUserId)
+            IconButton(
+              tooltip: 'Denunciar reporte',
+              onPressed: _isSubmittingReport ? null : _showReportPostSheet,
+              icon: const Icon(Icons.flag_outlined),
+            ),
           IconButton(
             tooltip: 'Compartilhar',
             onPressed: _showShareOptions,
@@ -1642,6 +1708,129 @@ class _EmptyCommentsCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _PostReportDraft {
+  const _PostReportDraft({required this.reason, required this.details});
+
+  final String reason;
+  final String details;
+}
+
+class _ReportPostSheet extends StatefulWidget {
+  const _ReportPostSheet();
+
+  @override
+  State<_ReportPostSheet> createState() => _ReportPostSheetState();
+}
+
+class _ReportPostSheetState extends State<_ReportPostSheet> {
+  static const _reasons = [
+    'Conteúdo ofensivo',
+    'Informação falsa',
+    'Spam ou publicidade',
+    'Localização incorreta',
+    'Outro motivo',
+  ];
+
+  final _detailsController = TextEditingController();
+  String? _selectedReason;
+
+  @override
+  void dispose() {
+    _detailsController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final reason = _selectedReason;
+    if (reason == null) return;
+
+    Navigator.of(context).pop(
+      _PostReportDraft(
+        reason: reason,
+        details: _detailsController.text.trim(),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          24,
+          22,
+          24,
+          MediaQuery.viewInsetsOf(context).bottom + 24,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Denunciar reporte',
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 21,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Selecione o motivo. A denúncia será enviada para análise.',
+                style: TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 14,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 14),
+              RadioGroup<String>(
+                groupValue: _selectedReason,
+                onChanged: (value) => setState(() {
+                  _selectedReason = value;
+                }),
+                child: Column(
+                  children: _reasons
+                      .map(
+                        (reason) => RadioListTile<String>(
+                          value: reason,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(reason),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _detailsController,
+                maxLength: 300,
+                minLines: 3,
+                maxLines: 5,
+                decoration: const InputDecoration(
+                  labelText: 'Detalhes adicionais',
+                  hintText: 'Explique o problema, se necessário',
+                  alignLabelWithHint: true,
+                ),
+              ),
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _selectedReason == null ? null : _submit,
+                  icon: const Icon(Icons.flag_outlined),
+                  label: const Text('Enviar denúncia'),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
