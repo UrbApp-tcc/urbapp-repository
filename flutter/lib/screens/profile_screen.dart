@@ -77,7 +77,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         profileUserId: widget.profileUserId,
         viewerUserId: widget.currentUserId,
       );
-      final cities = _isOwnProfile ? await _profileService.fetchCities() : const <ProfileCityOption>[];
+      final cities = _isOwnProfile
+          ? await _profileService.fetchCities()
+          : const <ProfileCityOption>[];
 
       if (!mounted) return;
       setState(() {
@@ -238,7 +240,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(Icons.account_balance_outlined),
                   title: const Text('Perfis institucionais'),
-                  subtitle: const Text('Criar ou gerenciar secretaria/prefeitura'),
+                  subtitle: const Text(
+                    'Criar ou gerenciar secretaria/prefeitura',
+                  ),
                   onTap: () {
                     Navigator.of(context).pop();
                     AgencyProfilesScreen.open(
@@ -250,7 +254,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
               if (widget.onSignOut != null)
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.logout_rounded, color: AppColors.error),
+                  leading: const Icon(
+                    Icons.logout_rounded,
+                    color: AppColors.error,
+                  ),
                   title: const Text('Sair da conta'),
                   onTap: () async {
                     Navigator.of(context).pop();
@@ -274,37 +281,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : profile == null
-                ? const Center(child: Text('Não foi possível carregar o perfil.'))
-                : ListView(
-                    padding: const EdgeInsets.fromLTRB(24, 20, 24, 132),
-                    children: [
-                      _ProfileTopBar(
-                        isOwnProfile: _isOwnProfile,
-                        onOpenSettings: _openSettingsSheet,
-                        onBack: Navigator.of(context).canPop()
-                            ? () => Navigator.of(context).pop()
-                            : null,
-                      ),
-                      const SizedBox(height: 24),
-                      _ProfileHeader(
-                        profile: profile,
-                        isOwnProfile: _isOwnProfile,
-                        isSaving: _isSaving,
-                        isFollowingLoading: _isFollowingLoading,
-                        onEditProfile: _openEditProfileSheet,
-                        onToggleFollow: _toggleFollow,
-                      ),
-                      const SizedBox(height: 22),
-                      _StatsGrid(profile: profile),
-                      const SizedBox(height: 20),
-                      _XpCard(profile: profile),
-                      const SizedBox(height: 24),
-                      _ProfilePostsSection(
-                        posts: profile.posts,
-                        isOwnProfile: _isOwnProfile,
-                      ),
-                    ],
+            ? const Center(child: Text('Não foi possível carregar o perfil.'))
+            : ListView(
+                padding: const EdgeInsets.fromLTRB(24, 20, 24, 132),
+                children: [
+                  _ProfileTopBar(
+                    isOwnProfile: _isOwnProfile,
+                    onOpenSettings: _openSettingsSheet,
+                    onBack: Navigator.of(context).canPop()
+                        ? () => Navigator.of(context).pop()
+                        : null,
                   ),
+                  const SizedBox(height: 24),
+                  _ProfileHeader(
+                    profile: profile,
+                    isOwnProfile: _isOwnProfile,
+                    isSaving: _isSaving,
+                    isFollowingLoading: _isFollowingLoading,
+                    onEditProfile: _openEditProfileSheet,
+                    onToggleFollow: _toggleFollow,
+                  ),
+                  const SizedBox(height: 22),
+                  _StatsGrid(profile: profile),
+                  const SizedBox(height: 20),
+                  _XpCard(profile: profile),
+                  const SizedBox(height: 24),
+                  _ProfilePostsSection(
+                    posts: profile.posts,
+                    isOwnProfile: _isOwnProfile,
+                  ),
+                ],
+              ),
       ),
     );
   }
@@ -372,9 +379,9 @@ class _ProfileHeader extends StatelessWidget {
   final VoidCallback onToggleFollow;
 
   ButtonStyle get _headerButtonStyle => ElevatedButton.styleFrom(
-        minimumSize: const Size(0, 48),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      );
+    minimumSize: const Size(0, 48),
+    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -458,15 +465,17 @@ class _ProfileHeader extends StatelessWidget {
                 onPressed: isFollowingLoading ? null : onToggleFollow,
                 style: _headerButtonStyle,
                 icon: Icon(
-                  profile.isFollowing ? Icons.person_remove_alt_1_rounded : Icons.person_add_alt_1,
+                  profile.isFollowing
+                      ? Icons.person_remove_alt_1_rounded
+                      : Icons.person_add_alt_1,
                   size: 18,
                 ),
                 label: Text(
                   isFollowingLoading
                       ? 'Aguarde'
                       : profile.isFollowing
-                          ? 'Seguindo'
-                          : 'Seguir',
+                      ? 'Seguindo'
+                      : 'Seguir',
                 ),
               ),
           ],
@@ -477,10 +486,7 @@ class _ProfileHeader extends StatelessWidget {
 }
 
 class _ProfileAvatar extends StatelessWidget {
-  const _ProfileAvatar({
-    required this.avatarUrl,
-    required this.label,
-  });
+  const _ProfileAvatar({required this.avatarUrl, required this.label});
 
   final String? avatarUrl;
   final String label;
@@ -538,10 +544,7 @@ class _ProfileFeaturedBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _BadgeMedal(
-      badge: badge,
-      size: 68,
-    );
+    return _BadgeMedal(badge: badge, size: 68);
   }
 }
 
@@ -634,10 +637,7 @@ String? _badgeAssetPath(ProfileBadge badge) {
 }
 
 class _BadgeMedal extends StatelessWidget {
-  const _BadgeMedal({
-    required this.badge,
-    required this.size,
-  });
+  const _BadgeMedal({required this.badge, required this.size});
 
   final ProfileBadge badge;
   final double size;
@@ -676,11 +676,7 @@ class _BadgeMedal extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [
-              palette.light,
-              palette.base,
-              palette.dark,
-            ],
+            colors: [palette.light, palette.base, palette.dark],
           ),
           boxShadow: [
             BoxShadow(
@@ -689,7 +685,10 @@ class _BadgeMedal extends StatelessWidget {
               offset: const Offset(0, 8),
             ),
           ],
-          border: Border.all(color: Colors.white.withValues(alpha: 0.65), width: 2.4),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.65),
+            width: 2.4,
+          ),
         ),
         child: Stack(
           alignment: Alignment.center,
@@ -741,10 +740,7 @@ class _StatsGrid extends StatelessWidget {
 }
 
 class _StatCard extends StatelessWidget {
-  const _StatCard({
-    required this.label,
-    required this.value,
-  });
+  const _StatCard({required this.label, required this.value});
 
   final String label;
   final String value;
@@ -793,7 +789,18 @@ class _XpCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final progress = (profile.xpIntoCurrentLevel / 1000).clamp(0.0, 1.0);
+    final levelProgress = profile.levelProgress;
+    final progress = levelProgress.fraction;
+
+    final subtitle = levelProgress.isMaxLevel
+        ? 'Você chegou ao nível máximo!'
+        : 'Faltam ${levelProgress.xpToNextLevel} XP para o nível '
+              '${levelProgress.level + 1}'
+              '${levelProgress.nextLevelTitle == null ? '' : ' (${levelProgress.nextLevelTitle})'}';
+
+    final footer = levelProgress.isMaxLevel
+        ? '${profile.currentXp} XP no total'
+        : '${levelProgress.xpIntoLevel}/${levelProgress.xpForLevel} XP neste nível';
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -805,9 +812,11 @@ class _XpCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Progresso de XP',
-            style: TextStyle(
+          Text(
+            levelProgress.title.isEmpty
+                ? 'Progresso de XP'
+                : 'Nível ${levelProgress.level} · ${levelProgress.title}',
+            style: const TextStyle(
               color: AppColors.textPrimary,
               fontSize: 18,
               fontWeight: FontWeight.w800,
@@ -815,7 +824,7 @@ class _XpCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'Faltam ${profile.xpToNextLevel} XP para o próximo nível',
+            subtitle,
             style: const TextStyle(
               color: AppColors.textSecondary,
               fontSize: 14,
@@ -829,12 +838,14 @@ class _XpCard extends StatelessWidget {
               value: progress,
               minHeight: 10,
               backgroundColor: AppColors.border,
-              valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primary),
+              valueColor: const AlwaysStoppedAnimation<Color>(
+                AppColors.primary,
+              ),
             ),
           ),
           const SizedBox(height: 10),
           Text(
-            '${profile.xpIntoCurrentLevel}/1000 XP neste nível',
+            footer,
             style: const TextStyle(
               color: AppColors.textHint,
               fontSize: 12,
@@ -891,10 +902,7 @@ class _BadgesSection extends StatelessWidget {
           if (badges.isEmpty)
             const Text(
               'Nenhuma insígnia conquistada ainda.',
-              style: TextStyle(
-                color: AppColors.textSecondary,
-                fontSize: 14,
-              ),
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
             )
           else ...[
             Wrap(
@@ -908,7 +916,9 @@ class _BadgesSection extends StatelessWidget {
               const SizedBox(height: 14),
               TextButton(
                 onPressed: onToggleShowAll,
-                child: Text(showAll ? 'Ver menos' : 'Ver todas (${badges.length})'),
+                child: Text(
+                  showAll ? 'Ver menos' : 'Ver todas (${badges.length})',
+                ),
               ),
             ],
           ],
@@ -1029,7 +1039,8 @@ class _ProfileAchievementsSection extends StatelessWidget {
     id: -1,
     name: 'UrbApp Bronze',
     slug: 'urbapp-bronze-preview',
-    description: 'Previa visual da insignia bronze para validar como ela aparece no perfil.',
+    description:
+        'Previa visual da insignia bronze para validar como ela aparece no perfil.',
     icon: 'assets/images/badges/badge-bronze.png',
   );
 
@@ -1040,7 +1051,9 @@ class _ProfileAchievementsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final previewBadge = badges.isEmpty && featuredBadge == null ? _bronzePreviewBadge : null;
+    final previewBadge = badges.isEmpty && featuredBadge == null
+        ? _bronzePreviewBadge
+        : null;
     final visibleBadges = showAll ? badges : badges.take(3).toList();
 
     return Container(
@@ -1106,7 +1119,9 @@ class _ProfileAchievementsSection extends StatelessWidget {
               const SizedBox(height: 14),
               TextButton(
                 onPressed: onToggleShowAll,
-                child: Text(showAll ? 'Ver menos' : 'Ver todas (${badges.length})'),
+                child: Text(
+                  showAll ? 'Ver menos' : 'Ver todas (${badges.length})',
+                ),
               ),
             ],
           ],
@@ -1139,10 +1154,7 @@ class _AchievementFeaturedBadgeCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _AchievementBadgeArtwork(
-            icon: badge.icon,
-            size: 74,
-          ),
+          _AchievementBadgeArtwork(icon: badge.icon, size: 74),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
@@ -1202,10 +1214,7 @@ class _AchievementBadgeChip extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _AchievementBadgeArtwork(
-            icon: badge.icon,
-            size: 56,
-          ),
+          _AchievementBadgeArtwork(icon: badge.icon, size: 56),
           const SizedBox(height: 10),
           Text(
             badge.name,
@@ -1234,10 +1243,7 @@ class _AchievementBadgeChip extends StatelessWidget {
 
 // ignore: unused_element
 class _AchievementBadgeArtwork extends StatelessWidget {
-  const _AchievementBadgeArtwork({
-    required this.icon,
-    required this.size,
-  });
+  const _AchievementBadgeArtwork({required this.icon, required this.size});
 
   final String? icon;
   final double size;
@@ -1292,10 +1298,7 @@ class _AchievementBadgeArtwork extends StatelessWidget {
 }
 
 class _ProfilePostsSection extends StatelessWidget {
-  const _ProfilePostsSection({
-    required this.posts,
-    required this.isOwnProfile,
-  });
+  const _ProfilePostsSection({required this.posts, required this.isOwnProfile});
 
   final List<FeedPost> posts;
   final bool isOwnProfile;
@@ -1325,20 +1328,14 @@ class _ProfilePostsSection extends StatelessWidget {
             ),
             child: const Text(
               'Nenhum reporte publicado para exibir.',
-              style: TextStyle(
-                color: AppColors.textSecondary,
-                fontSize: 14,
-              ),
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
             ),
           )
         else
           ...posts.map(
             (post) => Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: _ProfilePostCard(
-                post: post,
-                isOwnProfile: isOwnProfile,
-              ),
+              child: _ProfilePostCard(post: post, isOwnProfile: isOwnProfile),
             ),
           ),
       ],
@@ -1347,10 +1344,7 @@ class _ProfilePostsSection extends StatelessWidget {
 }
 
 class _ProfilePostCard extends StatelessWidget {
-  const _ProfilePostCard({
-    required this.post,
-    required this.isOwnProfile,
-  });
+  const _ProfilePostCard({required this.post, required this.isOwnProfile});
 
   final FeedPost post;
   final bool isOwnProfile;
@@ -1377,14 +1371,16 @@ class _ProfilePostCard extends StatelessWidget {
                 child: SizedBox(
                   width: 72,
                   height: 72,
-                  child: post.primaryImageUrl != null && post.primaryImageUrl!.isNotEmpty
-                      ? Image.network(
-                          post.primaryImageUrl!,
-                          fit: BoxFit.cover,
-                        )
+                  child:
+                      post.primaryImageUrl != null &&
+                          post.primaryImageUrl!.isNotEmpty
+                      ? Image.network(post.primaryImageUrl!, fit: BoxFit.cover)
                       : const ColoredBox(
                           color: AppColors.divider,
-                          child: Icon(Icons.image_outlined, color: AppColors.textHint),
+                          child: Icon(
+                            Icons.image_outlined,
+                            color: AppColors.textHint,
+                          ),
                         ),
                 ),
               ),
@@ -1414,7 +1410,10 @@ class _ProfilePostCard extends StatelessWidget {
                     if (isOwnProfile && post.isAnonymous) ...[
                       const SizedBox(height: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xFFFFF4E5),
                           borderRadius: BorderRadius.circular(999),
@@ -1432,7 +1431,11 @@ class _ProfilePostCard extends StatelessWidget {
                     const SizedBox(height: 8),
                     Row(
                       children: [
-                        const Icon(Icons.favorite_border_rounded, size: 16, color: AppColors.textHint),
+                        const Icon(
+                          Icons.favorite_border_rounded,
+                          size: 16,
+                          color: AppColors.textHint,
+                        ),
                         const SizedBox(width: 6),
                         Text(
                           '${post.supportsCount}',
@@ -1443,7 +1446,11 @@ class _ProfilePostCard extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 14),
-                        const Icon(Icons.mode_comment_outlined, size: 16, color: AppColors.textHint),
+                        const Icon(
+                          Icons.mode_comment_outlined,
+                          size: 16,
+                          color: AppColors.textHint,
+                        ),
                         const SizedBox(width: 6),
                         Text(
                           '${post.commentsCount}',
@@ -1599,21 +1606,19 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
             OutlinedButton.icon(
               onPressed: _pickAvatar,
               icon: const Icon(Icons.photo_camera_outlined),
-              label: Text(_avatarFile == null ? 'Mudar foto' : _avatarFile!.name),
+              label: Text(
+                _avatarFile == null ? 'Mudar foto' : _avatarFile!.name,
+              ),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _fullNameController,
-              decoration: const InputDecoration(
-                labelText: 'Nome social',
-              ),
+              decoration: const InputDecoration(labelText: 'Nome social'),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _usernameController,
-              decoration: const InputDecoration(
-                labelText: 'Nome de usuário',
-              ),
+              decoration: const InputDecoration(labelText: 'Nome de usuário'),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -1643,9 +1648,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                 ),
               ],
               onChanged: (value) => setState(() => _selectedCityId = value),
-              decoration: const InputDecoration(
-                labelText: 'Cidade',
-              ),
+              decoration: const InputDecoration(labelText: 'Cidade'),
             ),
             const SizedBox(height: 12),
             if (_selectedBadge != null) ...[
@@ -1659,10 +1662,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                 ),
                 child: Row(
                   children: [
-                    _BadgeMedal(
-                      badge: _selectedBadge!,
-                      size: 54,
-                    ),
+                    _BadgeMedal(badge: _selectedBadge!, size: 54),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
