@@ -14,6 +14,11 @@ import '../services/post_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/error_formatter.dart';
 import '../utils/date_formatter.dart';
+import '../theme/urbapp_design.dart';
+import '../widgets/fade_slide_in.dart';
+import '../widgets/urb_dialog.dart';
+import '../widgets/urb_primary_button.dart';
+import '../widgets/urb_status_chip.dart';
 import 'profile_screen.dart';
 import 'resolve_complaint_screen.dart';
 
@@ -23,8 +28,30 @@ class PostDetailScreen extends StatefulWidget {
   final FeedPost post;
 
   static Future<bool?> open(BuildContext context, FeedPost post) {
+    final duration = UrbMotion.of(context, const Duration(milliseconds: 280));
     return Navigator.of(context).push<bool>(
-      MaterialPageRoute<bool>(builder: (_) => PostDetailScreen(post: post)),
+      PageRouteBuilder<bool>(
+        opaque: false,
+        barrierColor: const Color(0x940D1520),
+        barrierLabel: 'Fechar',
+        transitionDuration: duration,
+        reverseTransitionDuration: duration,
+        pageBuilder: (_, _, _) => PostDetailScreen(post: post),
+        // A janela "cresce" de leve ao abrir.
+        transitionsBuilder: (context, animation, _, child) {
+          final curved = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+          );
+          return FadeTransition(
+            opacity: animation,
+            child: ScaleTransition(
+              scale: Tween(begin: 0.94, end: 1.0).animate(curved),
+              child: child,
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -126,8 +153,9 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       if (!mounted) return;
       setState(() {
         _isLiked = newLikedState;
-        _supportsCount =
-            newLikedState ? _supportsCount + 1 : (_supportsCount - 1).clamp(0, 999999);
+        _supportsCount = newLikedState
+            ? _supportsCount + 1
+            : (_supportsCount - 1).clamp(0, 999999);
       });
     } catch (error) {
       if (!mounted) return;
@@ -360,89 +388,60 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   Future<void> _copyToClipboard(String text, String successMessage) async {
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(successMessage),
-        backgroundColor: AppColors.resolved,
-      ),
-    );
+    showUrbSnack(context, successMessage);
   }
 
   void _showLocationMap() {
     final point = LatLng(widget.post.latitude, widget.post.longitude);
 
-    showModalBottomSheet<void>(
+    showUrbDialog<void>(
       context: context,
-      isScrollControlled: true,
-      enableDrag: false,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Localização do reporte',
-                  style: TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _addressDisplayLabel,
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 14,
-                    height: 1.4,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(18),
-                  child: SizedBox(
-                    height: 300,
-                    child: FlutterMap(
-                      options: MapOptions(
-                        initialCenter: point,
-                        initialZoom: 16,
-                      ),
-                      children: [
-                        TileLayer(
-                          urlTemplate:
-                              'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                          userAgentPackageName: 'com.example.meu_app',
-                        ),
-                        MarkerLayer(
-                          markers: [
-                            Marker(
-                              point: point,
-                              width: 44,
-                              height: 44,
-                              child: const Icon(
-                                Icons.location_pin,
-                                size: 42,
-                                color: AppColors.accentPink,
-                              ),
-                            ),
-                          ],
+      builder: (dialogContext) => Padding(
+        padding: const EdgeInsets.all(22),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            UrbDialogHeader(
+              icon: Icons.location_on_outlined,
+              title: 'Localização do reporte',
+              subtitle: _addressDisplayLabel,
+              onClose: () => Navigator.of(dialogContext).pop(),
+            ),
+            const SizedBox(height: 16),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: SizedBox(
+                height: 300,
+                child: FlutterMap(
+                  options: MapOptions(initialCenter: point, initialZoom: 16),
+                  children: [
+                    TileLayer(
+                      urlTemplate:
+                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      userAgentPackageName: 'com.example.meu_app',
+                    ),
+                    MarkerLayer(
+                      markers: [
+                        Marker(
+                          point: point,
+                          width: 48,
+                          height: 48,
+                          child: const Icon(
+                            Icons.location_pin,
+                            size: 46,
+                            color: UrbColors.violet,
+                          ),
                         ),
                       ],
                     ),
-                  ),
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
-        );
-      },
+          ],
+        ),
+      ),
     );
   }
 
@@ -450,99 +449,56 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     final link = _buildShareLink();
     final message = _buildShareMessage(link);
 
-    showModalBottomSheet<void>(
+    showUrbDialog<void>(
       context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Compartilhar reporte',
-                  style: TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  widget.post.title,
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 14,
-                    height: 1.4,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const CircleAvatar(
-                    backgroundColor: AppColors.primaryLight,
-                    child: Icon(
-                      Icons.link_rounded,
-                      color: AppColors.primaryDark,
-                    ),
-                  ),
-                  title: const Text('Copiar link'),
-                  subtitle: Text(
-                    link,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  onTap: () async {
-                    Navigator.of(context).pop();
-                    await _copyToClipboard(
-                      link,
-                      'Link copiado para a área de transferência.',
-                    );
-                  },
-                ),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const CircleAvatar(
-                    backgroundColor: AppColors.primaryLight,
-                    child: Icon(
-                      Icons.ios_share_rounded,
-                      color: AppColors.primaryDark,
-                    ),
-                  ),
-                  title: const Text('Copiar mensagem para compartilhar'),
-                  subtitle: const Text(
-                    'Copia uma mensagem pronta com o link do reporte.',
-                  ),
-                  onTap: () async {
-                    Navigator.of(context).pop();
-                    await _copyToClipboard(
-                      message,
-                      'Mensagem de compartilhamento copiada.',
-                    );
-                  },
-                ),
-              ],
+      builder: (dialogContext) => Padding(
+        padding: const EdgeInsets.all(22),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            UrbDialogHeader(
+              icon: Icons.ios_share_rounded,
+              title: 'Compartilhar reporte',
+              subtitle: 'Ajude este reporte a ganhar apoio.',
+              onClose: () => Navigator.of(dialogContext).pop(),
             ),
-          ),
-        );
-      },
+            const SizedBox(height: 18),
+            _ShareOption(
+              icon: Icons.link_rounded,
+              title: 'Copiar link',
+              subtitle: 'Cole onde quiser: WhatsApp, Instagram...',
+              onTap: () async {
+                Navigator.of(dialogContext).pop();
+                await _copyToClipboard(
+                  link,
+                  'Link copiado para a área de transferência.',
+                );
+              },
+            ),
+            const SizedBox(height: 10),
+            _ShareOption(
+              icon: Icons.chat_bubble_outline_rounded,
+              title: 'Copiar mensagem para compartilhar',
+              subtitle: 'Copia uma mensagem pronta com o link do reporte.',
+              onTap: () async {
+                Navigator.of(dialogContext).pop();
+                await _copyToClipboard(
+                  message,
+                  'Mensagem de compartilhamento copiada.',
+                );
+              },
+            ),
+          ],
+        ),
+      ),
     );
   }
 
   Future<void> _showReportPostSheet() async {
-    final draft = await showModalBottomSheet<_PostReportDraft>(
+    final draft = await showUrbDialog<_PostReportDraft>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      builder: (context) => const _ReportPostSheet(),
+      builder: (_) => const _ReportPostSheet(),
     );
 
     if (draft == null || _isSubmittingReport) return;
@@ -556,22 +512,13 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       );
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Denúncia enviada. Nossa equipe poderá analisar este reporte.',
-          ),
-          backgroundColor: AppColors.resolved,
-        ),
+      showUrbSnack(
+        context,
+        'Denúncia enviada. Nossa equipe poderá analisar este reporte.',
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(friendlyError(error)),
-          backgroundColor: AppColors.error,
-        ),
-      );
+      showUrbSnack(context, friendlyError(error), error: true);
     } finally {
       if (mounted) {
         setState(() => _isSubmittingReport = false);
@@ -640,6 +587,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         widget.post.authorId == currentUserId &&
         !isFinalStatus(widget.post.status);
     final isCompleted = widget.post.status == 'completed';
+    final canReport =
+        currentUserId != null && widget.post.authorId != currentUserId;
+    final canComment = !isFinalStatus(widget.post.status);
+    final agency = widget.post.agencyName?.trim();
 
     return PopScope(
       canPop: false,
@@ -648,211 +599,306 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         _popWithChanges();
       },
       child: Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: _popWithChanges,
-        ),
-        title: const Text('Reporte'),
-        actions: [
-          if (currentUserId != null && widget.post.authorId != currentUserId)
-            IconButton(
-              tooltip: 'Denunciar reporte',
-              onPressed: _isSubmittingReport ? null : _showReportPostSheet,
-              icon: const Icon(Icons.flag_outlined),
-            ),
-          IconButton(
-            tooltip: 'Compartilhar',
-            onPressed: _showShareOptions,
-            icon: const Icon(Icons.ios_share_rounded),
-          ),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
-        children: [
-          _AuthorHeader(
-            post: widget.post,
-            onTap: widget.post.authorId == null || widget.post.isAnonymous
-                ? null
-                : () => _openProfile(widget.post.authorId!),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            widget.post.title,
-            style: const TextStyle(
-              color: Color(0xFF141E28),
-              fontSize: 22,
-              height: 1.25,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.4,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            _formatPublishedAt(widget.post.createdAt),
-            style: const TextStyle(color: AppColors.textHint, fontSize: 13),
-          ),
-          if (isCompleted) ...[
-            const SizedBox(height: 14),
-            _CompletedNotice(resolvedAt: widget.post.resolvedAt),
-          ],
-          if (widget.post.description.trim().isNotEmpty) ...[
-            const SizedBox(height: 14),
-            Text(
-              widget.post.description,
-              style: const TextStyle(
-                color: Color(0xFF374151),
-                fontSize: 16,
-                height: 1.45,
-                fontWeight: FontWeight.w400,
+        backgroundColor: Colors.transparent,
+        body: Stack(
+          children: [
+            // Tocar fora da janela fecha o reporte.
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: _popWithChanges,
+                behavior: HitTestBehavior.opaque,
               ),
             ),
-          ],
-          if (imageUrls.isNotEmpty) ...[
-            const SizedBox(height: 20),
-            _PostImageGallery(urls: imageUrls),
-          ],
-          const SizedBox(height: 18),
-          _AddressCard(
-            isLoading: _isResolvingAddress,
-            address: _addressDisplayLabel,
-            onTap: _showLocationMap,
-          ),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _MetaChip(
-                icon: Icons.label_outline_rounded,
-                label: widget.post.categoryName,
-              ),
-              _MetaChip(
-                icon: Icons.location_city_outlined,
-                label: widget.post.cityName,
-              ),
-              _MetaChip(
-                icon: Icons.flag_outlined,
-                label: _statusLabel(widget.post.status),
-              ),
-              if (widget.post.agencyName != null &&
-                  widget.post.agencyName!.trim().isNotEmpty)
-                _MetaChip(
-                  icon: Icons.account_balance_outlined,
-                  label: widget.post.agencyName!.trim(),
-                ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          if (canResolve) ...[
-            _ResolveComplaintCard(onTap: _openResolveComplaint),
-            const SizedBox(height: 20),
-          ],
-          const Divider(height: 1, color: AppColors.border),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Icon(
-                Icons.mode_comment_outlined,
-                size: 22,
-                color: AppColors.textSecondary.withValues(alpha: 0.9),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '$_commentsCount',
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(width: 28),
-              GestureDetector(
-                onTap: _isLikeLoading ? null : _toggleLike,
-                child: Row(
-                  children: [
-                    _isLikeLoading
-                        ? const SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Icon(
-                            _isLiked
-                                ? Icons.favorite_rounded
-                                : Icons.favorite_border_rounded,
-                            size: 22,
-                            color: _isLiked
-                                ? AppColors.error
-                                : AppColors.textSecondary.withValues(
-                                    alpha: 0.9,
+            SafeArea(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 460),
+                    child: SizedBox(
+                      height: double.infinity,
+                      child: Material(
+                        color: UrbColors.surface,
+                        borderRadius: BorderRadius.circular(30),
+                        clipBehavior: Clip.antiAlias,
+                        child: Column(
+                          children: [
+                            _HeaderGallery(
+                              urls: imageUrls,
+                              onClose: _popWithChanges,
+                              onShare: _showShareOptions,
+                              onReport: canReport && !_isSubmittingReport
+                                  ? _showReportPostSheet
+                                  : null,
+                            ),
+                            Expanded(
+                              child: ListView(
+                                padding: const EdgeInsets.fromLTRB(
+                                  18,
+                                  18,
+                                  18,
+                                  24,
+                                ),
+                                children: [
+                                  FadeSlideIn(
+                                    offsetY: 14,
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: _AuthorHeader(
+                                                post: widget.post,
+                                                onTap:
+                                                    widget.post.authorId ==
+                                                            null ||
+                                                        widget.post.isAnonymous
+                                                    ? null
+                                                    : () => _openProfile(
+                                                        widget.post.authorId!,
+                                                      ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            UrbStatusChip(
+                                              status: widget.post.status,
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 18),
+                                        Text(
+                                          widget.post.title,
+                                          textAlign: TextAlign.center,
+                                          style: UrbText.display(
+                                            size: 26,
+                                            weight: FontWeight.w700,
+                                          ),
+                                        ),
+                                        if (widget.post.description
+                                            .trim()
+                                            .isNotEmpty) ...[
+                                          const SizedBox(height: 10),
+                                          Text(
+                                            widget.post.description,
+                                            textAlign: TextAlign.center,
+                                            style: UrbText.body(
+                                              size: 15,
+                                              color: const Color(0xFF374151),
+                                            ),
+                                          ),
+                                        ],
+                                        const SizedBox(height: 16),
+                                        Wrap(
+                                          alignment: WrapAlignment.center,
+                                          spacing: 8,
+                                          runSpacing: 8,
+                                          children: [
+                                            _MetaChip(
+                                              icon: Icons.sell_outlined,
+                                              label: widget.post.categoryName,
+                                            ),
+                                            _MetaChip(
+                                              icon:
+                                                  Icons.location_city_outlined,
+                                              label: widget.post.cityName,
+                                            ),
+                                            if (agency != null &&
+                                                agency.isNotEmpty)
+                                              _MetaChip(
+                                                icon: Icons
+                                                    .account_balance_outlined,
+                                                label: agency,
+                                              ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 10),
+                                        Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            const Icon(
+                                              Icons.schedule_rounded,
+                                              size: 14,
+                                              color: UrbColors.textMuted,
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Text(
+                                              _formatPublishedAt(
+                                                widget.post.createdAt,
+                                              ),
+                                              style: UrbText.body(
+                                                size: 13,
+                                                color: UrbColors.textMuted,
+                                                height: 1.3,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                          ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '$_supportsCount',
-                      style: TextStyle(
-                        color: _isLiked
-                            ? AppColors.error
-                            : AppColors.textPrimary,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
+                                  if (isCompleted) ...[
+                                    const SizedBox(height: 16),
+                                    _CompletedNotice(
+                                      resolvedAt: widget.post.resolvedAt,
+                                    ),
+                                  ],
+                                  const SizedBox(height: 18),
+                                  FadeSlideIn(
+                                    delay: const Duration(milliseconds: 80),
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: _ActionButton(
+                                            icon: _isLiked
+                                                ? Icons.favorite_rounded
+                                                : Icons.favorite_border_rounded,
+                                            label: '$_supportsCount',
+                                            semanticLabel: _isLiked
+                                                ? 'Tirar apoio'
+                                                : 'Apoiar',
+                                            color: UrbColors.heart,
+                                            highlighted: _isLiked,
+                                            loading: _isLikeLoading,
+                                            onTap: _isLikeLoading
+                                                ? null
+                                                : _toggleLike,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: _ActionButton(
+                                            icon: Icons
+                                                .chat_bubble_outline_rounded,
+                                            label: '$_commentsCount',
+                                            semanticLabel: 'Comentários',
+                                            color: UrbColors.commentBlue,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: _ActionButton(
+                                            icon: Icons.ios_share_rounded,
+                                            label: 'Enviar',
+                                            semanticLabel: 'Compartilhar',
+                                            color: UrbColors.violetDeep,
+                                            onTap: _showShareOptions,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (canResolve) ...[
+                                    const SizedBox(height: 16),
+                                    _ResolveComplaintCard(
+                                      onTap: _openResolveComplaint,
+                                    ),
+                                  ],
+                                  const SizedBox(height: 16),
+                                  _AddressCard(
+                                    isLoading: _isResolvingAddress,
+                                    address: _addressDisplayLabel,
+                                    onTap: _showLocationMap,
+                                  ),
+                                  const SizedBox(height: 22),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          'Comentários',
+                                          style: UrbText.display(
+                                            size: 18,
+                                            weight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 3,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: UrbColors.lavender,
+                                          borderRadius: BorderRadius.circular(
+                                            999,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          '$_commentsCount',
+                                          style: UrbText.body(
+                                            size: 13,
+                                            weight: FontWeight.w700,
+                                            color: UrbColors.violetDeep,
+                                            height: 1.3,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
+                                  if (_isCommentsLoading)
+                                    const Center(
+                                      child: Padding(
+                                        padding: EdgeInsets.symmetric(
+                                          vertical: 32,
+                                        ),
+                                        child: CircularProgressIndicator(),
+                                      ),
+                                    )
+                                  else if (_comments.isEmpty)
+                                    const _EmptyCommentsCard()
+                                  else
+                                    ..._comments.map(
+                                      (comment) => _CommentThread(
+                                        comment: comment,
+                                        onLikeTap: () =>
+                                            _toggleCommentLike(comment),
+                                        onReplyTap: () => _beginReply(comment),
+                                        onReplyLikeTap: _toggleCommentLike,
+                                        onReplyReplyTap: _beginReply,
+                                        onOpenProfile: _openProfile,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                            // Campo de comentário fixo no rodapé da janela.
+                            if (canComment)
+                              Container(
+                                padding: const EdgeInsets.fromLTRB(
+                                  14,
+                                  10,
+                                  14,
+                                  12,
+                                ),
+                                decoration: const BoxDecoration(
+                                  color: Colors.white,
+                                  border: Border(
+                                    top: BorderSide(color: UrbColors.border),
+                                  ),
+                                ),
+                                child: _CommentComposer(
+                                  controller: _commentController,
+                                  isSubmitting: _isSubmittingComment,
+                                  onSubmit: _submitComment,
+                                  replyTargetLabel: _replyTargetLabel,
+                                  onCancelReply: _replyParentCommentId == null
+                                      ? null
+                                      : _cancelReply,
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
-                  ],
+                  ),
                 ),
               ),
-              const Spacer(),
-              TextButton.icon(
-                onPressed: _showShareOptions,
-                icon: const Icon(Icons.reply_outlined, size: 18),
-                label: const Text('Compartilhar'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            'Comentários',
-            style: TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 17,
-              fontWeight: FontWeight.w700,
             ),
-          ),
-          const SizedBox(height: 12),
-          if (!isFinalStatus(widget.post.status))
-            _CommentComposer(
-              controller: _commentController,
-              isSubmitting: _isSubmittingComment,
-              onSubmit: _submitComment,
-              replyTargetLabel: _replyTargetLabel,
-              onCancelReply: _replyParentCommentId == null ? null : _cancelReply,
-            ),
-          const SizedBox(height: 16),
-          if (_isCommentsLoading)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.symmetric(vertical: 32),
-                child: CircularProgressIndicator(),
-              ),
-            )
-          else if (_comments.isEmpty)
-            const _EmptyCommentsCard()
-          else
-            ..._comments.map(
-              (comment) => _CommentThread(
-                comment: comment,
-                onLikeTap: () => _toggleCommentLike(comment),
-                onReplyTap: () => _beginReply(comment),
-                onReplyLikeTap: _toggleCommentLike,
-                onReplyReplyTap: _beginReply,
-                onOpenProfile: _openProfile,
-              ),
-            ),
-        ],
-      ),
+          ],
+        ),
       ),
     );
   }
@@ -871,25 +917,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     return const [];
   }
 
-  static String _statusLabel(String status) {
-    switch (status) {
-      case 'open':
-        return 'Aberto';
-      case 'in_analysis':
-        return 'Em análise';
-      case 'in_progress':
-        return 'Em andamento';
-      case 'completed':
-        return 'Concluído';
-      case 'closed':
-        return 'Encerrado';
-      case 'expired':
-        return 'Expirado';
-      default:
-        return status;
-    }
-  }
-
   static String _formatPublishedAt(DateTime at) {
     final local = at.toLocal();
     final d = local.day.toString().padLeft(2, '0');
@@ -899,7 +926,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     final min = local.minute.toString().padLeft(2, '0');
     return 'Publicado em $d/$m/$y às $h:$min';
   }
-
 
   String _buildShareLink() {
     return 'urbapp://posts/${widget.post.id}';
@@ -1087,63 +1113,65 @@ class _AddressCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.transparent,
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(22),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.background,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.border),
-          ),
+        borderRadius: BorderRadius.circular(22),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 42,
-                height: 42,
+                width: 46,
+                height: 46,
                 decoration: BoxDecoration(
-                  color: AppColors.primaryLight,
-                  borderRadius: BorderRadius.circular(14),
+                  color: UrbColors.lavender,
+                  borderRadius: BorderRadius.circular(15),
                 ),
-                child: const Icon(
-                  Icons.place_outlined,
-                  color: AppColors.primaryDark,
-                ),
+                child: isLoading
+                    ? const Padding(
+                        padding: EdgeInsets.all(13),
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(
+                        Icons.location_on_outlined,
+                        color: UrbColors.violetDeep,
+                      ),
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      address,
-                      style: const TextStyle(
-                        color: AppColors.textPrimary,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
+                    AnimatedSwitcher(
+                      duration: UrbMotion.of(context, UrbMotion.fast),
+                      child: Text(
+                        address,
+                        key: ValueKey(address),
+                        style: UrbText.body(
+                          size: 15,
+                          weight: FontWeight.w700,
+                          color: UrbColors.ink,
+                          height: 1.35,
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 2),
                     Text(
-                      isLoading
-                          ? 'Carregando localização...'
-                          : 'Toque para abrir no mapa',
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 13,
-                        height: 1.35,
+                      'Toque para abrir no mapa',
+                      style: UrbText.body(
+                        size: 12,
+                        color: UrbColors.textMuted,
+                        height: 1.3,
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 12),
               const Icon(
                 Icons.chevron_right_rounded,
-                color: AppColors.textHint,
+                color: UrbColors.textMuted,
               ),
             ],
           ),
@@ -1161,61 +1189,202 @@ class _ResolveComplaintCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.transparent,
+      color: const Color(0xFFECFDF5),
+      borderRadius: BorderRadius.circular(22),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(22),
         child: Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: AppColors.resolved.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: AppColors.resolved.withValues(alpha: 0.32),
-            ),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: const Color(0xFFA7F3D0), width: 1.5),
           ),
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 42,
-                height: 42,
+                width: 46,
+                height: 46,
                 decoration: BoxDecoration(
-                  color: AppColors.resolved.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(14),
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF34D399), Color(0xFF059669)],
+                  ),
+                  borderRadius: BorderRadius.circular(15),
                 ),
-                child: const Icon(
-                  Icons.task_alt_rounded,
-                  color: AppColors.resolved,
-                ),
+                child: const Icon(Icons.task_alt_rounded, color: Colors.white),
               ),
-              const SizedBox(width: 14),
-              const Expanded(
+              const SizedBox(width: 12),
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Resolver reclamação',
-                      style: TextStyle(
-                        color: AppColors.textPrimary,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
+                      style: UrbText.body(
+                        size: 15,
+                        weight: FontWeight.w700,
+                        color: const Color(0xFF065F46),
+                        height: 1.3,
                       ),
                     ),
-                    SizedBox(height: 4),
+                    const SizedBox(height: 2),
                     Text(
                       'Informe a solução e marque este reporte como concluído.',
-                      style: TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 13,
+                      style: UrbText.body(
+                        size: 12,
+                        color: const Color(0xFF047857),
                         height: 1.35,
                       ),
                     ),
                   ],
                 ),
               ),
-              SizedBox(width: 12),
-              Icon(Icons.chevron_right_rounded, color: AppColors.resolved),
+              const Icon(Icons.chevron_right_rounded, color: Color(0xFF059669)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Botão grande da linha de ações (apoiar, comentários, compartilhar).
+class _ActionButton extends StatelessWidget {
+  const _ActionButton({
+    required this.icon,
+    required this.label,
+    required this.semanticLabel,
+    required this.color,
+    this.onTap,
+    this.highlighted = false,
+    this.loading = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final String semanticLabel;
+  final Color color;
+  final VoidCallback? onTap;
+  final bool highlighted;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: onTap != null,
+      label: semanticLabel,
+      child: Material(
+        color: highlighted ? const Color(0xFFFDE8F0) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: SizedBox(
+            height: 52,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (loading)
+                  const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                else
+                  // O coração "pula" quando o apoio muda.
+                  AnimatedSwitcher(
+                    duration: UrbMotion.of(
+                      context,
+                      const Duration(milliseconds: 320),
+                    ),
+                    transitionBuilder: (child, animation) => ScaleTransition(
+                      scale: CurvedAnimation(
+                        parent: animation,
+                        curve: Curves.elasticOut,
+                      ),
+                      child: child,
+                    ),
+                    child: Icon(
+                      icon,
+                      key: ValueKey(icon),
+                      size: 21,
+                      color: color,
+                    ),
+                  ),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: UrbText.body(
+                    size: 15,
+                    weight: FontWeight.w700,
+                    color: highlighted
+                        ? const Color(0xFFB0164F)
+                        : const Color(0xFF374151),
+                    height: 1.2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ShareOption extends StatelessWidget {
+  const _ShareOption({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: UrbColors.surface,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: UrbColors.lavender,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: UrbColors.violetDeep),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: UrbText.body(
+                        size: 15,
+                        weight: FontWeight.w700,
+                        color: UrbColors.ink,
+                        height: 1.3,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(subtitle, style: UrbText.body(size: 13, height: 1.35)),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -1304,26 +1473,28 @@ class _MetaChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      height: 34,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
-        color: AppColors.divider,
-        borderRadius: BorderRadius.circular(999),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: UrbColors.border),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: AppColors.textSecondary),
+          Icon(icon, size: 15, color: UrbColors.violet),
           const SizedBox(width: 6),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 180),
+          Flexible(
             child: Text(
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: AppColors.textSecondary,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
+              style: UrbText.body(
+                size: 13,
+                weight: FontWeight.w600,
+                color: const Color(0xFF374151),
+                height: 1.2,
               ),
             ),
           ),
@@ -1350,100 +1521,142 @@ class _CommentComposer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        children: [
-          if (replyTargetLabel != null) ...[
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: AppColors.primaryLight,
-                borderRadius: BorderRadius.circular(12),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AnimatedSize(
+          duration: UrbMotion.of(context, UrbMotion.fast),
+          child: replyTargetLabel == null
+              ? const SizedBox(width: double.infinity)
+              : Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.only(left: 12),
+                  decoration: BoxDecoration(
+                    color: UrbColors.lavender,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Respondendo $replyTargetLabel',
+                          style: UrbText.body(
+                            size: 13,
+                            weight: FontWeight.w700,
+                            color: UrbColors.violetDeep,
+                            height: 1.3,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Cancelar resposta',
+                        onPressed: onCancelReply,
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          size: 18,
+                          color: UrbColors.violetDeep,
+                        ),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ],
+                  ),
+                ),
+        ),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: TextField(
+                controller: controller,
+                minLines: 1,
+                maxLines: 4,
+                textInputAction: TextInputAction.newline,
+                style: UrbText.body(
+                  size: 15,
+                  color: UrbColors.ink,
+                  height: 1.35,
+                ),
+                decoration: InputDecoration(
+                  hintText: replyTargetLabel == null
+                      ? 'Adicione um comentário ao reporte'
+                      : 'Escreva sua resposta',
+                  hintStyle: UrbText.body(
+                    size: 14,
+                    color: UrbColors.textMuted,
+                    height: 1.35,
+                  ),
+                  filled: true,
+                  fillColor: UrbColors.surface,
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 14,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(
+                      color: UrbColors.border,
+                      width: 1.5,
+                    ),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(
+                      color: UrbColors.border,
+                      width: 1.5,
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(
+                      color: UrbColors.violet,
+                      width: 2,
+                    ),
+                  ),
+                ),
               ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Respondendo $replyTargetLabel',
-                      style: const TextStyle(
-                        color: AppColors.primaryDark,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
+            ),
+            const SizedBox(width: 10),
+            Tooltip(
+              message: replyTargetLabel == null ? 'Comentar' : 'Responder',
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: UrbGradients.primary,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: isSubmitting ? null : onSubmit,
+                    borderRadius: BorderRadius.circular(14),
+                    child: SizedBox(
+                      width: 48,
+                      height: 48,
+                      child: Center(
+                        child: isSubmitting
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(
+                                Icons.send_rounded,
+                                color: Colors.white,
+                                size: 20,
+                              ),
                       ),
                     ),
                   ),
-                  IconButton(
-                    onPressed: onCancelReply,
-                    icon: const Icon(Icons.close_rounded, size: 18),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ],
+                ),
               ),
             ),
-            const SizedBox(height: 10),
           ],
-          TextField(
-            controller: controller,
-            minLines: 2,
-            maxLines: 4,
-            textInputAction: TextInputAction.newline,
-            decoration: InputDecoration(
-              hintText: replyTargetLabel == null
-                  ? 'Adicione um comentário ao reporte'
-                  : 'Escreva sua resposta',
-              filled: true,
-              fillColor: Colors.white,
-              border: const OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  replyTargetLabel == null
-                      ? 'Comentários ajudam a complementar o chamado.'
-                      : 'As respostas ficam agrupadas no comentário principal.',
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 12,
-                    height: 1.35,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              ElevatedButton(
-                onPressed: isSubmitting ? null : onSubmit,
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size(0, 44),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 12,
-                  ),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                child: isSubmitting
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : Text(replyTargetLabel == null ? 'Comentar' : 'Responder'),
-              ),
-            ],
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -1685,27 +1898,42 @@ class _EmptyCommentsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
+      padding: const EdgeInsets.symmetric(vertical: 26, horizontal: 16),
       decoration: BoxDecoration(
-        color: AppColors.divider,
-        borderRadius: BorderRadius.circular(12),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
       ),
       child: Column(
         children: [
-          Icon(
-            Icons.chat_bubble_outline_rounded,
-            size: 36,
-            color: AppColors.textHint.withValues(alpha: 0.85),
+          Container(
+            width: 64,
+            height: 64,
+            decoration: const BoxDecoration(
+              color: UrbColors.lavender,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.chat_bubble_outline_rounded,
+              color: UrbColors.violetDeep,
+              size: 28,
+            ),
           ),
           const SizedBox(height: 12),
           Text(
-            'Nenhum comentário ainda.',
+            'Nenhum comentário ainda',
             textAlign: TextAlign.center,
-            style: TextStyle(
-              color: AppColors.textSecondary.withValues(alpha: 0.95),
-              fontSize: 14,
-              height: 1.4,
+            style: UrbText.body(
+              size: 15,
+              weight: FontWeight.w700,
+              color: UrbColors.ink,
+              height: 1.3,
             ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Seja o primeiro a comentar este reporte.',
+            textAlign: TextAlign.center,
+            style: UrbText.body(size: 13, height: 1.4),
           ),
         ],
       ),
@@ -1750,83 +1978,142 @@ class _ReportPostSheetState extends State<_ReportPostSheet> {
     if (reason == null) return;
 
     Navigator.of(context).pop(
-      _PostReportDraft(
-        reason: reason,
-        details: _detailsController.text.trim(),
-      ),
+      _PostReportDraft(reason: reason, details: _detailsController.text.trim()),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(
-          24,
-          22,
-          24,
-          MediaQuery.viewInsetsOf(context).bottom + 24,
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(22),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          UrbDialogHeader(
+            icon: Icons.flag_outlined,
+            title: 'Denunciar reporte',
+            subtitle: 'Conte o que há de errado com este reporte.',
+            onClose: () => Navigator.of(context).pop(),
+          ),
+          const SizedBox(height: 18),
+          for (final reason in _reasons) ...[
+            _ReasonOption(
+              label: reason,
+              selected: _selectedReason == reason,
+              onTap: () => setState(() => _selectedReason = reason),
+            ),
+            const SizedBox(height: 8),
+          ],
+          const SizedBox(height: 6),
+          TextField(
+            controller: _detailsController,
+            minLines: 2,
+            maxLines: 4,
+            style: UrbText.body(size: 15, color: UrbColors.ink, height: 1.35),
+            decoration: InputDecoration(
+              hintText: 'Detalhes (opcional)',
+              hintStyle: UrbText.body(
+                size: 14,
+                color: UrbColors.textMuted,
+                height: 1.35,
+              ),
+              filled: true,
+              fillColor: UrbColors.surface,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: const BorderSide(
+                  color: UrbColors.border,
+                  width: 1.5,
+                ),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: const BorderSide(
+                  color: UrbColors.border,
+                  width: 1.5,
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: const BorderSide(color: UrbColors.violet, width: 2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+          Row(
             children: [
-              const Text(
-                'Denunciar reporte',
-                style: TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 21,
-                  fontWeight: FontWeight.w800,
+              Expanded(
+                child: UrbSecondaryButton(
+                  label: 'Cancelar',
+                  onPressed: () => Navigator.of(context).pop(),
                 ),
               ),
-              const SizedBox(height: 8),
-              const Text(
-                'Selecione o motivo. A denúncia será enviada para análise.',
-                style: TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 14,
-                  height: 1.4,
-                ),
-              ),
-              const SizedBox(height: 14),
-              RadioGroup<String>(
-                groupValue: _selectedReason,
-                onChanged: (value) => setState(() {
-                  _selectedReason = value;
-                }),
-                child: Column(
-                  children: _reasons
-                      .map(
-                        (reason) => RadioListTile<String>(
-                          value: reason,
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(reason),
-                        ),
-                      )
-                      .toList(),
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _detailsController,
-                maxLength: 300,
-                minLines: 3,
-                maxLines: 5,
-                decoration: const InputDecoration(
-                  labelText: 'Detalhes adicionais',
-                  hintText: 'Explique o problema, se necessário',
-                  alignLabelWithHint: true,
-                ),
-              ),
-              const SizedBox(height: 18),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
+              const SizedBox(width: 12),
+              Expanded(
+                child: UrbPrimaryButton(
+                  label: 'Enviar',
                   onPressed: _selectedReason == null ? null : _submit,
-                  icon: const Icon(Icons.flag_outlined),
-                  label: const Text('Enviar denúncia'),
                 ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReasonOption extends StatelessWidget {
+  const _ReasonOption({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: AnimatedContainer(
+          duration: UrbMotion.of(context, UrbMotion.fast),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          decoration: BoxDecoration(
+            color: selected ? UrbColors.lavender : Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: selected
+                  ? UrbColors.violet.withValues(alpha: 0.45)
+                  : UrbColors.border,
+              width: 1.5,
+            ),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  style: UrbText.body(
+                    size: 15,
+                    weight: FontWeight.w700,
+                    color: selected ? UrbColors.violetDeep : UrbColors.ink,
+                    height: 1.2,
+                  ),
+                ),
+              ),
+              Icon(
+                selected
+                    ? Icons.radio_button_checked_rounded
+                    : Icons.radio_button_off_rounded,
+                color: selected ? UrbColors.violetDeep : UrbColors.border,
               ),
             ],
           ),
@@ -1836,16 +2123,24 @@ class _ReportPostSheetState extends State<_ReportPostSheet> {
   }
 }
 
-class _PostImageGallery extends StatefulWidget {
-  const _PostImageGallery({required this.urls});
+class _HeaderGallery extends StatefulWidget {
+  const _HeaderGallery({
+    required this.urls,
+    required this.onClose,
+    required this.onShare,
+    required this.onReport,
+  });
 
   final List<String> urls;
+  final VoidCallback onClose;
+  final VoidCallback onShare;
+  final VoidCallback? onReport;
 
   @override
-  State<_PostImageGallery> createState() => _PostImageGalleryState();
+  State<_HeaderGallery> createState() => _HeaderGalleryState();
 }
 
-class _PostImageGalleryState extends State<_PostImageGallery> {
+class _HeaderGalleryState extends State<_HeaderGallery> {
   int _page = 0;
 
   void _openFullscreenGallery(int initialIndex) {
@@ -1859,82 +2154,145 @@ class _PostImageGalleryState extends State<_PostImageGallery> {
     );
   }
 
+  Widget _glass(IconData icon, String tooltip, VoidCallback onTap) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: const Color(0x660D1520),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(13),
+          side: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(13),
+          child: SizedBox(
+            width: 40,
+            height: 40,
+            child: Icon(icon, color: Colors.white, size: 19),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _image(String url) {
+    return Image.network(
+      url,
+      fit: BoxFit.cover,
+      frameBuilder: (context, child, frame, loadedSync) {
+        if (loadedSync) return child;
+        return AnimatedOpacity(
+          opacity: frame == null ? 0 : 1,
+          duration: UrbMotion.of(context, UrbMotion.medium),
+          child: child,
+        );
+      },
+      errorBuilder: (_, _, _) => const _PhotoPlaceholder(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (widget.urls.length == 1) {
-      return GestureDetector(
-        onTap: () => _openFullscreenGallery(0),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: AspectRatio(
-            aspectRatio: 16 / 10,
-            child: Image.network(
-              widget.urls.first,
-              fit: BoxFit.cover,
-              errorBuilder: (_, _, _) => const ColoredBox(
-                color: AppColors.divider,
-                child: Center(
-                  child: Icon(
-                    Icons.broken_image_outlined,
-                    size: 48,
-                    color: AppColors.textHint,
-                  ),
+    final urls = widget.urls;
+    final hasPhotos = urls.isNotEmpty;
+
+    return SizedBox(
+      height: hasPhotos ? 240 : 150,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (!hasPhotos)
+            const _PhotoPlaceholder()
+          else if (urls.length == 1)
+            GestureDetector(
+              onTap: () => _openFullscreenGallery(0),
+              child: _image(urls.first),
+            )
+          else
+            PageView.builder(
+              itemCount: urls.length,
+              onPageChanged: (index) => setState(() => _page = index),
+              itemBuilder: (context, index) => GestureDetector(
+                onTap: () => _openFullscreenGallery(index),
+                child: _image(urls[index]),
+              ),
+            ),
+          // Escurece o topo para os botões ficarem visíveis sobre a foto.
+          const IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0x800D1520), Color(0x000D1520)],
+                  stops: [0, 0.45],
                 ),
               ),
             ),
           ),
-        ),
-      );
-    }
-
-    return Column(
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: AspectRatio(
-            aspectRatio: 16 / 10,
-            child: PageView.builder(
-              itemCount: widget.urls.length,
-              onPageChanged: (index) => setState(() => _page = index),
-              itemBuilder: (context, index) => GestureDetector(
-                onTap: () => _openFullscreenGallery(index),
-                child: Image.network(
-                  widget.urls[index],
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) => const ColoredBox(
-                    color: AppColors.divider,
-                    child: Center(
-                      child: Icon(
-                        Icons.broken_image_outlined,
-                        size: 48,
-                        color: AppColors.textHint,
-                      ),
+          Positioned(
+            left: 12,
+            top: 12,
+            child: Row(
+              children: [
+                _glass(Icons.ios_share_rounded, 'Compartilhar', widget.onShare),
+                if (widget.onReport != null) ...[
+                  const SizedBox(width: 8),
+                  _glass(
+                    Icons.flag_outlined,
+                    'Denunciar reporte',
+                    widget.onReport!,
+                  ),
+                ],
+              ],
+            ),
+          ),
+          Positioned(
+            right: 12,
+            top: 12,
+            child: _glass(Icons.close_rounded, 'Fechar', widget.onClose),
+          ),
+          if (urls.length > 1)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 12,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(
+                  urls.length,
+                  (index) => AnimatedContainer(
+                    duration: UrbMotion.of(context, UrbMotion.fast),
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    width: index == _page ? 18 : 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: index == _page
+                          ? Colors.white
+                          : Colors.white.withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(3),
                     ),
                   ),
                 ),
               ),
             ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(
-            widget.urls.length,
-            (index) => Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 3),
-              child: Container(
-                width: 6,
-                height: 6,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: index == _page ? AppColors.primary : AppColors.border,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PhotoPlaceholder extends StatelessWidget {
+  const _PhotoPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return const DecoratedBox(
+      decoration: BoxDecoration(gradient: UrbGradients.photo),
+      child: Center(
+        child: Icon(Icons.image_outlined, color: Color(0xFF9FB0C6), size: 36),
+      ),
     );
   }
 }

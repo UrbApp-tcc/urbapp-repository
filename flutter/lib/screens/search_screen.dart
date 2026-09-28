@@ -8,6 +8,8 @@ import '../theme/urbapp_design.dart';
 import '../widgets/city_picker_sheet.dart';
 import '../widgets/city_skyline.dart';
 import '../widgets/fade_slide_in.dart';
+import '../widgets/urb_dialog.dart';
+import '../widgets/urb_primary_button.dart';
 import '../widgets/urb_post_image.dart';
 import '../widgets/urb_status_chip.dart';
 import 'city_ranking_screen.dart';
@@ -41,56 +43,9 @@ class _SearchScreenState extends State<SearchScreen> {
   final _controller = TextEditingController();
   Timer? _debounce;
   String _query = '';
-  String? _selectedStatus;
-  _Occurrence? _selectedOccurrence;
 
-  /// Atalhos para buscar pelo tipo de problema.
-  /// As palavras ficam sem acento, igual ao texto normalizado da busca.
-  static const List<_Occurrence> _occurrences = [
-    _Occurrence('Alagamento', Icons.water_drop_outlined, [
-      'alagamento',
-      'alagad',
-      'enchente',
-      'inund',
-    ]),
-    _Occurrence('Buraco', Icons.construction_rounded, [
-      'buraco',
-      'cratera',
-      'asfalto',
-    ]),
-    _Occurrence('Poste e iluminação', Icons.lightbulb_outline_rounded, [
-      'poste',
-      'iluminacao',
-      'lampada',
-      'apagad',
-    ]),
-    _Occurrence('Lixo', Icons.delete_outline_rounded, [
-      'lixo',
-      'entulho',
-      'descarte',
-    ]),
-    _Occurrence('Queimada', Icons.local_fire_department_outlined, [
-      'queimada',
-      'fogo',
-      'incendio',
-    ]),
-    _Occurrence('Esgoto', Icons.plumbing_rounded, [
-      'esgoto',
-      'bueiro',
-      'vazamento',
-    ]),
-    _Occurrence('Árvore', Icons.park_outlined, ['arvore', 'galho', 'poda']),
-    _Occurrence('Calçada', Icons.directions_walk_rounded, [
-      'calcada',
-      'passeio',
-    ]),
-    _Occurrence('Trânsito e sinalização', Icons.traffic_outlined, [
-      'semaforo',
-      'sinalizacao',
-      'placa',
-      'transito',
-    ]),
-  ];
+  /// Situações escolhidas no filtro (vazio = todas).
+  Set<String> _selectedStatuses = {};
 
   static const List<String> _statusOptions = [
     'open',
@@ -157,9 +112,6 @@ class _SearchScreenState extends State<SearchScreen> {
     return normalized;
   }
 
-  bool get _hasActiveSearch =>
-      _query.trim().isNotEmpty || _selectedOccurrence != null;
-
   CityOption? get _selectedCity {
     final id = widget.selectedCityId;
     if (id == null) return null;
@@ -180,23 +132,40 @@ class _SearchScreenState extends State<SearchScreen> {
   List<FeedPost> get _textResults {
     final raw = _normalizeSearchText(_query);
     final terms = raw.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
-    final occurrence = _selectedOccurrence;
-
-    if (terms.isEmpty && occurrence == null) return widget.posts;
+    if (terms.isEmpty) return widget.posts;
 
     return widget.posts.where((post) {
       final haystack = _haystack(post);
-      final matchesText = terms.every((term) => haystack.contains(term));
-      final matchesOccurrence =
-          occurrence == null || occurrence.keywords.any(haystack.contains);
-      return matchesText && matchesOccurrence;
+      return terms.every((term) => haystack.contains(term));
     }).toList();
   }
 
   List<FeedPost> get _results {
     final textResults = _textResults;
-    if (!_hasActiveSearch || _selectedStatus == null) return textResults;
-    return textResults.where((post) => post.status == _selectedStatus).toList();
+    if (_selectedStatuses.isEmpty) return textResults;
+    return textResults
+        .where((post) => _selectedStatuses.contains(post.status))
+        .toList();
+  }
+
+  String get _statusButtonLabel {
+    if (_selectedStatuses.isEmpty) return 'Todas as situações';
+    if (_selectedStatuses.length == 1) {
+      return UrbStatusChip.styleOf(_selectedStatuses.first).label;
+    }
+    return '${_selectedStatuses.length} situações';
+  }
+
+  Future<void> _chooseStatuses() async {
+    final result = await showUrbDialog<Set<String>>(
+      context: context,
+      builder: (_) => _StatusPickerDialog(
+        options: _statusOptions,
+        initialSelection: _selectedStatuses,
+      ),
+    );
+    if (result == null || !mounted) return;
+    setState(() => _selectedStatuses = result);
   }
 
   void _onQueryChanged(String value) {
@@ -204,22 +173,14 @@ class _SearchScreenState extends State<SearchScreen> {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 300), () {
       if (!mounted) return;
-      setState(() {
-        _query = value;
-        if (value.trim().isEmpty && _selectedOccurrence == null) {
-          _selectedStatus = null;
-        }
-      });
+      setState(() => _query = value);
     });
   }
 
   void _clearQuery() {
     _debounce?.cancel();
     _controller.clear();
-    setState(() {
-      _query = '';
-      if (_selectedOccurrence == null) _selectedStatus = null;
-    });
+    setState(() => _query = '');
   }
 
   @override
@@ -238,54 +199,17 @@ class _SearchScreenState extends State<SearchScreen> {
             controller: _controller,
             onChanged: _onQueryChanged,
             onClear: _clearQuery,
+            cityLabel: _selectedCity?.name ?? 'Todas as cidades',
+            onChooseCity: widget.cities.isEmpty ? null : _chooseCity,
+            statusLabel: _statusButtonLabel,
+            statusActive: _selectedStatuses.isNotEmpty,
+            onChooseStatus: _chooseStatuses,
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                FadeSlideIn(
-                  delay: const Duration(milliseconds: 60),
-                  child: _CityFilterButton(
-                    label: _selectedCity?.name ?? 'Todas as cidades',
-                    onPressed: widget.cities.isEmpty ? null : _chooseCity,
-                  ),
-                ),
-                const SizedBox(height: 22),
-                FadeSlideIn(
-                  delay: const Duration(milliseconds: 120),
-                  child: _OccurrenceBar(
-                    occurrences: _occurrences,
-                    selected: _selectedOccurrence,
-                    onSelected: (occurrence) => setState(() {
-                      _selectedOccurrence = _selectedOccurrence == occurrence
-                          ? null
-                          : occurrence;
-                      if (!_hasActiveSearch) _selectedStatus = null;
-                    }),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                // Os filtros aparecem deslizando quando a pessoa começa a buscar.
-                AnimatedSize(
-                  duration: UrbMotion.of(context, UrbMotion.medium),
-                  curve: Curves.easeOutCubic,
-                  alignment: Alignment.topCenter,
-                  child: _hasActiveSearch
-                      ? Padding(
-                          padding: const EdgeInsets.only(bottom: 20),
-                          child: _StatusFilters(
-                            options: _statusOptions,
-                            selected: _selectedStatus,
-                            onSelected: (status) => setState(() {
-                              _selectedStatus = _selectedStatus == status
-                                  ? null
-                                  : status;
-                            }),
-                          ),
-                        )
-                      : const SizedBox(width: double.infinity),
-                ),
                 FadeSlideIn(
                   child: _RankingPromoCard(
                     onOpen: () => CityRankingScreen.open(
@@ -401,11 +325,21 @@ class _SearchHeader extends StatelessWidget {
     required this.controller,
     required this.onChanged,
     required this.onClear,
+    required this.cityLabel,
+    required this.onChooseCity,
+    required this.statusLabel,
+    required this.statusActive,
+    required this.onChooseStatus,
   });
 
   final TextEditingController controller;
   final ValueChanged<String> onChanged;
   final VoidCallback onClear;
+  final String cityLabel;
+  final VoidCallback? onChooseCity;
+  final String statusLabel;
+  final bool statusActive;
+  final VoidCallback onChooseStatus;
 
   @override
   Widget build(BuildContext context) {
@@ -514,106 +448,32 @@ class _SearchHeader extends StatelessWidget {
                     ),
                   ),
                 ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _HeaderFilterButton(
+                        icon: Icons.location_on_outlined,
+                        label: cityLabel,
+                        active: false,
+                        onPressed: onChooseCity,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _HeaderFilterButton(
+                        icon: Icons.flag_outlined,
+                        label: statusLabel,
+                        active: statusActive,
+                        onPressed: onChooseStatus,
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-// ──────────────────────────────────────────────────────────
-// Filtros por status
-// ──────────────────────────────────────────────────────────
-
-class _StatusFilters extends StatelessWidget {
-  const _StatusFilters({
-    required this.options,
-    required this.selected,
-    required this.onSelected,
-  });
-
-  final List<String> options;
-  final String? selected;
-  final ValueChanged<String> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          'Filtrar por status',
-          textAlign: TextAlign.center,
-          style: UrbText.body(
-            size: 13,
-            weight: FontWeight.w700,
-            color: const Color(0xFF374151),
-            height: 1.2,
-          ),
-        ),
-        const SizedBox(height: 10),
-        Wrap(
-          alignment: WrapAlignment.center,
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final status in options)
-              _FilterChip(
-                label: UrbStatusChip.styleOf(status).label,
-                selected: selected == status,
-                onTap: () => onSelected(status),
-              ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _FilterChip extends StatelessWidget {
-  const _FilterChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      selected: selected,
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: UrbMotion.of(context, UrbMotion.fast),
-          curve: Curves.easeOutCubic,
-          height: 38,
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: selected ? const Color(0xFF18222E) : Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: selected ? const Color(0xFF18222E) : UrbColors.border,
-              width: 1.5,
-            ),
-          ),
-          child: Text(
-            label,
-            style: UrbText.body(
-              size: 13,
-              weight: FontWeight.w700,
-              color: selected ? Colors.white : const Color(0xFF374151),
-              height: 1.2,
-            ),
-          ),
-        ),
       ),
     );
   }
@@ -946,191 +806,230 @@ class _ResultSkeleton extends StatelessWidget {
 }
 
 // ──────────────────────────────────────────────────────────
-// Filtro de cidade e atalhos por ocorrência
+// Filtros no topo: cidade e situação
 // ──────────────────────────────────────────────────────────
 
-class _Occurrence {
-  const _Occurrence(this.label, this.icon, this.keywords);
+class _HeaderFilterButton extends StatelessWidget {
+  const _HeaderFilterButton({
+    required this.icon,
+    required this.label,
+    required this.active,
+    required this.onPressed,
+  });
 
-  final String label;
   final IconData icon;
-  final List<String> keywords;
-}
-
-class _CityFilterButton extends StatelessWidget {
-  const _CityFilterButton({required this.label, required this.onPressed});
-
   final String label;
+  final bool active;
   final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          'Cidade',
-          textAlign: TextAlign.center,
-          style: UrbText.body(
-            size: 13,
-            weight: FontWeight.w700,
-            color: const Color(0xFF374151),
-            height: 1.2,
-          ),
+    return AnimatedContainer(
+      duration: UrbMotion.of(context, UrbMotion.fast),
+      decoration: BoxDecoration(
+        color: active ? Colors.white : Colors.white.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: active ? 1 : 0.28),
         ),
-        const SizedBox(height: 10),
-        Material(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          child: InkWell(
-            onTap: onPressed,
-            borderRadius: BorderRadius.circular(18),
-            child: Container(
-              height: 56,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: UrbColors.border, width: 1.5),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      color: UrbColors.lavender,
-                      borderRadius: BorderRadius.circular(11),
-                    ),
-                    child: const Icon(
-                      Icons.location_on_outlined,
-                      color: UrbColors.violetDeep,
-                      size: 19,
-                    ),
-                  ),
-                  Expanded(
-                    child: AnimatedSwitcher(
-                      duration: UrbMotion.of(context, UrbMotion.fast),
-                      child: Text(
-                        label,
-                        key: ValueKey(label),
-                        textAlign: TextAlign.center,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: UrbText.body(
-                          size: 15,
-                          weight: FontWeight.w700,
-                          color: UrbColors.ink,
-                          height: 1.2,
-                        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(14),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+            child: Row(
+              children: [
+                Icon(
+                  icon,
+                  size: 18,
+                  color: active ? UrbColors.violetDeep : Colors.white,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: AnimatedSwitcher(
+                    duration: UrbMotion.of(context, UrbMotion.fast),
+                    child: Text(
+                      label,
+                      key: ValueKey(label),
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: UrbText.body(
+                        size: 14,
+                        weight: FontWeight.w700,
+                        color: active ? UrbColors.violetDeep : Colors.white,
+                        height: 1.2,
                       ),
                     ),
                   ),
-                  const SizedBox(
-                    width: 34,
-                    child: Icon(
-                      Icons.expand_more_rounded,
-                      color: UrbColors.textMuted,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+                Icon(
+                  Icons.expand_more_rounded,
+                  size: 18,
+                  color: active ? UrbColors.violetDeep : Colors.white,
+                ),
+              ],
             ),
           ),
         ),
-      ],
+      ),
     );
   }
 }
 
-class _OccurrenceBar extends StatelessWidget {
-  const _OccurrenceBar({
-    required this.occurrences,
-    required this.selected,
-    required this.onSelected,
+/// Janela com a lista de situações para marcar (pode escolher várias).
+class _StatusPickerDialog extends StatefulWidget {
+  const _StatusPickerDialog({
+    required this.options,
+    required this.initialSelection,
   });
 
-  final List<_Occurrence> occurrences;
-  final _Occurrence? selected;
-  final ValueChanged<_Occurrence> onSelected;
+  final List<String> options;
+  final Set<String> initialSelection;
+
+  @override
+  State<_StatusPickerDialog> createState() => _StatusPickerDialogState();
+}
+
+class _StatusPickerDialogState extends State<_StatusPickerDialog> {
+  late final Set<String> _selection = {...widget.initialSelection};
+
+  void _toggle(String status) {
+    setState(() {
+      if (!_selection.remove(status)) _selection.add(status);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          'O que aconteceu?',
-          textAlign: TextAlign.center,
-          style: UrbText.body(
-            size: 13,
-            weight: FontWeight.w700,
-            color: const Color(0xFF374151),
-            height: 1.2,
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(22),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          UrbDialogHeader(
+            icon: Icons.flag_outlined,
+            title: 'Situação',
+            subtitle: 'Escolha uma ou mais situações.',
+            onClose: () => Navigator.of(context).pop(),
           ),
-        ),
-        const SizedBox(height: 10),
-        // Barra que desliza para o lado com os tipos de ocorrência.
-        SizedBox(
-          height: 46,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            clipBehavior: Clip.none,
-            itemCount: occurrences.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 8),
-            itemBuilder: (context, index) {
-              final occurrence = occurrences[index];
-              final isSelected = identical(occurrence, selected);
-              return Semantics(
-                button: true,
-                selected: isSelected,
-                child: GestureDetector(
-                  onTap: () => onSelected(occurrence),
-                  child: AnimatedContainer(
-                    duration: UrbMotion.of(context, UrbMotion.fast),
-                    curve: Curves.easeOutCubic,
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    decoration: BoxDecoration(
-                      gradient: isSelected ? UrbGradients.primary : null,
-                      color: isSelected ? null : Colors.white,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: isSelected
-                            ? Colors.transparent
-                            : UrbColors.border,
-                        width: 1.5,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          occurrence.icon,
-                          size: 18,
-                          color: isSelected
-                              ? Colors.white
-                              : UrbColors.violetDeep,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          occurrence.label,
-                          style: UrbText.body(
-                            size: 14,
-                            weight: FontWeight.w700,
-                            color: isSelected
-                                ? Colors.white
-                                : const Color(0xFF374151),
-                            height: 1.2,
-                          ),
-                        ),
-                      ],
-                    ),
+          const SizedBox(height: 18),
+          for (final status in widget.options) ...[
+            _StatusOption(
+              status: status,
+              selected: _selection.contains(status),
+              onTap: () => _toggle(status),
+            ),
+            const SizedBox(height: 8),
+          ],
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: UrbSecondaryButton(
+                  label: 'Limpar',
+                  onPressed: _selection.isEmpty
+                      ? null
+                      : () => setState(_selection.clear),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: UrbPrimaryButton(
+                  label: 'Aplicar',
+                  onPressed: () => Navigator.of(context).pop(_selection),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatusOption extends StatelessWidget {
+  const _StatusOption({
+    required this.status,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String status;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = UrbStatusChip.styleOf(status);
+
+    return Semantics(
+      checked: selected,
+      button: true,
+      label: style.label,
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: AnimatedContainer(
+          duration: UrbMotion.of(context, UrbMotion.fast),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: selected ? style.background : Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: selected
+                  ? style.foreground.withValues(alpha: 0.5)
+                  : UrbColors.border,
+              width: 1.5,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: style.foreground,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  style.label,
+                  style: UrbText.body(
+                    size: 15,
+                    weight: FontWeight.w700,
+                    color: selected ? style.foreground : UrbColors.ink,
+                    height: 1.2,
                   ),
                 ),
-              );
-            },
+              ),
+              AnimatedSwitcher(
+                duration: UrbMotion.of(context, UrbMotion.fast),
+                transitionBuilder: (child, animation) =>
+                    ScaleTransition(scale: animation, child: child),
+                child: selected
+                    ? Icon(
+                        Icons.check_circle_rounded,
+                        key: const ValueKey('on'),
+                        color: style.foreground,
+                      )
+                    : const Icon(
+                        Icons.circle_outlined,
+                        key: ValueKey('off'),
+                        color: UrbColors.border,
+                      ),
+              ),
+            ],
           ),
         ),
-      ],
+      ),
     );
   }
 }

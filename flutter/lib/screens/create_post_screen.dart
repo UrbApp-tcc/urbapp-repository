@@ -13,18 +13,46 @@ import 'package:latlong2/latlong.dart';
 import '../services/agency_service.dart';
 import '../services/auth_service.dart';
 import '../services/post_service.dart';
-import '../theme/app_theme.dart';
-import '../widgets/app_logo.dart';
-import '../widgets/auth_text_field.dart';
-import '../widgets/gradient_button.dart';
-import '../widgets/media_picker_widget.dart';
+import '../theme/urbapp_design.dart';
 import '../utils/error_formatter.dart';
-import '../widgets/wave_header.dart';
+import '../widgets/media_picker_widget.dart';
+import '../widgets/urb_dialog.dart';
+import '../widgets/urb_primary_button.dart';
+import '../widgets/urb_text_field.dart';
 
 class CreatePostScreen extends StatefulWidget {
   const CreatePostScreen({super.key, this.returnToPreviousOnSuccess = false});
 
   final bool returnToPreviousOnSuccess;
+
+  /// Abre o "Novo reporte" como janela flutuante no meio da tela.
+  static Future<bool?> open(BuildContext context) {
+    final duration = UrbMotion.of(context, const Duration(milliseconds: 300));
+    return Navigator.of(context).push<bool>(
+      PageRouteBuilder<bool>(
+        opaque: false,
+        barrierColor: const Color(0x940D1520),
+        barrierLabel: 'Fechar',
+        transitionDuration: duration,
+        reverseTransitionDuration: duration,
+        pageBuilder: (_, _, _) =>
+            const CreatePostScreen(returnToPreviousOnSuccess: true),
+        transitionsBuilder: (context, animation, _, child) {
+          final curved = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutBack,
+          );
+          return FadeTransition(
+            opacity: animation,
+            child: ScaleTransition(
+              scale: Tween(begin: 0.9, end: 1.0).animate(curved),
+              child: child,
+            ),
+          );
+        },
+      ),
+    );
+  }
 
   @override
   State<CreatePostScreen> createState() => _CreatePostScreenState();
@@ -32,6 +60,18 @@ class CreatePostScreen extends StatefulWidget {
 
 class _CreatePostScreenState extends State<CreatePostScreen> {
   final _formKey = GlobalKey<FormState>();
+
+  /// Passo atual do assistente (0, 1 ou 2).
+  int _step = 0;
+  bool _published = false;
+  String? _publishedNote;
+
+  /// Busca de endereço digitado no passo do mapa.
+  final _addressSearchController = TextEditingController();
+  Timer? _addressSearchDebounce;
+  List<_AddressResult> _addressResults = const [];
+  bool _isSearchingAddress = false;
+  bool _addressSearchDone = false;
   final _authService = AuthService();
   final _postService = PostService();
   final _mapController = MapController();
@@ -65,8 +105,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
   Timer? _reverseGeocodeDebounce;
 
-  static const double _maxContentWidth = 440;
-  static const double _fieldSpacing = 16;
   static const LatLng _fallbackPoint = LatLng(-23.55052, -46.63331);
 
   @override
@@ -78,6 +116,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   @override
   void dispose() {
     _reverseGeocodeDebounce?.cancel();
+    _addressSearchDebounce?.cancel();
+    _addressSearchController.dispose();
     _mapController.dispose();
     _titleController.dispose();
     _descriptionController.dispose();
@@ -141,7 +181,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         _isLoadingLocation = false;
       });
 
-      _mapController.move(point, 16);
+      _moveMap(point, 16);
       await _updateAddressFromPoint(point);
     } catch (error) {
       if (!mounted) return;
@@ -161,8 +201,106 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         _locationIsApproximate = true;
       });
 
-      _mapController.move(_fallbackPoint, 13);
+      _moveMap(_fallbackPoint, 13);
       _showError(friendlyError(error));
+    }
+  }
+
+  void _onAddressQueryChanged(String value) {
+    _addressSearchDebounce?.cancel();
+    final query = value.trim();
+    if (query.length < 3) {
+      setState(() {
+        _addressResults = const [];
+        _isSearchingAddress = false;
+        _addressSearchDone = false;
+      });
+      return;
+    }
+    setState(() => _isSearchingAddress = true);
+    // Espera a pessoa parar de digitar (o serviço de mapas aceita
+    // no máximo uma consulta por segundo).
+    _addressSearchDebounce = Timer(
+      const Duration(milliseconds: 700),
+      () => _searchAddress(query),
+    );
+  }
+
+  Future<void> _searchAddress(String query) async {
+    final center = _selectedPoint ?? _fallbackPoint;
+    try {
+      // Dá preferência a endereços perto do ponto atual do mapa.
+      final uri = Uri.https('nominatim.openstreetmap.org', '/search', {
+        'format': 'jsonv2',
+        'q': query,
+        'limit': '5',
+        'countrycodes': 'br',
+        'accept-language': 'pt-BR',
+        'viewbox':
+            '${center.longitude - 0.4},${center.latitude + 0.4},'
+            '${center.longitude + 0.4},${center.latitude - 0.4}',
+        'bounded': '0',
+      });
+
+      final response = await http
+          .get(uri, headers: const {'Accept': 'application/json'})
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode != 200) {
+        throw Exception('Não foi possível buscar o endereço agora.');
+      }
+
+      final data = jsonDecode(response.body) as List<dynamic>;
+      final results = data
+          .map((item) => item as Map<String, dynamic>)
+          .map((item) {
+            final lat = double.tryParse('${item['lat']}');
+            final lon = double.tryParse('${item['lon']}');
+            if (lat == null || lon == null) return null;
+            return _AddressResult(
+              label: '${item['display_name'] ?? ''}',
+              point: LatLng(lat, lon),
+            );
+          })
+          .whereType<_AddressResult>()
+          .toList();
+
+      if (!mounted || _addressSearchController.text.trim() != query) return;
+      setState(() {
+        _addressResults = results;
+        _isSearchingAddress = false;
+        _addressSearchDone = true;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isSearchingAddress = false;
+        _addressSearchDone = true;
+        _addressResults = const [];
+      });
+      _showError(friendlyError(error));
+    }
+  }
+
+  void _selectAddress(_AddressResult result) {
+    FocusScope.of(context).unfocus();
+    _addressSearchDebounce?.cancel();
+    final shortLabel = result.label.split(',').take(2).join(',').trim();
+    _addressSearchController.text = shortLabel;
+    setState(() {
+      _selectedPoint = result.point;
+      _addressResults = const [];
+      _addressSearchDone = false;
+    });
+    _moveMap(result.point, 17);
+    _updateAddressFromPoint(result.point);
+  }
+
+  void _moveMap(LatLng point, double zoom) {
+    try {
+      _mapController.move(point, zoom);
+    } catch (_) {
+      // O mapa ainda não apareceu; ele já abre no ponto escolhido.
     }
   }
 
@@ -171,10 +309,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       return 'Informe $label';
     }
     return null;
-  }
-
-  String get _currentUserLabel {
-    return _authService.currentUser?.email ?? 'Usuario autenticado';
   }
 
   Future<void> _updateAddressFromPoint(LatLng point) async {
@@ -223,7 +357,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       } else if (mounted) {
         setState(() => _agencies = const []);
       }
-
     } catch (error) {
       if (!mounted) return;
 
@@ -490,12 +623,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   }
 
   Future<void> _submitPost() async {
-    if (!_formKey.currentState!.validate()) return;
-
     final currentUser = _authService.currentUser;
     if (currentUser == null) {
       _showError(
-        'Sua sessao expirou. Entre novamente para publicar o reporte.',
+        'Sua sessão expirou. Entre novamente para publicar o reporte.',
       );
       return;
     }
@@ -505,12 +636,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       return;
     }
 
-    final matchedCity = await _resolveCityForSubmission();
-
     if (_selectedCategory == null) {
       _showError('Selecione uma categoria.');
       return;
     }
+
+    final matchedCity = await _resolveCityForSubmission();
 
     if (!mounted) return;
     FocusScope.of(context).unfocus();
@@ -550,152 +681,841 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _images.isEmpty
-                ? 'Reporte criado com sucesso!'
-                : 'Reporte criado com imagens com sucesso!',
-          ),
-          backgroundColor: AppColors.resolved,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          margin: const EdgeInsets.all(16),
-        ),
-      );
-
-      _formKey.currentState!.reset();
-      _titleController.clear();
-      _descriptionController.clear();
-      _categorySearchController.clear();
-
+      // Mostra a comemoração dentro da janela e depois fecha sozinha.
       setState(() {
-        _isAnonymous = false;
-        _selectedCity = matchedCity;
-        _selectedCategory = null;
-        _selectedAgency = null;
-        _images = [];
-        _resolvedStateCode = null;
-        _locationIsApproximate = false;
+        _isSubmitting = false;
+        _published = true;
+        _publishedNote = matchedCity == null
+            ? 'Publicado com localização aproximada.'
+            : null;
       });
 
-      if (matchedCity == null) {
-        _showInfo('Reporte publicado com localizacao aproximada.');
-      }
+      await Future<void>.delayed(const Duration(milliseconds: 1600));
+      if (!mounted) return;
 
-      if (widget.returnToPreviousOnSuccess &&
-          mounted &&
-          Navigator.of(context).canPop()) {
+      if (widget.returnToPreviousOnSuccess && Navigator.of(context).canPop()) {
         Navigator.of(context).pop(true);
+      } else {
+        _resetForm(matchedCity);
       }
     } catch (error) {
       _showError(friendlyError(error));
     } finally {
-      if (mounted) {
+      if (mounted && _isSubmitting) {
         setState(() => _isSubmitting = false);
       }
     }
   }
 
+  void _resetForm(LookupOption? matchedCity) {
+    _titleController.clear();
+    _descriptionController.clear();
+    _categorySearchController.clear();
+    setState(() {
+      _step = 0;
+      _published = false;
+      _publishedNote = null;
+      _isAnonymous = false;
+      _selectedCity = matchedCity;
+      _selectedCategory = null;
+      _selectedAgency = null;
+      _images = [];
+      _resolvedStateCode = null;
+      _locationIsApproximate = false;
+    });
+  }
+
   void _showError(String message) {
     if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: AppColors.error,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.all(16),
-      ),
-    );
+    showUrbSnack(context, message, error: true);
   }
 
-  void _showInfo(String message) {
-    if (!mounted) return;
+  // ──────────────────────────────────────────────────────────
+  // Navegação entre os passos
+  // ──────────────────────────────────────────────────────────
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: AppColors.inProgress,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.all(16),
+  static const _stepTitles = [
+    'O que aconteceu?',
+    'Onde fica?',
+    'Últimos detalhes',
+  ];
+  static const _stepSubtitles = [
+    'Mostre e descreva o problema.',
+    'Marque o local do problema no mapa.',
+    'Confira e publique seu reporte.',
+  ];
+
+  void _next() {
+    if (_step == 0) {
+      if (!_formKey.currentState!.validate()) return;
+      FocusScope.of(context).unfocus();
+    }
+    if (_step == 1 && (_isLoadingLocation || _selectedPoint == null)) {
+      _showError('Aguarde o mapa carregar ou escolha um ponto no mapa.');
+      return;
+    }
+    setState(() => _step += 1);
+  }
+
+  void _back() {
+    if (_step == 0) return;
+    setState(() => _step -= 1);
+  }
+
+  void _close() {
+    if (_isSubmitting) return;
+    Navigator.of(context).maybePop();
+  }
+
+  Future<void> _chooseCategory() async {
+    final option = await showUrbDialog<LookupOption>(
+      context: context,
+      builder: (_) => _OptionPickerDialog<LookupOption>(
+        icon: Icons.sell_outlined,
+        title: 'Categoria',
+        subtitle: 'Qual é o tipo do problema?',
+        searchHint: 'Buscar categoria',
+        options: _categories,
+        labelOf: (option) => option.name,
+        isSelected: (option) => option.id == _selectedCategory?.id,
       ),
     );
+    if (option == null || !mounted) return;
+    setState(() {
+      _selectedCategory = option;
+      _categorySearchController.text = option.name;
+    });
   }
+
+  Future<void> _chooseAgency() async {
+    const none = AgencyOption(
+      id: -1,
+      cityId: -1,
+      name: 'Nenhum órgão vinculado',
+      type: '',
+      contactEmail: '',
+    );
+    final option = await showUrbDialog<AgencyOption>(
+      context: context,
+      builder: (_) => _OptionPickerDialog<AgencyOption>(
+        icon: Icons.account_balance_outlined,
+        title: 'Órgão responsável',
+        subtitle: 'Opcional: ajuda a prefeitura a assumir o reporte.',
+        searchHint: 'Buscar órgão',
+        options: [none, ..._agencies],
+        labelOf: (agency) =>
+            agency.id == -1 ? agency.name : '${agency.name} (${agency.type})',
+        isSelected: (agency) => agency.id == -1
+            ? _selectedAgency == null
+            : agency.id == _selectedAgency?.id,
+      ),
+    );
+    if (option == null || !mounted) return;
+    setState(() => _selectedAgency = option.id == -1 ? null : option);
+  }
+
+  // ──────────────────────────────────────────────────────────
+  // Tela
+  // ──────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      resizeToAvoidBottomInset: true,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.only(bottom: 32),
-          child: Column(
-            children: [
-              WaveHeader(
-                height: 220,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
-                  child: Align(
-                    alignment: Alignment.topCenter,
-                    child: _buildHeaderContent(),
+    return PopScope(
+      canPop: !_isSubmitting,
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        resizeToAvoidBottomInset: true,
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 460),
+                child: Material(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(30),
+                  clipBehavior: Clip.antiAlias,
+                  child: AnimatedSize(
+                    duration: UrbMotion.of(context, UrbMotion.medium),
+                    curve: Curves.easeOutCubic,
+                    child: _published ? _buildPublished() : _buildWizard(),
                   ),
                 ),
               ),
-              const AppLogo(height: 100),
-              Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: _maxContentWidth),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
-                    child: _buildFormCard(),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildHeaderContent() {
-    return Stack(
+  Widget _buildWizard() {
+    final isLast = _step == 2;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (Navigator.of(context).canPop())
-          Positioned(
-            top: 0,
-            left: 0,
-            child: IconButton(
-              onPressed: () => Navigator.of(context).pop(),
-              icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Barrinha de progresso: cada parte "enche" ao avançar.
+              Row(
+                children: [
+                  for (var i = 0; i < 3; i++) ...[
+                    if (i > 0) const SizedBox(width: 6),
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(3),
+                        child: Stack(
+                          children: [
+                            Container(height: 6, color: UrbColors.border),
+                            AnimatedFractionallySizedBox(
+                              duration: UrbMotion.of(context, UrbMotion.medium),
+                              curve: Curves.easeOutCubic,
+                              widthFactor: i <= _step ? 1 : 0,
+                              child: Container(
+                                height: 6,
+                                decoration: const BoxDecoration(
+                                  gradient: UrbGradients.primary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 16),
+              Stack(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 44),
+                    child: AnimatedSwitcher(
+                      duration: UrbMotion.of(context, UrbMotion.fast),
+                      child: Column(
+                        key: ValueKey(_step),
+                        children: [
+                          Text(
+                            'PASSO ${_step + 1} DE 3',
+                            style: UrbText.body(
+                              size: 12,
+                              weight: FontWeight.w700,
+                              color: UrbColors.violet,
+                              height: 1.3,
+                            ).copyWith(letterSpacing: 1.2),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _stepTitles[_step],
+                            textAlign: TextAlign.center,
+                            style: UrbText.display(
+                              size: 22,
+                              weight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _stepSubtitles[_step],
+                            textAlign: TextAlign.center,
+                            style: UrbText.body(size: 14, height: 1.4),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    child: Material(
+                      color: UrbColors.surface,
+                      borderRadius: BorderRadius.circular(13),
+                      child: InkWell(
+                        onTap: _isSubmitting ? null : _close,
+                        borderRadius: BorderRadius.circular(13),
+                        child: const SizedBox(
+                          width: 40,
+                          height: 40,
+                          child: Icon(
+                            Icons.close_rounded,
+                            size: 18,
+                            color: Color(0xFF374151),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        Flexible(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+            // Os três passos ficam montados (o mapa precisa existir),
+            // mas só o atual aparece.
+            child: IndexedStack(
+              index: _step,
+              sizing: StackFit.loose,
+              children: [
+                _StepPane(active: _step == 0, child: _buildStepContent()),
+                _StepPane(active: _step == 1, child: _buildStepLocation()),
+                _StepPane(active: _step == 2, child: _buildStepDetails()),
+              ],
             ),
           ),
-        Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 14),
-            const Text(
-              'Criar um Reporte!',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 28,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.5,
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+          child: Row(
+            children: [
+              AnimatedSize(
+                duration: UrbMotion.of(context, UrbMotion.fast),
+                child: _step == 0
+                    ? const SizedBox.shrink()
+                    : Padding(
+                        padding: const EdgeInsets.only(right: 12),
+                        child: SizedBox(
+                          width: 120,
+                          child: UrbSecondaryButton(
+                            label: 'Voltar',
+                            onPressed: _isSubmitting ? null : _back,
+                          ),
+                        ),
+                      ),
+              ),
+              Expanded(
+                child: UrbPrimaryButton(
+                  label: isLast ? 'Publicar' : 'Continuar',
+                  icon: isLast
+                      ? Icons.send_rounded
+                      : Icons.arrow_forward_rounded,
+                  loading: _isSubmitting,
+                  onPressed: isLast
+                      ? ((_isLoadingLookups || _isLoadingLocation)
+                            ? null
+                            : _submitPost)
+                      : _next,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Passo 1: fotos, título e descrição.
+  Widget _buildStepContent() {
+    return Form(
+      key: _formKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Fotos',
+            style: UrbText.body(
+              size: 13,
+              weight: FontWeight.w700,
+              color: const Color(0xFF374151),
+              height: 1.2,
+            ),
+          ),
+          const SizedBox(height: 10),
+          MediaPickerWidget(
+            images: _images,
+            onChanged: (images) => setState(() => _images = images),
+          ),
+          const SizedBox(height: 20),
+          UrbTextField(
+            label: 'Título',
+            controller: _titleController,
+            icon: Icons.title_rounded,
+            hintText: 'Ex.: Poste apagado na esquina',
+            validator: (value) => _validateRequired(value, 'o título'),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            'Descrição',
+            style: UrbText.body(
+              size: 13,
+              weight: FontWeight.w700,
+              color: const Color(0xFF374151),
+              height: 1.2,
+            ),
+          ),
+          const SizedBox(height: 10),
+          TextFormField(
+            controller: _descriptionController,
+            validator: (value) => _validateRequired(value, 'a descrição'),
+            keyboardType: TextInputType.multiline,
+            textInputAction: TextInputAction.newline,
+            minLines: 4,
+            maxLines: 6,
+            style: UrbText.body(size: 15, color: UrbColors.ink, height: 1.4),
+            decoration: urbInputDecoration(hintText: 'Detalhe o seu problema')
+                .copyWith(
+                  prefixIcon: null,
+                  suffixIcon: null,
+                  contentPadding: const EdgeInsets.all(16),
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Passo 2: mapa com o pino fixo no centro.
+  Widget _buildStepLocation() {
+    final cityText =
+        _locationIsApproximate && _cityLabel != 'Localizacao nao identificada'
+        ? '$_cityLabel (aproximada)'
+        : (_locationIsApproximate ? 'Localização aproximada' : _cityLabel);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(22),
+          child: SizedBox(
+            height: 280,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                FlutterMap(
+                  mapController: _mapController,
+                  options: MapOptions(
+                    initialCenter: _selectedPoint ?? _fallbackPoint,
+                    initialZoom: 15,
+                    onPositionChanged: (camera, hasGesture) {
+                      final center = camera.center;
+                      _selectedPoint = center;
+                      _reverseGeocodeDebounce?.cancel();
+                      _reverseGeocodeDebounce = Timer(
+                        const Duration(milliseconds: 500),
+                        () => _updateAddressFromPoint(center),
+                      );
+                    },
+                  ),
+                  children: [
+                    TileLayer(
+                      urlTemplate:
+                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      userAgentPackageName: 'com.example.meu_app',
+                    ),
+                  ],
+                ),
+                const IgnorePointer(child: _CenterPin()),
+                Positioned(
+                  left: 12,
+                  right: 12,
+                  bottom: 12,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.95),
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x220D1520),
+                          blurRadius: 12,
+                          offset: Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        _isResolvingAddress || _isLoadingLocation
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(
+                                Icons.location_on_rounded,
+                                color: UrbColors.violet,
+                                size: 18,
+                              ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                _isResolvingAddress
+                                    ? 'Atualizando endereço...'
+                                    : _locationLabel,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: UrbText.body(
+                                  size: 13,
+                                  weight: FontWeight.w700,
+                                  color: UrbColors.ink,
+                                  height: 1.3,
+                                ),
+                              ),
+                              Text(
+                                cityText,
+                                style: UrbText.body(
+                                  size: 12,
+                                  color: _locationIsApproximate
+                                      ? const Color(0xFFB45309)
+                                      : UrbColors.textMuted,
+                                  height: 1.3,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        // Campo para digitar o endereço, entre o mapa e o botão de localização.
+        TextField(
+          controller: _addressSearchController,
+          onChanged: _onAddressQueryChanged,
+          textInputAction: TextInputAction.search,
+          textAlign: TextAlign.center,
+          style: UrbText.body(size: 15, color: UrbColors.ink, height: 1.3),
+          decoration: urbInputDecoration(
+            hintText: 'Digite o endereço ou bairro',
+            icon: Icons.search_rounded,
+            suffix: _isSearchingAddress
+                ? const Padding(
+                    padding: EdgeInsets.all(15),
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                : _addressSearchController.text.isEmpty
+                ? null
+                : IconButton(
+                    tooltip: 'Limpar',
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      color: UrbColors.textMuted,
+                      size: 20,
+                    ),
+                    onPressed: () {
+                      _addressSearchController.clear();
+                      _onAddressQueryChanged('');
+                    },
+                  ),
+          ),
+        ),
+        // Sugestões de endereço aparecem deslizando embaixo do campo.
+        AnimatedSize(
+          duration: UrbMotion.of(context, UrbMotion.fast),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child:
+              _addressResults.isEmpty &&
+                  !(_addressSearchDone && !_isSearchingAddress)
+              ? const SizedBox(width: double.infinity)
+              : Container(
+                  margin: const EdgeInsets.only(top: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: UrbColors.border, width: 1.5),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x140D1520),
+                        blurRadius: 16,
+                        offset: Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: _addressResults.isEmpty
+                      ? Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Text(
+                            'Nenhum endereço encontrado. Tente com o nome da rua e o bairro.',
+                            textAlign: TextAlign.center,
+                            style: UrbText.body(
+                              size: 13,
+                              color: UrbColors.textMuted,
+                              height: 1.4,
+                            ),
+                          ),
+                        )
+                      : Column(
+                          children: [
+                            for (
+                              var i = 0;
+                              i < _addressResults.length;
+                              i++
+                            ) ...[
+                              if (i > 0)
+                                const Divider(
+                                  height: 1,
+                                  color: UrbColors.border,
+                                ),
+                              InkWell(
+                                onTap: () => _selectAddress(_addressResults[i]),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 12,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.location_on_outlined,
+                                        size: 20,
+                                        color: UrbColors.violet,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Text(
+                                          _addressResults[i].label,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: UrbText.body(
+                                            size: 13,
+                                            color: UrbColors.ink,
+                                            height: 1.35,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 50,
+          child: OutlinedButton.icon(
+            onPressed: _isLoadingLocation ? null : _initializeLocation,
+            icon: const Icon(Icons.my_location_rounded, size: 18),
+            label: Text(
+              'Usar minha localização',
+              style: UrbText.body(
+                size: 15,
+                weight: FontWeight.w700,
+                color: UrbColors.violetDeep,
+                height: 1.2,
               ),
             ),
-            const SizedBox(height: 8),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: UrbColors.violetDeep,
+              side: const BorderSide(color: Color(0xFFD9D3F0), width: 1.5),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Arraste o mapa para ajustar o ponto exato do reporte.',
+          textAlign: TextAlign.center,
+          style: UrbText.body(
+            size: 13,
+            color: UrbColors.textMuted,
+            height: 1.4,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Passo 3: categoria, órgão, anônimo e resumo.
+  Widget _buildStepDetails() {
+    final selectedCity = _selectedCity;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _PickerField(
+          label: 'Categoria',
+          icon: Icons.sell_outlined,
+          value: _selectedCategory?.name,
+          placeholder: _isLoadingLookups
+              ? 'Carregando categorias...'
+              : 'Selecione a categoria',
+          onTap: _isLoadingLookups ? null : _chooseCategory,
+        ),
+        const SizedBox(height: 18),
+        _PickerField(
+          label: 'Órgão responsável (opcional)',
+          icon: Icons.account_balance_outlined,
+          value: _selectedAgency == null
+              ? null
+              : '${_selectedAgency!.name} (${_selectedAgency!.type})',
+          placeholder: selectedCity == null
+              ? 'Defina primeiro a cidade no mapa'
+              : _agencies.isEmpty
+              ? 'Nenhum órgão cadastrado em ${selectedCity.name}'
+              : 'Selecione a secretaria responsável',
+          onTap: selectedCity == null || _agencies.isEmpty
+              ? null
+              : _chooseAgency,
+        ),
+        const SizedBox(height: 18),
+        Container(
+          padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+          decoration: BoxDecoration(
+            color: UrbColors.surface,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Reportar em anônimo',
+                      style: UrbText.body(
+                        size: 15,
+                        weight: FontWeight.w700,
+                        color: UrbColors.ink,
+                        height: 1.3,
+                      ),
+                    ),
+                    Text(
+                      'Ocultar o autor quando for publicado.',
+                      style: UrbText.body(size: 13, height: 1.35),
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                value: _isAnonymous,
+                activeThumbColor: Colors.white,
+                activeTrackColor: UrbColors.violet,
+                onChanged: (value) => setState(() => _isAnonymous = value),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+        Text(
+          'Resumo',
+          style: UrbText.body(
+            size: 13,
+            weight: FontWeight.w700,
+            color: const Color(0xFF374151),
+            height: 1.2,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFECE8F8), width: 1.5),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 58,
+                height: 58,
+                decoration: BoxDecoration(
+                  gradient: UrbGradients.photo,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Center(
+                  child: _images.isEmpty
+                      ? const Icon(
+                          Icons.image_outlined,
+                          color: Color(0xFF9FB0C6),
+                        )
+                      : Text(
+                          '${_images.length}\nfoto${_images.length > 1 ? 's' : ''}',
+                          textAlign: TextAlign.center,
+                          style: UrbText.body(
+                            size: 11,
+                            weight: FontWeight.w700,
+                            color: Colors.white,
+                            height: 1.2,
+                          ),
+                        ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _titleController.text.trim().isEmpty
+                          ? 'Sem título'
+                          : _titleController.text.trim(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: UrbText.display(size: 16, weight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      _locationLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: UrbText.body(
+                        size: 12,
+                        color: UrbColors.textMuted,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                gradient: UrbGradients.gamification,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                '+20 XP',
+                style: UrbText.body(
+                  size: 13,
+                  weight: FontWeight.w800,
+                  color: Colors.white,
+                  height: 1.2,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
             Text(
-              'Registre um novo reporte para ajudar a comunidade a resolver problemas.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.9),
-                fontSize: 14,
-                height: 1.4,
+              'ao publicar',
+              style: UrbText.body(
+                size: 13,
+                weight: FontWeight.w700,
+                color: UrbColors.violetDeep,
+                height: 1.2,
               ),
             ),
           ],
@@ -704,555 +1524,82 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     );
   }
 
-  Widget _buildFormCard() {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.08),
-            blurRadius: 28,
-            offset: const Offset(0, 14),
-          ),
-        ],
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text(
-              'Detalhes do reporte',
-              style: TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.3,
-              ),
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              'Preencha os campos abaixo para registrar um novo reporte.',
-              style: TextStyle(
-                color: AppColors.textSecondary,
-                fontSize: 14,
-                height: 1.4,
-              ),
-            ),
-            const SizedBox(height: 24),
-            _buildSectionLabel('Identificacao'),
-            const SizedBox(height: 24),
-            _buildAnonymousCard(),
-            const SizedBox(height: 12),
-            _buildAuthenticatedUserCard(),
-            const SizedBox(height: 24),
-            _buildSectionLabel('Categoria'),
-            const SizedBox(height: 12),
-            _buildLookupField(
-              label: 'Categoria',
-              controller: _categorySearchController,
-              options: _categories,
-              selectedOption: _selectedCategory,
-              loading: _isLoadingLookups,
-              icon: Icons.category_outlined,
-              emptyMessage: 'Nenhuma categoria encontrada.',
-              onSelected: (option) {
-                setState(() {
-                  _selectedCategory = option;
-                  _categorySearchController.text = option.name;
-                });
-              },
-            ),
-            const SizedBox(height: 24),
-            _buildSectionLabel('Orgao responsavel'),
-            const SizedBox(height: 12),
-            _buildAgencySelector(),
-            const SizedBox(height: 24),
-            _buildSectionLabel('Conteudo'),
-            const SizedBox(height: 12),
-            AuthTextField(
-              controller: _titleController,
-              validator: (value) => _validateRequired(value, 'o titulo'),
-              hintText: 'Titulo',
-              prefixIcon: const Icon(Icons.title_rounded, size: 22),
-            ),
-            const SizedBox(height: _fieldSpacing),
-            TextFormField(
-              controller: _descriptionController,
-              validator: (value) => _validateRequired(value, 'a descricao'),
-              keyboardType: TextInputType.multiline,
-              textInputAction: TextInputAction.newline,
-              minLines: 5,
-              maxLines: 7,
-              decoration: const InputDecoration(
-                hintText: 'Detalhe o seu problema',
-                fillColor: AppColors.background,
-                filled: true,
-                contentPadding: EdgeInsets.fromLTRB(16, 18, 16, 18),
-                prefixIcon: Padding(
-                  padding: EdgeInsets.only(bottom: 74),
-                  child: Icon(Icons.description_outlined, size: 22),
-                ),
-              ),
-            ),
-            const SizedBox(height: _fieldSpacing),
-            MediaPickerWidget(
-              images: _images,
-              onChanged: (images) {
-                setState(() {
-                  _images = images;
-                });
-              },
-            ),
-            const SizedBox(height: 24),
-            _buildSectionLabel('Localizacao'),
-            const SizedBox(height: 12),
-            _buildLocationCard(),
-            const SizedBox(height: 28),
-            GradientButton(
-              label: 'Publicar reporte',
-              loading: _isSubmitting,
-              onPressed: (_isLoadingLookups || _isLoadingLocation)
-                  ? null
-                  : _submitPost,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAnonymousCard() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: AppColors.primaryLight,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: const Icon(
-              Icons.visibility_off_outlined,
-              color: AppColors.primaryDark,
-            ),
-          ),
-          const SizedBox(width: 14),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Reportar em anonimo',
-                  style: TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  'Ocultar o autor do reporte quando ele for publicado.',
-                  style: TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 13,
-                    height: 1.35,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Switch(
-            value: _isAnonymous,
-            activeThumbColor: AppColors.primary,
-            onChanged: (value) => setState(() => _isAnonymous = value),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAuthenticatedUserCard() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: AppColors.primaryLight,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: const Icon(
-              Icons.verified_user_outlined,
-              color: AppColors.primaryDark,
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Usuario autenticado',
-                  style: TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  _currentUserLabel,
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 13,
-                    height: 1.35,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAgencySelector() {
-    final selectedCity = _selectedCity;
-
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.border),
-      ),
+  // Comemoração depois de publicar.
+  Widget _buildPublished() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 36, 24, 32),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          const Text(
-            'Selecione a secretaria ou orgao que deve receber esse chamado. Esse vinculo e opcional, mas ajuda a prefeitura a assumir o reporte.',
-            style: TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 13,
-              height: 1.35,
-            ),
-          ),
-          const SizedBox(height: 14),
-          DropdownButtonFormField<int?>(
-            initialValue: _selectedAgency?.id,
-            items: [
-              const DropdownMenuItem<int?>(
-                value: null,
-                child: Text('Nenhum orgao vinculado'),
-              ),
-              ..._agencies.map(
-                (agency) => DropdownMenuItem<int?>(
-                  value: agency.id,
-                  child: Text('${agency.name} (${agency.type})'),
-                ),
-              ),
-            ],
-            onChanged: selectedCity == null
-                ? null
-                : (value) {
-                    setState(() {
-                      _selectedAgency = value == null
-                          ? null
-                          : _agencies.firstWhere((agency) => agency.id == value);
-                    });
-                  },
-            decoration: InputDecoration(
-              labelText: 'Secretaria/orgao',
-              hintText: selectedCity == null
-                  ? 'Defina primeiro a cidade do reporte no mapa'
-                  : _agencies.isEmpty
-                      ? 'Nenhuma secretaria cadastrada para ${selectedCity.name}'
-                      : 'Selecione a secretaria responsavel',
-              prefixIcon: const Icon(Icons.account_balance_outlined, size: 22),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLocationCard() {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: AppColors.primaryLight,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Icon(
-                  Icons.place_outlined,
-                  color: AppColors.primaryDark,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _isResolvingAddress
-                          ? 'Atualizando endereco...'
-                          : _locationLabel,
-                      style: const TextStyle(
-                        color: AppColors.textPrimary,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _locationIsApproximate &&
-                              _cityLabel != 'Localizacao nao identificada'
-                          ? '$_cityLabel (aproximada)'
-                          : (_locationIsApproximate
-                                ? 'Localizacao aproximada'
-                                : _cityLabel),
-                      style: TextStyle(
-                        color: _locationIsApproximate
-                            ? AppColors.pending
-                            : AppColors.textSecondary,
-                        fontSize: 13,
-                        height: 1.35,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                tooltip: 'Usar minha localizacao',
-                onPressed: _isLoadingLocation ? null : _initializeLocation,
-                icon: const Icon(Icons.my_location_rounded),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(18),
-            child: SizedBox(
-              height: 260,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  FlutterMap(
-                    mapController: _mapController,
-                    options: MapOptions(
-                      initialCenter: _selectedPoint ?? _fallbackPoint,
-                      initialZoom: 15,
-                      onPositionChanged: (camera, hasGesture) {
-                        final center = camera.center;
-                        _selectedPoint = center;
-                        _reverseGeocodeDebounce?.cancel();
-                        _reverseGeocodeDebounce = Timer(
-                          const Duration(milliseconds: 500),
-                          () => _updateAddressFromPoint(center),
-                        );
-                      },
-                    ),
-                    children: [
-                      TileLayer(
-                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                        userAgentPackageName: 'com.example.meu_app',
-                      ),
-                    ],
-                  ),
-                  IgnorePointer(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.location_pin,
-                          size: 42,
-                          color: AppColors.accentPink,
-                        ),
-                        Container(
-                          width: 10,
-                          height: 10,
-                          decoration: const BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                      ],
-                    ),
+          TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0, end: 1),
+            duration: UrbMotion.of(context, const Duration(milliseconds: 600)),
+            curve: Curves.elasticOut,
+            builder: (context, value, child) =>
+                Transform.scale(scale: value, child: child),
+            child: Container(
+              width: 84,
+              height: 84,
+              decoration: const BoxDecoration(
+                color: Color(0xFF10B981),
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Color(0x5510B981),
+                    blurRadius: 0,
+                    spreadRadius: 10,
                   ),
                 ],
               ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            'O pin fica travado no centro. Arraste o mapa para ajustar o ponto exato do reporte.',
-            style: TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 13,
-              height: 1.35,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLookupField({
-    required String label,
-    required TextEditingController controller,
-    required List<LookupOption> options,
-    required LookupOption? selectedOption,
-    required bool loading,
-    required IconData icon,
-    required String emptyMessage,
-    required ValueChanged<LookupOption> onSelected,
-  }) {
-    return Autocomplete<LookupOption>(
-      displayStringForOption: (option) => option.name,
-      optionsBuilder: (textEditingValue) {
-        if (loading) {
-          return const Iterable<LookupOption>.empty();
-        }
-
-        final query = textEditingValue.text.trim().toLowerCase();
-        if (query.isEmpty) {
-          return options;
-        }
-
-        return options.where(
-          (option) =>
-              option.name.toLowerCase().contains(query) ||
-              option.id.toString().contains(query),
-        );
-      },
-      onSelected: onSelected,
-      fieldViewBuilder: (context, textController, focusNode, onSubmitted) {
-        textController.value = controller.value;
-
-        return TextFormField(
-          controller: textController,
-          focusNode: focusNode,
-          validator: (_) {
-            if (selectedOption == null) {
-              return 'Selecione ${label.toLowerCase()} na lista';
-            }
-            return null;
-          },
-          onChanged: (value) {
-            controller.value = textController.value;
-            if (selectedOption != null && value.trim() != selectedOption.name) {
-              setState(() => _selectedCategory = null);
-            }
-          },
-          decoration: InputDecoration(
-            hintText: loading ? 'Carregando $label...' : 'Pesquisar $label',
-            fillColor: AppColors.background,
-            filled: true,
-            prefixIcon: Icon(icon, size: 22),
-            suffixIcon: loading
-                ? const Padding(
-                    padding: EdgeInsets.all(14),
-                    child: SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  )
-                : selectedOption != null
-                    ? const Icon(Icons.check_circle, color: AppColors.resolved)
-                    : const Icon(Icons.search_rounded),
-          ),
-        );
-      },
-      optionsViewBuilder: (context, onSelected, optionsList) {
-        final items = optionsList.toList();
-
-        return Align(
-          alignment: Alignment.topLeft,
-          child: Material(
-            elevation: 8,
-            color: Colors.white,
-            clipBehavior: Clip.antiAlias,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(18),
-              side: const BorderSide(color: AppColors.border),
-            ),
-            child: SizedBox(
-              width: MediaQuery.sizeOf(context).width - 48,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 220),
-                child: items.isEmpty
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Text(
-                            emptyMessage,
-                            style: const TextStyle(
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                        ),
-                      )
-                    : ListView.separated(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        shrinkWrap: true,
-                        itemCount: items.length,
-                        separatorBuilder: (_, _) => const Divider(height: 1),
-                        itemBuilder: (context, index) {
-                          final option = items[index];
-                          return ListTile(
-                            title: Text(option.name),
-                            onTap: () => onSelected(option),
-                          );
-                        },
-                      ),
+              child: const Icon(
+                Icons.check_rounded,
+                color: Colors.white,
+                size: 46,
               ),
             ),
           ),
-        );
-      },
-    );
-  }
-
-  Widget _buildSectionLabel(String text) {
-    return Text(
-      text,
-      style: const TextStyle(
-        color: AppColors.primaryDark,
-        fontSize: 13,
-        fontWeight: FontWeight.w700,
-        letterSpacing: 0.3,
+          const SizedBox(height: 22),
+          Text(
+            'Reporte publicado!',
+            textAlign: TextAlign.center,
+            style: UrbText.display(size: 24, weight: FontWeight.w700),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _publishedNote ?? 'Obrigado por cuidar da sua cidade.',
+            textAlign: TextAlign.center,
+            style: UrbText.body(size: 15),
+          ),
+          const SizedBox(height: 18),
+          // O "+20 XP" sobe e aparece.
+          TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0, end: 1),
+            duration: UrbMotion.of(context, const Duration(milliseconds: 700)),
+            curve: Curves.easeOutCubic,
+            builder: (context, value, child) => Opacity(
+              opacity: value,
+              child: Transform.translate(
+                offset: Offset(0, 20 * (1 - value)),
+                child: child,
+              ),
+            ),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+              decoration: BoxDecoration(
+                gradient: UrbGradients.gamification,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                '+20 XP',
+                style: UrbText.display(
+                  size: 20,
+                  weight: FontWeight.w800,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1265,4 +1612,346 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     }
     return '';
   }
+}
+
+/// Mostra o passo com uma entrada suave quando ele vira o atual.
+class _StepPane extends StatefulWidget {
+  const _StepPane({required this.active, required this.child});
+
+  final bool active;
+  final Widget child;
+
+  @override
+  State<_StepPane> createState() => _StepPaneState();
+}
+
+class _StepPaneState extends State<_StepPane>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 320),
+    value: widget.active ? 1 : 0,
+  );
+
+  @override
+  void didUpdateWidget(covariant _StepPane oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active && !oldWidget.active) {
+      if (MediaQuery.disableAnimationsOf(context)) {
+        _controller.value = 1;
+      } else {
+        _controller.forward(from: 0);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      child: widget.child,
+      builder: (context, child) {
+        final t = Curves.easeOutCubic.transform(_controller.value);
+        return Opacity(
+          opacity: t,
+          child: Transform.translate(
+            offset: Offset(24 * (1 - t), 0),
+            child: child,
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Pino fixo no centro do mapa.
+class _CenterPin extends StatelessWidget {
+  const _CenterPin();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 44),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              gradient: UrbGradients.primary,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 3),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x553B3FA0),
+                  blurRadius: 10,
+                  offset: Offset(0, 4),
+                ),
+              ],
+            ),
+            child: const Icon(
+              Icons.location_on_rounded,
+              color: Colors.white,
+              size: 22,
+            ),
+          ),
+          Container(width: 3, height: 12, color: const Color(0xFF3C57C4)),
+          Container(
+            width: 10,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.25),
+              borderRadius: BorderRadius.circular(5),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Campo que abre uma janela de escolha (categoria, órgão...).
+class _PickerField extends StatelessWidget {
+  const _PickerField({
+    required this.label,
+    required this.icon,
+    required this.value,
+    required this.placeholder,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final String? value;
+  final String placeholder;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasValue = value != null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          label,
+          style: UrbText.body(
+            size: 13,
+            weight: FontWeight.w700,
+            color: const Color(0xFF374151),
+            height: 1.2,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Material(
+          color: hasValue ? UrbColors.lavender : UrbColors.surface,
+          borderRadius: BorderRadius.circular(16),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              height: 56,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: hasValue
+                      ? UrbColors.violet.withValues(alpha: 0.45)
+                      : UrbColors.border,
+                  width: 1.5,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    icon,
+                    size: 20,
+                    color: hasValue
+                        ? UrbColors.violetDeep
+                        : UrbColors.textMuted,
+                  ),
+                  Expanded(
+                    child: Text(
+                      value ?? placeholder,
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: UrbText.body(
+                        size: 15,
+                        weight: hasValue ? FontWeight.w700 : FontWeight.w400,
+                        color: hasValue
+                            ? UrbColors.violetDeep
+                            : UrbColors.textMuted,
+                        height: 1.2,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    Icons.expand_more_rounded,
+                    color: hasValue
+                        ? UrbColors.violetDeep
+                        : UrbColors.textMuted,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Janela flutuante com lista e busca para escolher uma opção.
+class _OptionPickerDialog<T> extends StatefulWidget {
+  const _OptionPickerDialog({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.searchHint,
+    required this.options,
+    required this.labelOf,
+    required this.isSelected,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final String searchHint;
+  final List<T> options;
+  final String Function(T option) labelOf;
+  final bool Function(T option) isSelected;
+
+  @override
+  State<_OptionPickerDialog<T>> createState() => _OptionPickerDialogState<T>();
+}
+
+class _OptionPickerDialogState<T> extends State<_OptionPickerDialog<T>> {
+  String _filter = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final filter = _filter.trim().toLowerCase();
+    final options = widget.options
+        .where(
+          (o) =>
+              filter.isEmpty ||
+              widget.labelOf(o).toLowerCase().contains(filter),
+        )
+        .toList();
+
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.78,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(22),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            UrbDialogHeader(
+              icon: widget.icon,
+              title: widget.title,
+              subtitle: widget.subtitle,
+              onClose: () => Navigator.of(context).pop(),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              onChanged: (value) => setState(() => _filter = value),
+              textAlign: TextAlign.center,
+              style: UrbText.body(size: 15, color: UrbColors.ink, height: 1.3),
+              decoration: urbInputDecoration(
+                hintText: widget.searchHint,
+                icon: Icons.search_rounded,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final option in options)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: InkWell(
+                        onTap: () => Navigator.of(context).pop(option),
+                        borderRadius: BorderRadius.circular(16),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 13,
+                          ),
+                          decoration: BoxDecoration(
+                            color: widget.isSelected(option)
+                                ? UrbColors.lavender
+                                : Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: widget.isSelected(option)
+                                  ? UrbColors.violet.withValues(alpha: 0.45)
+                                  : UrbColors.border,
+                              width: 1.5,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  widget.labelOf(option),
+                                  style: UrbText.body(
+                                    size: 15,
+                                    weight: FontWeight.w700,
+                                    color: widget.isSelected(option)
+                                        ? UrbColors.violetDeep
+                                        : UrbColors.ink,
+                                    height: 1.25,
+                                  ),
+                                ),
+                              ),
+                              if (widget.isSelected(option))
+                                const Icon(
+                                  Icons.check_circle_rounded,
+                                  color: UrbColors.violetDeep,
+                                  size: 20,
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (options.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24),
+                      child: Text(
+                        'Nada encontrado.',
+                        textAlign: TextAlign.center,
+                        style: UrbText.body(
+                          size: 14,
+                          color: UrbColors.textMuted,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Resultado da busca de endereço.
+class _AddressResult {
+  const _AddressResult({required this.label, required this.point});
+
+  final String label;
+  final LatLng point;
 }

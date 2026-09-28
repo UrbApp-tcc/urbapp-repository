@@ -310,11 +310,8 @@ class _AppShellScreenState extends State<AppShellScreen> {
   }
 
   Future<void> _openCreatePost() async {
-    final created = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => const CreatePostScreen(returnToPreviousOnSuccess: true),
-      ),
-    );
+    // Abre o "Novo reporte" como janela flutuante.
+    final created = await CreatePostScreen.open(context);
 
     if (!mounted || created != true) return;
 
