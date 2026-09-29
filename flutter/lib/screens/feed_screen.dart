@@ -463,10 +463,12 @@ class _PostCardState extends State<_PostCard>
     return Material(
       color: Colors.white,
       borderRadius: BorderRadius.circular(24),
-      child: InkWell(
+      // GestureDetector (sem o efeito de "clique" do InkWell): no toque duplo
+      // só aparece a animação do coração, sem piscar como se fosse abrir.
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: onOpen,
         onDoubleTap: widget.onToggleSupport == null ? null : _onDoubleTap,
-        borderRadius: BorderRadius.circular(24),
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
@@ -770,10 +772,12 @@ class _TrendingList extends StatelessWidget {
           post: post,
           isLiked: isLiked,
           onOpen: () => onOpenPost(post),
-          // Dois toques: curte (se ainda não curtiu).
-          onDoubleTap: onToggleSupport == null || isLiked
+          // Dois toques: curte (se já curtiu, não faz nada e também não abre).
+          onDoubleTap: onToggleSupport == null
               ? null
-              : () => onToggleSupport!(post),
+              : () {
+                  if (!isLiked) onToggleSupport!(post);
+                },
           awaitingValidation: awaitingIds.contains(post.id),
         );
         return index <= 6
@@ -817,10 +821,10 @@ class _RankRow extends StatelessWidget {
     return Material(
       color: Colors.white,
       borderRadius: BorderRadius.circular(20),
-      child: InkWell(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: onOpen,
         onDoubleTap: onDoubleTap,
-        borderRadius: BorderRadius.circular(20),
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Row(
