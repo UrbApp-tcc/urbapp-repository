@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -11,6 +12,7 @@ import '../logic/app_rules.dart';
 import '../services/feed_service.dart';
 import '../services/moderation_service.dart';
 import '../services/post_service.dart';
+import '../services/resolution_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/error_formatter.dart';
 import '../utils/date_formatter.dart';
@@ -83,9 +85,21 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   String? _resolvedNeighborhood;
   List<PostComment> _comments = const [];
 
+  final _resolutionService = ResolutionService();
+
+  /// Pedido de validação pendente (null = nenhum).
+  ResolutionStatus? _resolution;
+  bool _isVoting = false;
+
+  /// Status atualizado nesta tela (ex.: depois da validação concluir).
+  String? _statusOverride;
+
+  String get _status => _statusOverride ?? widget.post.status;
+
   @override
   void initState() {
     super.initState();
+    _loadResolution();
     _supportsCount = widget.post.supportsCount;
     _commentsCount = widget.post.commentsCount;
     _loadLikeStatus();
@@ -147,7 +161,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         currentUserId: userId,
         postAuthorId: widget.post.authorId,
         isCurrentlyLiked: _isLiked,
-        postStatus: widget.post.status,
+        postStatus: _status,
       );
 
       if (!mounted) return;
@@ -198,7 +212,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     final currentUser = _supabase.auth.currentUser;
     if (currentUser == null) return;
 
-    if (isFinalStatus(widget.post.status)) return;
+    if (isFinalStatus(_status)) return;
 
     final body = _commentController.text.trim();
     if (body.isEmpty) return;
@@ -534,11 +548,94 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     );
   }
 
+  Future<void> _loadResolution() async {
+    try {
+      final status = await _resolutionService.fetchStatus(widget.post.id);
+      if (mounted) setState(() => _resolution = status);
+    } catch (_) {
+      // Sem a validação o restante da tela continua funcionando.
+    }
+  }
+
   Future<void> _openResolveComplaint() async {
-    final resolved = await ResolveComplaintScreen.open(context, widget.post);
-    if (!mounted || resolved != true) return;
+    final requested = await ResolveComplaintScreen.open(context, widget.post);
+    if (!mounted || requested != true) return;
 
     setState(() => _hasStatusChanges = true);
+    await _loadResolution();
+    if (!mounted) return;
+    showUrbSnack(
+      context,
+      'Pedido enviado! Agora os vizinhos confirmam a resolução.',
+    );
+  }
+
+  /// Pergunta "Foi resolvido mesmo?", pega a localização e envia o voto.
+  Future<void> _openValidation() async {
+    final resolution = _resolution;
+    if (resolution == null || _isVoting) return;
+
+    final confirmed = await showUrbDialog<bool>(
+      context: context,
+      builder: (_) =>
+          _ValidateDialog(post: widget.post, resolution: resolution),
+    );
+    if (confirmed == null || !mounted) return;
+
+    setState(() => _isVoting = true);
+    try {
+      final position = await _currentPosition();
+      final result = await _resolutionService.vote(
+        postId: widget.post.id,
+        confirmed: confirmed,
+        latitude: position.latitude,
+        longitude: position.longitude,
+      );
+      if (!mounted) return;
+
+      if (result.result == 'approved') {
+        setState(() {
+          _statusOverride = 'completed';
+          _resolution = null;
+          _hasStatusChanges = true;
+        });
+        showUrbSnack(
+          context,
+          'Obrigado! O reporte foi confirmado como resolvido. +10 XP',
+        );
+      } else if (result.result == 'rejected') {
+        setState(() => _resolution = null);
+        showUrbSnack(
+          context,
+          'Obrigado! O pedido foi cancelado e o reporte segue aberto. +10 XP',
+        );
+      } else {
+        await _loadResolution();
+        if (!mounted) return;
+        showUrbSnack(context, 'Obrigado por ajudar a validar! +10 XP');
+      }
+    } catch (error) {
+      if (!mounted) return;
+      showUrbSnack(context, friendlyError(error), error: true);
+    } finally {
+      if (mounted) setState(() => _isVoting = false);
+    }
+  }
+
+  Future<Position> _currentPosition() async {
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      throw Exception(
+        'Precisamos da sua localização para confirmar que você está perto do local.',
+      );
+    }
+    return Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+    );
   }
 
   int _countComments(List<PostComment> comments) {
@@ -585,11 +682,14 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     final canResolve =
         currentUserId != null &&
         widget.post.authorId == currentUserId &&
-        !isFinalStatus(widget.post.status);
-    final isCompleted = widget.post.status == 'completed';
+        !isFinalStatus(_status) &&
+        _resolution == null;
+    final isCompleted = _status == 'completed';
     final canReport =
         currentUserId != null && widget.post.authorId != currentUserId;
-    final canComment = !isFinalStatus(widget.post.status);
+    final canComment = !isFinalStatus(_status);
+    final isAuthor =
+        currentUserId != null && widget.post.authorId == currentUserId;
     final agency = widget.post.agencyName?.trim();
 
     return PopScope(
@@ -662,9 +762,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                                               ),
                                             ),
                                             const SizedBox(width: 8),
-                                            UrbStatusChip(
-                                              status: widget.post.status,
-                                            ),
+                                            UrbStatusChip(status: _status),
                                           ],
                                         ),
                                         const SizedBox(height: 18),
@@ -790,6 +888,16 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                                       ],
                                     ),
                                   ),
+                                  if (_resolution != null &&
+                                      !isFinalStatus(_status)) ...[
+                                    const SizedBox(height: 16),
+                                    _ValidationCard(
+                                      resolution: _resolution!,
+                                      isAuthor: isAuthor,
+                                      isVoting: _isVoting,
+                                      onValidate: _openValidation,
+                                    ),
+                                  ],
                                   if (canResolve) ...[
                                     const SizedBox(height: 16),
                                     _ResolveComplaintCard(
@@ -2396,6 +2504,354 @@ class _FullscreenImageGalleryState extends State<_FullscreenImageGallery> {
                 ),
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+// ──────────────────────────────────────────────────────────
+// Validação comunitária
+// ──────────────────────────────────────────────────────────
+
+class _ValidationCard extends StatelessWidget {
+  const _ValidationCard({
+    required this.resolution,
+    required this.isAuthor,
+    required this.isVoting,
+    required this.onValidate,
+  });
+
+  final ResolutionStatus resolution;
+  final bool isAuthor;
+  final bool isVoting;
+  final VoidCallback onValidate;
+
+  @override
+  Widget build(BuildContext context) {
+    final alreadyVoted = resolution.myVote != null;
+    final daysLeft = resolution.expiresAt.difference(DateTime.now()).inDays;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFECFDF5),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFA7F3D0), width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF34D399), Color(0xFF059669)],
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(
+                  Icons.verified_user_outlined,
+                  color: Colors.white,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Aguardando validação',
+                      style: UrbText.body(
+                        size: 15,
+                        weight: FontWeight.w700,
+                        color: const Color(0xFF065F46),
+                        height: 1.3,
+                      ),
+                    ),
+                    Text(
+                      daysLeft > 0
+                          ? 'Faltam $daysLeft dias para encerrar'
+                          : 'Encerra em breve',
+                      style: UrbText.body(
+                        size: 12,
+                        color: const Color(0xFF047857),
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '"${resolution.note}"',
+            textAlign: TextAlign.center,
+            style: UrbText.body(
+              size: 14,
+              color: const Color(0xFF065F46),
+              height: 1.45,
+            ).copyWith(fontStyle: FontStyle.italic),
+          ),
+          const SizedBox(height: 14),
+          _ConfirmationsBar(
+            confirmations: resolution.confirmations,
+            needed: resolution.needed,
+          ),
+          const SizedBox(height: 14),
+          if (isAuthor)
+            Text(
+              'Os vizinhos a até ${resolution.radiusMeters} m do local estão sendo convidados a confirmar.',
+              textAlign: TextAlign.center,
+              style: UrbText.body(
+                size: 13,
+                color: const Color(0xFF047857),
+                height: 1.4,
+              ),
+            )
+          else if (alreadyVoted)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.check_circle_rounded,
+                  color: Color(0xFF059669),
+                  size: 18,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  resolution.myVote!
+                      ? 'Você confirmou a resolução'
+                      : 'Você disse que ainda não foi resolvido',
+                  style: UrbText.body(
+                    size: 13,
+                    weight: FontWeight.w700,
+                    color: const Color(0xFF047857),
+                    height: 1.3,
+                  ),
+                ),
+              ],
+            )
+          else
+            SizedBox(
+              height: 50,
+              child: ElevatedButton.icon(
+                onPressed: isVoting ? null : onValidate,
+                icon: isVoting
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.how_to_vote_outlined),
+                label: Text(
+                  'Ajudar a validar · +10 XP',
+                  style: UrbText.body(
+                    size: 15,
+                    weight: FontWeight.w700,
+                    color: Colors.white,
+                    height: 1.2,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF059669),
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Barra com as confirmações: cada parte "acende" quando alguém confirma.
+class _ConfirmationsBar extends StatelessWidget {
+  const _ConfirmationsBar({required this.confirmations, required this.needed});
+
+  final int confirmations;
+  final int needed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            for (var i = 0; i < needed; i++) ...[
+              if (i > 0) const SizedBox(width: 6),
+              Expanded(
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0, end: i < confirmations ? 1 : 0),
+                  duration: UrbMotion.of(
+                    context,
+                    Duration(milliseconds: 400 + 150 * i),
+                  ),
+                  curve: Curves.easeOutCubic,
+                  builder: (context, value, _) => Container(
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: Color.lerp(
+                        const Color(0xFFD1FAE5),
+                        const Color(0xFF10B981),
+                        value,
+                      ),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          '$confirmations de $needed confirmações',
+          style: UrbText.body(
+            size: 12,
+            weight: FontWeight.w700,
+            color: const Color(0xFF065F46),
+            height: 1.3,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Janela "Foi resolvido mesmo?" (retorna true = sim, false = ainda não).
+class _ValidateDialog extends StatelessWidget {
+  const _ValidateDialog({required this.post, required this.resolution});
+
+  final FeedPost post;
+  final ResolutionStatus resolution;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(22, 26, 22, 22),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              width: 76,
+              height: 76,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF34D399), Color(0xFF059669)],
+                ),
+                borderRadius: BorderRadius.circular(26),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x59059669),
+                    blurRadius: 24,
+                    offset: Offset(0, 12),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.verified_user_outlined,
+                color: Colors.white,
+                size: 38,
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'Foi resolvido mesmo?',
+            textAlign: TextAlign.center,
+            style: UrbText.display(size: 24, weight: FontWeight.w800),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'O autor disse que "${post.title}" foi resolvido. Se você está perto do local, confirme se o problema acabou.',
+            textAlign: TextAlign.center,
+            style: UrbText.body(size: 15, height: 1.45),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: UrbColors.surface,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Text(
+              '"${resolution.note}"',
+              textAlign: TextAlign.center,
+              style: UrbText.body(
+                size: 14,
+                color: UrbColors.ink,
+                height: 1.4,
+              ).copyWith(fontStyle: FontStyle.italic),
+            ),
+          ),
+          const SizedBox(height: 14),
+          _ConfirmationsBar(
+            confirmations: resolution.confirmations,
+            needed: resolution.needed,
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              Expanded(
+                child: UrbSecondaryButton(
+                  label: 'Ainda não',
+                  onPressed: () => Navigator.of(context).pop(false),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: SizedBox(
+                  height: 54,
+                  child: ElevatedButton.icon(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    icon: const Icon(Icons.check_rounded),
+                    label: Text(
+                      'Sim, resolvido',
+                      style: UrbText.body(
+                        size: 15,
+                        weight: FontWeight.w700,
+                        color: Colors.white,
+                        height: 1.2,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF059669),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Vamos usar sua localização para conferir que você está a até ${resolution.radiusMeters} m do local.',
+            textAlign: TextAlign.center,
+            style: UrbText.body(
+              size: 12,
+              color: UrbColors.textMuted,
+              height: 1.4,
+            ),
+          ),
         ],
       ),
     );

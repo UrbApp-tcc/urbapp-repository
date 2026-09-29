@@ -6,6 +6,14 @@ enum AppNotificationType {
   commentSupport,
   postComment,
   commentReply,
+
+  // Avisos criados pelo banco (tabela notifications).
+  statusChanged,
+  resolutionRequested,
+  resolutionRejected,
+  resolutionExpired,
+  levelUp,
+  badgeAwarded,
 }
 
 class AppNotificationItem {
@@ -17,6 +25,8 @@ class AppNotificationItem {
     this.actorAvatarUrl,
     required this.title,
     required this.description,
+    this.actorId,
+    this.postId,
   });
 
   final String id;
@@ -26,11 +36,17 @@ class AppNotificationItem {
   final String? actorAvatarUrl;
   final String title;
   final String description;
+
+  /// Quem fez a ação (para abrir o perfil).
+  final String? actorId;
+
+  /// Reporte relacionado (para abrir o detalhe).
+  final int? postId;
 }
 
 class NotificationsService {
   NotificationsService({SupabaseClient? supabase})
-      : _supabase = supabase ?? Supabase.instance.client;
+    : _supabase = supabase ?? Supabase.instance.client;
 
   final SupabaseClient _supabase;
 
@@ -108,8 +124,10 @@ class NotificationsService {
             createdAt: row.createdAt,
             actorDisplayName: _profileLabel(profilesById[row.actorId]),
             actorAvatarUrl: profilesById[row.actorId]?.avatarUrl,
+            actorId: row.actorId,
             title: 'Novo seguidor',
-            description: '${_profileLabel(profilesById[row.actorId])} começou a seguir você.',
+            description:
+                '${_profileLabel(profilesById[row.actorId])} começou a seguir você.',
           ),
         ),
         ...postSupportRows.map(
@@ -119,27 +137,29 @@ class NotificationsService {
             createdAt: row.createdAt,
             actorDisplayName: _profileLabel(profilesById[row.actorId]),
             actorAvatarUrl: profilesById[row.actorId]?.avatarUrl,
+            actorId: row.actorId,
+            postId: row.targetId,
             title: 'Novo apoio em post',
             description:
                 '${_profileLabel(profilesById[row.actorId])} apoiou seu post "${ownPosts[row.targetId] ?? 'seu post'}".',
           ),
         ),
-        ...commentLikeRows.map(
-          (row) {
-            final comment = ownComments[row.targetId];
-            final preview = _truncate(comment?.body ?? 'seu comentário');
-            return AppNotificationItem(
-              id: 'comment-support-${row.targetId}-${row.actorId}-${row.createdAt.toIso8601String()}',
-              type: AppNotificationType.commentSupport,
-              createdAt: row.createdAt,
-              actorDisplayName: _profileLabel(profilesById[row.actorId]),
-              actorAvatarUrl: profilesById[row.actorId]?.avatarUrl,
-              title: 'Curtida em comentário',
-              description:
-                  '${_profileLabel(profilesById[row.actorId])} curtiu seu comentário "$preview".',
-            );
-          },
-        ),
+        ...commentLikeRows.map((row) {
+          final comment = ownComments[row.targetId];
+          final preview = _truncate(comment?.body ?? 'seu comentário');
+          return AppNotificationItem(
+            id: 'comment-support-${row.targetId}-${row.actorId}-${row.createdAt.toIso8601String()}',
+            type: AppNotificationType.commentSupport,
+            createdAt: row.createdAt,
+            actorDisplayName: _profileLabel(profilesById[row.actorId]),
+            actorAvatarUrl: profilesById[row.actorId]?.avatarUrl,
+            actorId: row.actorId,
+            postId: comment?.postId,
+            title: 'Curtida em comentário',
+            description:
+                '${_profileLabel(profilesById[row.actorId])} curtiu seu comentário "$preview".',
+          );
+        }),
         ...postCommentRows.map(
           (row) => AppNotificationItem(
             id: 'post-comment-${row.id}-${row.actorId}',
@@ -147,34 +167,91 @@ class NotificationsService {
             createdAt: row.createdAt,
             actorDisplayName: _profileLabel(profilesById[row.actorId]),
             actorAvatarUrl: profilesById[row.actorId]?.avatarUrl,
-            title: row.isReply ? 'Nova resposta no seu post' : 'Novo comentário no seu post',
+            actorId: row.actorId,
+            postId: row.postId,
+            title: row.isReply
+                ? 'Nova resposta no seu post'
+                : 'Novo comentário no seu post',
             description:
                 '${_profileLabel(profilesById[row.actorId])} ${row.isReply ? 'respondeu em um comentário' : 'comentou'} no seu post "${ownPosts[row.postId] ?? 'seu post'}".',
           ),
         ),
-        ...commentReplyRows.map(
-          (row) {
-            final comment = ownComments[row.parentCommentId];
-            final preview = _truncate(comment?.body ?? 'seu comentário');
-            return AppNotificationItem(
-              id: 'comment-reply-${row.id}-${row.actorId}',
-              type: AppNotificationType.commentReply,
-              createdAt: row.createdAt,
-              actorDisplayName: _profileLabel(profilesById[row.actorId]),
-              actorAvatarUrl: profilesById[row.actorId]?.avatarUrl,
-              title: 'Nova resposta no seu comentário',
-              description:
-                  '${_profileLabel(profilesById[row.actorId])} respondeu seu comentário "$preview".',
-            );
-          },
-        ),
-      ]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        ...commentReplyRows.map((row) {
+          final comment = ownComments[row.parentCommentId];
+          final preview = _truncate(comment?.body ?? 'seu comentário');
+          return AppNotificationItem(
+            id: 'comment-reply-${row.id}-${row.actorId}',
+            type: AppNotificationType.commentReply,
+            createdAt: row.createdAt,
+            actorDisplayName: _profileLabel(profilesById[row.actorId]),
+            actorAvatarUrl: profilesById[row.actorId]?.avatarUrl,
+            actorId: row.actorId,
+            postId: row.postId,
+            title: 'Nova resposta no seu comentário',
+            description:
+                '${_profileLabel(profilesById[row.actorId])} respondeu seu comentário "$preview".',
+          );
+        }),
+      ];
 
-      return items;
+      // Junta os avisos do banco (status, validação, nível e insígnias).
+      final systemItems = await _fetchSystemNotifications(userId);
+
+      return [...items, ...systemItems]
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     } on PostgrestException catch (error) {
       throw Exception('Erro ao carregar notificações: ${error.message}');
     } catch (error) {
       throw Exception('Erro inesperado ao carregar notificações: $error');
+    }
+  }
+
+  static const Map<String, AppNotificationType> _systemTypes = {
+    'post_status_changed': AppNotificationType.statusChanged,
+    'supported_post_status_changed': AppNotificationType.statusChanged,
+    'resolution_requested': AppNotificationType.resolutionRequested,
+    'resolution_rejected': AppNotificationType.resolutionRejected,
+    'resolution_expired': AppNotificationType.resolutionExpired,
+    'level_up': AppNotificationType.levelUp,
+    'badge_awarded': AppNotificationType.badgeAwarded,
+  };
+
+  /// Avisos gravados pelo banco na tabela `notifications`.
+  /// Se der erro, a lista continua com as outras atividades.
+  Future<List<AppNotificationItem>> _fetchSystemNotifications(
+    String userId,
+  ) async {
+    try {
+      final response = await _supabase
+          .from('notifications')
+          .select('id, type, title, body, payload, created_at')
+          .eq('user_id', userId)
+          .order('created_at', ascending: false)
+          .limit(50);
+
+      final result = <AppNotificationItem>[];
+      for (final item in response as List<dynamic>) {
+        final row = item as Map<String, dynamic>;
+        final type = _systemTypes[row['type']];
+        if (type == null) continue;
+
+        final payload =
+            (row['payload'] as Map?)?.cast<String, dynamic>() ?? const {};
+        result.add(
+          AppNotificationItem(
+            id: 'system-${row['id']}',
+            type: type,
+            createdAt: DateTime.parse(row['created_at'] as String),
+            actorDisplayName: 'UrbApp',
+            title: (row['title'] as String?) ?? '',
+            description: (row['body'] as String?) ?? '',
+            postId: (payload['post_id'] as num?)?.toInt(),
+          ),
+        );
+      }
+      return result;
+    } catch (_) {
+      return const [];
     }
   }
 
@@ -197,7 +274,10 @@ class NotificationsService {
         .toList();
   }
 
-  Future<List<_ActivityRow>> _fetchPostSupportRows(String userId, List<int> ownPostIds) async {
+  Future<List<_ActivityRow>> _fetchPostSupportRows(
+    String userId,
+    List<int> ownPostIds,
+  ) async {
     if (ownPostIds.isEmpty) return const <_ActivityRow>[];
 
     final response = await _supabase
@@ -219,7 +299,10 @@ class NotificationsService {
         .toList();
   }
 
-  Future<List<_ActivityRow>> _fetchCommentLikeRows(String userId, List<int> ownCommentIds) async {
+  Future<List<_ActivityRow>> _fetchCommentLikeRows(
+    String userId,
+    List<int> ownCommentIds,
+  ) async {
     if (ownCommentIds.isEmpty) return const <_ActivityRow>[];
 
     final response = await _supabase
@@ -266,7 +349,11 @@ class NotificationsService {
             createdAt: DateTime.parse(item['created_at'] as String),
           ),
         )
-        .where((row) => row.parentCommentId == null || !ownCommentIds.contains(row.parentCommentId))
+        .where(
+          (row) =>
+              row.parentCommentId == null ||
+              !ownCommentIds.contains(row.parentCommentId),
+        )
         .toList();
   }
 

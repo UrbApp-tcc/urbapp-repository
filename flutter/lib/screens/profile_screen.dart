@@ -1,10 +1,18 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../logic/app_rules.dart';
 import '../services/feed_service.dart';
 import '../services/profile_service.dart';
-import '../theme/app_theme.dart';
+import '../theme/urbapp_design.dart';
 import '../utils/error_formatter.dart';
+import '../widgets/city_skyline.dart';
+import '../widgets/fade_slide_in.dart';
+import '../widgets/urb_dialog.dart';
+import '../widgets/urb_post_image.dart';
+import '../widgets/urb_primary_button.dart';
+import '../widgets/urb_status_chip.dart';
+import '../widgets/urb_text_field.dart';
 import 'agency_profiles_screen.dart';
 import 'post_detail_screen.dart';
 
@@ -91,12 +99,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(friendlyError(error)),
-          backgroundColor: AppColors.error,
-        ),
-      );
+      showUrbSnack(context, friendlyError(error), error: true);
     }
   }
 
@@ -124,12 +127,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _isFollowingLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(friendlyError(error)),
-          backgroundColor: AppColors.error,
-        ),
-      );
+      showUrbSnack(context, friendlyError(error), error: true);
     } finally {
       if (mounted) {
         setState(() => _isFollowingLoading = false);
@@ -141,13 +139,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final profile = _profile;
     if (profile == null || !_isOwnProfile) return;
 
-    final result = await showModalBottomSheet<_EditProfileResult>(
+    final result = await showUrbDialog<_EditProfileResult>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
       builder: (context) => _EditProfileSheet(
         profile: profile,
         cities: _cities,
@@ -180,20 +173,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       await _loadProfile();
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Perfil atualizado com sucesso.'),
-          backgroundColor: AppColors.resolved,
-        ),
-      );
+      showUrbSnack(context, 'Perfil atualizado com sucesso.');
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(friendlyError(error)),
-          backgroundColor: AppColors.error,
-        ),
-      );
+      showUrbSnack(context, friendlyError(error), error: true);
     } finally {
       if (mounted) {
         setState(() => _isSaving = false);
@@ -204,165 +187,369 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _openSettingsSheet() async {
     if (!_isOwnProfile) return;
 
-    showModalBottomSheet<void>(
+    await showUrbDialog<void>(
       context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Configurações',
-                style: TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 18),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.edit_outlined),
-                title: const Text('Editar perfil'),
+      builder: (dialogContext) => Padding(
+        padding: const EdgeInsets.all(22),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            UrbDialogHeader(
+              icon: Icons.tune_rounded,
+              title: 'Configurações',
+              onClose: () => Navigator.of(dialogContext).pop(),
+            ),
+            const SizedBox(height: 18),
+            _SettingsOption(
+              icon: Icons.edit_outlined,
+              title: 'Editar perfil',
+              subtitle: 'Foto, nome, biografia, cidade e insígnia',
+              onTap: () {
+                Navigator.of(dialogContext).pop();
+                _openEditProfileSheet();
+              },
+            ),
+            if (widget.currentUserId != null) ...[
+              const SizedBox(height: 10),
+              _SettingsOption(
+                icon: Icons.account_balance_outlined,
+                title: 'Perfis institucionais',
+                subtitle: 'Criar ou gerenciar secretaria/prefeitura',
+                color: const Color(0xFF1E40AF),
+                background: const Color(0xFFDBEAFE),
                 onTap: () {
-                  Navigator.of(context).pop();
-                  _openEditProfileSheet();
+                  Navigator.of(dialogContext).pop();
+                  AgencyProfilesScreen.open(
+                    context,
+                    currentUserId: widget.currentUserId!,
+                  );
                 },
               ),
-              if (widget.currentUserId != null)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.account_balance_outlined),
-                  title: const Text('Perfis institucionais'),
-                  subtitle: const Text(
-                    'Criar ou gerenciar secretaria/prefeitura',
-                  ),
-                  onTap: () {
-                    Navigator.of(context).pop();
-                    AgencyProfilesScreen.open(
-                      context,
-                      currentUserId: widget.currentUserId!,
-                    );
-                  },
-                ),
-              if (widget.onSignOut != null)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(
-                    Icons.logout_rounded,
-                    color: AppColors.error,
-                  ),
-                  title: const Text('Sair da conta'),
-                  onTap: () async {
-                    Navigator.of(context).pop();
-                    await widget.onSignOut!.call();
-                  },
-                ),
             ],
-          ),
-        );
-      },
+            if (widget.onSignOut != null) ...[
+              const SizedBox(height: 10),
+              _SettingsOption(
+                icon: Icons.logout_rounded,
+                title: 'Sair da conta',
+                subtitle: 'Encerrar a sessão neste aparelho',
+                color: const Color(0xFFB91C1C),
+                background: const Color(0xFFFEE2E2),
+                onTap: () async {
+                  Navigator.of(dialogContext).pop();
+                  await widget.onSignOut!.call();
+                },
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final profile = _profile;
+    final canPop = Navigator.of(context).canPop();
 
     return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : profile == null
-            ? const Center(child: Text('Não foi possível carregar o perfil.'))
-            : ListView(
-                padding: const EdgeInsets.fromLTRB(24, 20, 24, 132),
-                children: [
-                  _ProfileTopBar(
-                    isOwnProfile: _isOwnProfile,
-                    onOpenSettings: _openSettingsSheet,
-                    onBack: Navigator.of(context).canPop()
-                        ? () => Navigator.of(context).pop()
-                        : null,
-                  ),
-                  const SizedBox(height: 24),
-                  _ProfileHeader(
-                    profile: profile,
-                    isOwnProfile: _isOwnProfile,
-                    isSaving: _isSaving,
-                    isFollowingLoading: _isFollowingLoading,
-                    onEditProfile: _openEditProfileSheet,
-                    onToggleFollow: _toggleFollow,
-                  ),
-                  const SizedBox(height: 22),
-                  _StatsGrid(profile: profile),
-                  const SizedBox(height: 20),
-                  _XpCard(profile: profile),
-                  const SizedBox(height: 24),
-                  _ProfilePostsSection(
-                    posts: profile.posts,
-                    isOwnProfile: _isOwnProfile,
-                  ),
-                ],
+      backgroundColor: UrbColors.surface,
+      body: RefreshIndicator(
+        onRefresh: _loadProfile,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.only(bottom: 132),
+          children: [
+            _ProfileHero(
+              profile: _isLoading ? null : profile,
+              isOwnProfile: _isOwnProfile,
+              onBack: canPop ? () => Navigator.of(context).pop() : null,
+              onOpenSettings: _isOwnProfile ? _openSettingsSheet : null,
+            ),
+            if (_isLoading)
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 70, 20, 0),
+                child: Column(
+                  children: [
+                    UrbSkeleton(width: 160, height: 22),
+                    SizedBox(height: 10),
+                    UrbSkeleton(width: 120, height: 14),
+                    SizedBox(height: 24),
+                    UrbSkeleton(height: 84, radius: 22),
+                    SizedBox(height: 18),
+                    UrbSkeleton(height: 150, radius: 26),
+                  ],
+                ),
+              )
+            else if (profile == null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 80, 24, 0),
+                child: Column(
+                  children: [
+                    const UrbEmptyState(
+                      icon: Icons.person_off_outlined,
+                      title: 'Não foi possível carregar o perfil',
+                      text: 'Verifique sua conexão e tente de novo.',
+                    ),
+                    const SizedBox(height: 12),
+                    TextButton.icon(
+                      onPressed: _loadProfile,
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('Tentar novamente'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: UrbColors.violetDeep,
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _ProfileIdentity(
+                      profile: profile,
+                      isOwnProfile: _isOwnProfile,
+                      isSaving: _isSaving,
+                      isFollowingLoading: _isFollowingLoading,
+                      onEditProfile: _openEditProfileSheet,
+                      onToggleFollow: _toggleFollow,
+                    ),
+                    const SizedBox(height: 22),
+                    FadeSlideIn(
+                      delay: const Duration(milliseconds: 60),
+                      child: _StatsRow(profile: profile),
+                    ),
+                    const SizedBox(height: 18),
+                    FadeSlideIn(
+                      delay: const Duration(milliseconds: 120),
+                      child: _LevelCard(profile: profile),
+                    ),
+                    const SizedBox(height: 26),
+                    FadeSlideIn(
+                      delay: const Duration(milliseconds: 180),
+                      child: _BadgesRow(profile: profile),
+                    ),
+                    const SizedBox(height: 26),
+                    _PostsSection(
+                      posts: profile.posts,
+                      isOwnProfile: _isOwnProfile,
+                    ),
+                  ],
+                ),
               ),
+          ],
+        ),
       ),
     );
   }
 }
 
-class _ProfileTopBar extends StatelessWidget {
-  const _ProfileTopBar({
+// ──────────────────────────────────────────────────────────
+// Topo roxo, avatar e identidade
+// ──────────────────────────────────────────────────────────
+
+class _ProfileHero extends StatelessWidget {
+  const _ProfileHero({
+    required this.profile,
     required this.isOwnProfile,
+    required this.onBack,
     required this.onOpenSettings,
-    this.onBack,
   });
 
+  final UserProfileData? profile;
   final bool isOwnProfile;
-  final VoidCallback onOpenSettings;
   final VoidCallback? onBack;
+  final VoidCallback? onOpenSettings;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        if (onBack != null)
-          IconButton(
-            onPressed: onBack,
-            icon: const Icon(Icons.arrow_back_rounded),
-          )
-        else
-          const SizedBox(width: 48),
-        const Spacer(),
-        const Text(
-          'Perfil',
-          style: TextStyle(
-            color: AppColors.textPrimary,
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
+    final data = profile;
+    final badge = data?.featuredBadge;
+
+    return SizedBox(
+      height: 250 + MediaQuery.paddingOf(context).top,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            height: 190 + MediaQuery.paddingOf(context).top,
+            decoration: const BoxDecoration(
+              color: UrbColors.hero,
+              borderRadius: BorderRadius.vertical(bottom: Radius.circular(36)),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Stack(
+              children: [
+                const Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: 130,
+                  child: CitySkyline(),
+                ),
+                SafeArea(
+                  bottom: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                    child: Row(
+                      children: [
+                        onBack == null
+                            ? const SizedBox(width: 44)
+                            : _GlassSquare(
+                                icon: Icons.arrow_back_rounded,
+                                tooltip: 'Voltar',
+                                onPressed: onBack!,
+                              ),
+                        Expanded(
+                          child: Text(
+                            'Perfil',
+                            textAlign: TextAlign.center,
+                            style: UrbText.display(
+                              size: 19,
+                              weight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                        onOpenSettings == null
+                            ? const SizedBox(width: 44)
+                            : _GlassSquare(
+                                icon: Icons.tune_rounded,
+                                tooltip: 'Configurações',
+                                onPressed: onOpenSettings!,
+                              ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-        const Spacer(),
-        if (isOwnProfile)
-          IconButton(
-            onPressed: onOpenSettings,
-            icon: const Icon(Icons.tune_rounded),
-          )
-        else
-          const SizedBox(width: 48),
-      ],
+          // Avatar sobreposto ao topo, com a insígnia em destaque no canto.
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Center(
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0.85, end: 1),
+                duration: UrbMotion.of(
+                  context,
+                  const Duration(milliseconds: 500),
+                ),
+                curve: Curves.easeOutBack,
+                builder: (context, value, child) =>
+                    Transform.scale(scale: value, child: child),
+                child: SizedBox(
+                  width: 128,
+                  height: 128,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Container(
+                        width: 128,
+                        height: 128,
+                        padding: const EdgeInsets.all(5),
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Color(0x59180F4A),
+                              blurRadius: 30,
+                              offset: Offset(0, 14),
+                            ),
+                          ],
+                        ),
+                        child: data == null
+                            ? const UrbSkeleton(
+                                width: 118,
+                                height: 118,
+                                radius: 59,
+                              )
+                            : _ProfileAvatar(
+                                avatarUrl: data.avatarUrl,
+                                label: data.fullName,
+                                size: 118,
+                              ),
+                      ),
+                      if (badge != null)
+                        Positioned(
+                          right: -8,
+                          bottom: -2,
+                          child: Container(
+                            width: 54,
+                            height: 54,
+                            alignment: Alignment.center,
+                            decoration: const BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Color(0x2E1A1A2E),
+                                  blurRadius: 14,
+                                  offset: Offset(0, 6),
+                                ),
+                              ],
+                            ),
+                            child: Tooltip(
+                              message: badge.name,
+                              child: _BadgeMedal(badge: badge, size: 44),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
 
-class _ProfileHeader extends StatelessWidget {
-  const _ProfileHeader({
+class _GlassSquare extends StatelessWidget {
+  const _GlassSquare({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.white.withValues(alpha: 0.14),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: Colors.white.withValues(alpha: 0.28)),
+        ),
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(14),
+          child: SizedBox(
+            width: 44,
+            height: 44,
+            child: Icon(icon, color: Colors.white, size: 21),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileIdentity extends StatelessWidget {
+  const _ProfileIdentity({
     required this.profile,
     required this.isOwnProfile,
     required this.isSaving,
@@ -378,104 +565,541 @@ class _ProfileHeader extends StatelessWidget {
   final VoidCallback onEditProfile;
   final VoidCallback onToggleFollow;
 
-  ButtonStyle get _headerButtonStyle => ElevatedButton.styleFrom(
-    minimumSize: const Size(0, 48),
-    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-  );
+  @override
+  Widget build(BuildContext context) {
+    final bio = profile.biography?.trim();
+    final city = profile.cityName?.trim();
+
+    return FadeSlideIn(
+      offsetY: 12,
+      child: Column(
+        children: [
+          const SizedBox(height: 14),
+          Text(
+            profile.fullName,
+            textAlign: TextAlign.center,
+            style: UrbText.display(size: 26, weight: FontWeight.w700),
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            children: [
+              Text(
+                '@${profile.username}',
+                style: UrbText.body(size: 14, height: 1.3),
+              ),
+              if (city != null && city.isNotEmpty) ...[
+                Container(
+                  width: 4,
+                  height: 4,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF9CA3AF),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.location_on_outlined,
+                      size: 15,
+                      color: UrbColors.violet,
+                    ),
+                    const SizedBox(width: 3),
+                    Text(city, style: UrbText.body(size: 14, height: 1.3)),
+                  ],
+                ),
+              ],
+            ],
+          ),
+          if (bio != null && bio.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              bio,
+              textAlign: TextAlign.center,
+              style: UrbText.body(
+                size: 14,
+                color: const Color(0xFF374151),
+                height: 1.5,
+              ),
+            ),
+          ],
+          const SizedBox(height: 16),
+          if (isOwnProfile)
+            _PillButton(
+              icon: Icons.edit_outlined,
+              label: isSaving ? 'Salvando...' : 'Personalizar',
+              dark: true,
+              loading: isSaving,
+              onPressed: isSaving ? null : onEditProfile,
+            )
+          else
+            AnimatedSwitcher(
+              duration: UrbMotion.of(context, UrbMotion.fast),
+              child: _PillButton(
+                key: ValueKey(profile.isFollowing),
+                icon: profile.isFollowing
+                    ? Icons.check_rounded
+                    : Icons.person_add_alt_1_rounded,
+                label: profile.isFollowing ? 'Seguindo' : 'Seguir',
+                dark: false,
+                outlined: profile.isFollowing,
+                loading: isFollowingLoading,
+                onPressed: isFollowingLoading ? null : onToggleFollow,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PillButton extends StatelessWidget {
+  const _PillButton({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+    this.dark = false,
+    this.outlined = false,
+    this.loading = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onPressed;
+  final bool dark;
+  final bool outlined;
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
-    final badge = profile.featuredBadge;
+    final foreground = outlined ? UrbColors.violetDeep : Colors.white;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: outlined
+            ? Colors.white
+            : (dark ? const Color(0xFF18222E) : null),
+        gradient: outlined || dark ? null : UrbGradients.primary,
+        borderRadius: BorderRadius.circular(22),
+        border: outlined
+            ? Border.all(color: const Color(0xFFD9D3F0), width: 1.5)
+            : null,
+        boxShadow: outlined
+            ? null
+            : [
+                BoxShadow(
+                  color: (dark ? const Color(0xFF18222E) : UrbColors.violet)
+                      .withValues(alpha: 0.3),
+                  blurRadius: 18,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(22),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                loading
+                    ? SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: foreground,
+                        ),
+                      )
+                    : Icon(icon, size: 17, color: foreground),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: UrbText.body(
+                    size: 15,
+                    weight: FontWeight.w700,
+                    color: foreground,
+                    height: 1.2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
-    return Column(
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            _ProfileAvatar(
-              avatarUrl: profile.avatarUrl,
-              label: profile.fullName,
-            ),
-            if (badge != null) ...[
-              const SizedBox(width: 18),
-              _ProfileFeaturedBadge(badge: badge),
-            ],
-          ],
-        ),
-        const SizedBox(height: 14),
-        Text(
-          profile.fullName,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: AppColors.textPrimary,
-            fontSize: 24,
-            fontWeight: FontWeight.w800,
-            letterSpacing: -0.4,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          '@${profile.username}',
-          style: const TextStyle(
-            color: AppColors.textSecondary,
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        if ((profile.cityName ?? '').trim().isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Text(
-            profile.cityName!,
-            style: const TextStyle(
-              color: AppColors.textHint,
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-        if ((profile.biography ?? '').trim().isNotEmpty) ...[
-          const SizedBox(height: 12),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 320),
-            child: Text(
-              profile.biography!.trim(),
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: AppColors.textSecondary,
-                fontSize: 14,
-                height: 1.45,
+// ──────────────────────────────────────────────────────────
+// Números, nível, insígnias e reportes
+// ──────────────────────────────────────────────────────────
+
+class _StatsRow extends StatelessWidget {
+  const _StatsRow({required this.profile});
+
+  final UserProfileData profile;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget stat(
+      int value,
+      String singular,
+      String plural,
+      Color color,
+    ) => Expanded(
+      child: Column(
+        children: [
+          TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0, end: value.toDouble()),
+            duration: UrbMotion.of(context, const Duration(milliseconds: 700)),
+            curve: Curves.easeOutCubic,
+            builder: (context, v, _) => Text(
+              '${v.round()}',
+              style: UrbText.display(
+                size: 24,
+                weight: FontWeight.w700,
+                color: color,
               ),
             ),
           ),
+          const SizedBox(height: 2),
+          Text(
+            value == 1 ? singular : plural,
+            textAlign: TextAlign.center,
+            style: UrbText.body(size: 12, weight: FontWeight.w600, height: 1.3),
+          ),
         ],
-        const SizedBox(height: 16),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+      ),
+    );
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0F1A1A2E),
+            blurRadius: 20,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
+      child: IntrinsicHeight(
+        child: Row(
           children: [
-            if (isOwnProfile)
-              ElevatedButton.icon(
-                onPressed: isSaving ? null : onEditProfile,
-                style: _headerButtonStyle,
-                icon: const Icon(Icons.edit_outlined, size: 18),
-                label: Text(isSaving ? 'Salvando...' : 'Personalizar'),
-              )
-            else
-              ElevatedButton.icon(
-                onPressed: isFollowingLoading ? null : onToggleFollow,
-                style: _headerButtonStyle,
-                icon: Icon(
-                  profile.isFollowing
-                      ? Icons.person_remove_alt_1_rounded
-                      : Icons.person_add_alt_1,
-                  size: 18,
+            stat(
+              profile.posts.length,
+              'Reporte',
+              'Reportes',
+              UrbColors.violetDeep,
+            ),
+            const VerticalDivider(width: 1, color: UrbColors.border),
+            stat(
+              profile.likesReceived,
+              'Apoio recebido',
+              'Apoios recebidos',
+              const Color(0xFFC2185B),
+            ),
+            const VerticalDivider(width: 1, color: UrbColors.border),
+            stat(
+              profile.followersCount,
+              'Seguidor',
+              'Seguidores',
+              const Color(0xFF1565A8),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LevelCard extends StatelessWidget {
+  const _LevelCard({required this.profile});
+
+  final UserProfileData profile;
+
+  @override
+  Widget build(BuildContext context) {
+    final LevelProgress progress = profile.levelProgress;
+    final subtitle = progress.isMaxLevel
+        ? 'Você chegou ao nível máximo!'
+        : 'Faltam ${progress.xpToNextLevel} XP para ${progress.nextLevelTitle ?? 'o próximo nível'}';
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF18222E),
+        borderRadius: BorderRadius.circular(26),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x4018222E),
+            blurRadius: 30,
+            offset: Offset(0, 14),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 60,
+                height: 60,
+                padding: const EdgeInsets.all(5),
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: UrbGradients.gamification,
                 ),
-                label: Text(
-                  isFollowingLoading
-                      ? 'Aguarde'
-                      : profile.isFollowing
-                      ? 'Seguindo'
-                      : 'Seguir',
+                child: Container(
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF18222E),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Text(
+                    '${progress.level}',
+                    style: UrbText.display(
+                      size: 24,
+                      weight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'NÍVEL ${progress.level}',
+                      style: UrbText.body(
+                        size: 12,
+                        weight: FontWeight.w700,
+                        color: const Color(0xFFB9C4D4),
+                        height: 1.3,
+                      ).copyWith(letterSpacing: 1.2),
+                    ),
+                    Text(
+                      progress.title.isEmpty
+                          ? 'Progresso de XP'
+                          : progress.title,
+                      style: UrbText.display(
+                        size: 22,
+                        weight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          // A barra enche do zero até o XP atual ao abrir.
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: Stack(
+              children: [
+                Container(height: 12, color: const Color(0xFF2C3848)),
+                TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0, end: progress.fraction),
+                  duration: UrbMotion.of(
+                    context,
+                    const Duration(milliseconds: 900),
+                  ),
+                  curve: Curves.easeOutCubic,
+                  builder: (context, value, _) => FractionallySizedBox(
+                    widthFactor: value,
+                    child: Container(
+                      height: 12,
+                      decoration: const BoxDecoration(
+                        gradient: UrbGradients.gamification,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Text(
+                progress.isMaxLevel
+                    ? '${profile.currentXp} XP'
+                    : '${progress.xpIntoLevel} / ${progress.xpForLevel} XP',
+                style: UrbText.body(
+                  size: 13,
+                  weight: FontWeight.w700,
+                  color: Colors.white,
+                  height: 1.3,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  subtitle,
+                  textAlign: TextAlign.right,
+                  style: UrbText.body(
+                    size: 13,
+                    color: const Color(0xFFB9C4D4),
+                    height: 1.3,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// As 5 insígnias do UrbApp: coloridas as conquistadas, cinza com cadeado as bloqueadas.
+class _BadgesRow extends StatelessWidget {
+  const _BadgesRow({required this.profile});
+
+  final UserProfileData profile;
+
+  static const _tiers = [
+    ('bronze', 'Bronze'),
+    ('silver', 'Prata'),
+    ('gold', 'Ouro'),
+    ('diamond', 'Diamante'),
+    ('ametist', 'Safira'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final earned = <String, ProfileBadge>{};
+    for (final badge in profile.badges) {
+      final path = _badgeAssetPath(badge);
+      if (path == null) continue;
+      for (final tier in _tiers) {
+        if (path.contains('badge-${tier.$1}'))
+          earned.putIfAbsent(tier.$1, () => badge);
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Insígnias',
+                style: UrbText.display(size: 20, weight: FontWeight.w700),
+              ),
+            ),
+            UrbCountBadge(label: '${earned.length} de ${_tiers.length}'),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            for (var i = 0; i < _tiers.length; i++)
+              Expanded(
+                child: Column(
+                  children: [
+                    Tooltip(
+                      message: earned.containsKey(_tiers[i].$1)
+                          ? earned[_tiers[i].$1]!.name
+                          : '${_tiers[i].$2}: desbloqueia no nível ${i + 1}',
+                      child: SizedBox(
+                        width: 58,
+                        height: 58,
+                        child: earned.containsKey(_tiers[i].$1)
+                            ? _BadgeMedal(
+                                badge: earned[_tiers[i].$1]!,
+                                size: 58,
+                              )
+                            : Stack(
+                                alignment: Alignment.center,
+                                children: [
+                                  Opacity(
+                                    opacity: 0.35,
+                                    child: ColorFiltered(
+                                      colorFilter: const ColorFilter.matrix([
+                                        0.2126,
+                                        0.7152,
+                                        0.0722,
+                                        0,
+                                        0,
+                                        0.2126,
+                                        0.7152,
+                                        0.0722,
+                                        0,
+                                        0,
+                                        0.2126,
+                                        0.7152,
+                                        0.0722,
+                                        0,
+                                        0,
+                                        0,
+                                        0,
+                                        0,
+                                        1,
+                                        0,
+                                      ]),
+                                      child: Image.asset(
+                                        'assets/images/badges/badge-${_tiers[i].$1}.png',
+                                        width: 58,
+                                        height: 58,
+                                        fit: BoxFit.contain,
+                                      ),
+                                    ),
+                                  ),
+                                  Container(
+                                    width: 24,
+                                    height: 24,
+                                    decoration: const BoxDecoration(
+                                      color: Colors.white,
+                                      shape: BoxShape.circle,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Color(0x26000000),
+                                          blurRadius: 6,
+                                          offset: Offset(0, 2),
+                                        ),
+                                      ],
+                                    ),
+                                    child: const Icon(
+                                      Icons.lock_rounded,
+                                      size: 13,
+                                      color: UrbColors.textSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      earned.containsKey(_tiers[i].$1)
+                          ? _tiers[i].$2
+                          : 'Nível ${i + 1}',
+                      style: UrbText.body(
+                        size: 12,
+                        weight: FontWeight.w700,
+                        color: earned.containsKey(_tiers[i].$1)
+                            ? UrbColors.ink
+                            : UrbColors.textMuted,
+                        height: 1.2,
+                      ),
+                    ),
+                  ],
                 ),
               ),
           ],
@@ -485,66 +1109,325 @@ class _ProfileHeader extends StatelessWidget {
   }
 }
 
-class _ProfileAvatar extends StatelessWidget {
-  const _ProfileAvatar({required this.avatarUrl, required this.label});
+class _PostsSection extends StatelessWidget {
+  const _PostsSection({required this.posts, required this.isOwnProfile});
 
-  final String? avatarUrl;
-  final String label;
+  final List<FeedPost> posts;
+  final bool isOwnProfile;
 
   @override
   Widget build(BuildContext context) {
-    final initials = label
-        .trim()
-        .split(RegExp(r'\s+'))
-        .where((item) => item.isNotEmpty)
-        .take(2)
-        .map((item) => item[0])
-        .join()
-        .toUpperCase();
-
-    if (avatarUrl != null && avatarUrl!.isNotEmpty) {
-      return CircleAvatar(
-        radius: 42,
-        backgroundColor: AppColors.primaryLight,
-        child: ClipOval(
-          child: Image.network(
-            avatarUrl!,
-            width: 84,
-            height: 84,
-            fit: BoxFit.cover,
-            errorBuilder: (_, _, _) => _fallback(initials),
-          ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                isOwnProfile ? 'Meus reportes' : 'Reportes',
+                style: UrbText.display(size: 20, weight: FontWeight.w700),
+              ),
+            ),
+            UrbCountBadge(label: '${posts.length}'),
+          ],
         ),
-      );
-    }
-
-    return CircleAvatar(
-      radius: 42,
-      backgroundColor: AppColors.primaryLight,
-      child: _fallback(initials),
+        const SizedBox(height: 14),
+        if (posts.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(22),
+            ),
+            child: Text(
+              isOwnProfile
+                  ? 'Você ainda não publicou reportes. Toque no + para criar o primeiro!'
+                  : 'Nenhum reporte publicado para exibir.',
+              textAlign: TextAlign.center,
+              style: UrbText.body(size: 14, height: 1.45),
+            ),
+          )
+        else
+          for (var i = 0; i < posts.length; i++) ...[
+            if (i < 6)
+              FadeSlideIn(
+                delay: Duration(milliseconds: 220 + 50 * i),
+                child: _ProfilePostCard(
+                  post: posts[i],
+                  isOwnProfile: isOwnProfile,
+                ),
+              )
+            else
+              _ProfilePostCard(post: posts[i], isOwnProfile: isOwnProfile),
+            const SizedBox(height: 12),
+          ],
+      ],
     );
   }
+}
 
-  Widget _fallback(String initials) {
-    return Text(
-      initials.isEmpty ? 'U' : initials,
-      style: const TextStyle(
-        color: AppColors.primaryDark,
-        fontSize: 26,
-        fontWeight: FontWeight.w800,
+class _ProfilePostCard extends StatelessWidget {
+  const _ProfilePostCard({required this.post, required this.isOwnProfile});
+
+  final FeedPost post;
+  final bool isOwnProfile;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(22),
+      child: InkWell(
+        onTap: () => PostDetailScreen.open(context, post),
+        borderRadius: BorderRadius.circular(22),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              UrbPostImage(
+                url: post.primaryImageUrl,
+                height: 84,
+                width: 84,
+                radius: 16,
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            post.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: UrbText.display(
+                              size: 17,
+                              weight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        UrbStatusChip(status: post.status),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${post.categoryName} · ${post.cityName}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: UrbText.body(size: 13, height: 1.3),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.favorite_rounded,
+                          size: 15,
+                          color: UrbColors.heart,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${post.supportsCount}',
+                          style: UrbText.body(
+                            size: 13,
+                            weight: FontWeight.w700,
+                            color: const Color(0xFF374151),
+                            height: 1.2,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        const Icon(
+                          Icons.chat_bubble_outline_rounded,
+                          size: 15,
+                          color: UrbColors.commentBlue,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${post.commentsCount}',
+                          style: UrbText.body(
+                            size: 13,
+                            weight: FontWeight.w700,
+                            color: const Color(0xFF374151),
+                            height: 1.2,
+                          ),
+                        ),
+                        if (isOwnProfile && post.isAnonymous) ...[
+                          const Spacer(),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFF4E5),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.visibility_off_outlined,
+                                  size: 12,
+                                  color: Color(0xFF9A5B00),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Anônimo',
+                                  style: UrbText.body(
+                                    size: 11,
+                                    weight: FontWeight.w700,
+                                    color: const Color(0xFF9A5B00),
+                                    height: 1.2,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 }
 
-class _ProfileFeaturedBadge extends StatelessWidget {
-  const _ProfileFeaturedBadge({required this.badge});
+class _ProfileAvatar extends StatelessWidget {
+  const _ProfileAvatar({
+    required this.avatarUrl,
+    required this.label,
+    this.size = 118,
+  });
 
-  final ProfileBadge badge;
+  final String? avatarUrl;
+  final String label;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
-    return _BadgeMedal(badge: badge, size: 68);
+    final parts = label
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((e) => e.isNotEmpty)
+        .take(2)
+        .toList();
+    final initials = parts.isEmpty
+        ? '?'
+        : parts.length == 1
+        ? parts.first.substring(0, 1).toUpperCase()
+        : '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    final fallback = Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          colors: [Color(0xFFEDE7FB), Color(0xFFDDF1FD)],
+        ),
+      ),
+      child: Text(
+        initials,
+        style: UrbText.display(
+          size: size * 0.38,
+          weight: FontWeight.w700,
+          color: UrbColors.violetDeep,
+        ),
+      ),
+    );
+    final url = avatarUrl;
+    if (url == null || url.isEmpty) return fallback;
+    return ClipOval(
+      child: Image.network(
+        url,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => fallback,
+      ),
+    );
+  }
+}
+
+class _SettingsOption extends StatelessWidget {
+  const _SettingsOption({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+    this.color = UrbColors.violetDeep,
+    this.background = UrbColors.lavender,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+  final Color color;
+  final Color background;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: UrbColors.surface,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: background,
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: Icon(icon, color: color, size: 21),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: UrbText.body(
+                        size: 15,
+                        weight: FontWeight.w700,
+                        color: UrbColors.ink,
+                        height: 1.3,
+                      ),
+                    ),
+                    Text(
+                      subtitle,
+                      style: UrbText.body(
+                        size: 12,
+                        color: UrbColors.textMuted,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: UrbColors.textMuted,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -716,763 +1599,6 @@ class _BadgeMedal extends StatelessWidget {
   }
 }
 
-class _StatsGrid extends StatelessWidget {
-  const _StatsGrid({required this.profile});
-
-  final UserProfileData profile;
-
-  @override
-  Widget build(BuildContext context) {
-    return GridView.count(
-      shrinkWrap: true,
-      crossAxisCount: 3,
-      crossAxisSpacing: 12,
-      mainAxisSpacing: 12,
-      physics: const NeverScrollableScrollPhysics(),
-      childAspectRatio: 0.92,
-      children: [
-        _StatCard(label: 'Seguidores', value: '${profile.followersCount}'),
-        _StatCard(label: 'Apoios recebidos', value: '${profile.likesReceived}'),
-        _StatCard(label: 'Nível', value: '${profile.currentLevel}'),
-      ],
-    );
-  }
-}
-
-class _StatCard extends StatelessWidget {
-  const _StatCard({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            value,
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 11.5,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _XpCard extends StatelessWidget {
-  const _XpCard({required this.profile});
-
-  final UserProfileData profile;
-
-  @override
-  Widget build(BuildContext context) {
-    final levelProgress = profile.levelProgress;
-    final progress = levelProgress.fraction;
-
-    final subtitle = levelProgress.isMaxLevel
-        ? 'Você chegou ao nível máximo!'
-        : 'Faltam ${levelProgress.xpToNextLevel} XP para o nível '
-              '${levelProgress.level + 1}'
-              '${levelProgress.nextLevelTitle == null ? '' : ' (${levelProgress.nextLevelTitle})'}';
-
-    final footer = levelProgress.isMaxLevel
-        ? '${profile.currentXp} XP no total'
-        : '${levelProgress.xpIntoLevel}/${levelProgress.xpForLevel} XP neste nível';
-
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            levelProgress.title.isEmpty
-                ? 'Progresso de XP'
-                : 'Nível ${levelProgress.level} · ${levelProgress.title}',
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            subtitle,
-            style: const TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 14,
-              height: 1.4,
-            ),
-          ),
-          const SizedBox(height: 14),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: 10,
-              backgroundColor: AppColors.border,
-              valueColor: const AlwaysStoppedAnimation<Color>(
-                AppColors.primary,
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            footer,
-            style: const TextStyle(
-              color: AppColors.textHint,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ignore: unused_element
-class _BadgesSection extends StatelessWidget {
-  const _BadgesSection({
-    required this.badges,
-    required this.featuredBadge,
-    required this.showAll,
-    required this.onToggleShowAll,
-  });
-
-  final List<ProfileBadge> badges;
-  final ProfileBadge? featuredBadge;
-  final bool showAll;
-  final VoidCallback onToggleShowAll;
-
-  @override
-  Widget build(BuildContext context) {
-    final visibleBadges = showAll ? badges : badges.take(3).toList();
-
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Conquistas',
-            style: TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          if (featuredBadge != null) ...[
-            const SizedBox(height: 12),
-            _FeaturedBadgeCard(badge: featuredBadge!),
-          ],
-          const SizedBox(height: 14),
-          if (badges.isEmpty)
-            const Text(
-              'Nenhuma insígnia conquistada ainda.',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
-            )
-          else ...[
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: visibleBadges
-                  .map((badge) => _BadgeChip(badge: badge))
-                  .toList(),
-            ),
-            if (badges.length > 3) ...[
-              const SizedBox(height: 14),
-              TextButton(
-                onPressed: onToggleShowAll,
-                child: Text(
-                  showAll ? 'Ver menos' : 'Ver todas (${badges.length})',
-                ),
-              ),
-            ],
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-// ignore: unused_element
-class _FeaturedBadgeCard extends StatelessWidget {
-  const _FeaturedBadgeCard({required this.badge});
-
-  final ProfileBadge badge;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Insígnia em destaque',
-            style: TextStyle(
-              color: AppColors.textHint,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            badge.name,
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            badge.description,
-            style: const TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 13,
-              height: 1.35,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ignore: unused_element
-class _BadgeChip extends StatelessWidget {
-  const _BadgeChip({required this.badge});
-
-  final ProfileBadge badge;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            badge.name,
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 4),
-          SizedBox(
-            width: 120,
-            child: Text(
-              badge.description,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: AppColors.textSecondary,
-                fontSize: 12,
-                height: 1.3,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ignore: unused_element
-class _ProfileAchievementsSection extends StatelessWidget {
-  const _ProfileAchievementsSection({
-    required this.badges,
-    required this.featuredBadge,
-    required this.showAll,
-    required this.onToggleShowAll,
-  });
-
-  static const ProfileBadge _bronzePreviewBadge = ProfileBadge(
-    id: -1,
-    name: 'UrbApp Bronze',
-    slug: 'urbapp-bronze-preview',
-    description:
-        'Previa visual da insignia bronze para validar como ela aparece no perfil.',
-    icon: 'assets/images/badges/badge-bronze.png',
-  );
-
-  final List<ProfileBadge> badges;
-  final ProfileBadge? featuredBadge;
-  final bool showAll;
-  final VoidCallback onToggleShowAll;
-
-  @override
-  Widget build(BuildContext context) {
-    final previewBadge = badges.isEmpty && featuredBadge == null
-        ? _bronzePreviewBadge
-        : null;
-    final visibleBadges = showAll ? badges : badges.take(3).toList();
-
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Conquistas',
-            style: TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          if (featuredBadge != null) ...[
-            const SizedBox(height: 12),
-            _AchievementFeaturedBadgeCard(badge: featuredBadge!),
-          ] else if (previewBadge != null) ...[
-            const SizedBox(height: 12),
-            _AchievementFeaturedBadgeCard(
-              badge: previewBadge,
-              eyebrow: 'Previa de insignia',
-            ),
-          ],
-          const SizedBox(height: 14),
-          if (badges.isEmpty)
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Text(
-                  'Nenhuma insignia conquistada ainda.',
-                  style: TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 14,
-                  ),
-                ),
-                SizedBox(height: 8),
-                Text(
-                  'A imagem bronze acima e so um teste visual do layout.',
-                  style: TextStyle(
-                    color: AppColors.textHint,
-                    fontSize: 12,
-                    height: 1.4,
-                  ),
-                ),
-              ],
-            )
-          else ...[
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: visibleBadges
-                  .map((badge) => _AchievementBadgeChip(badge: badge))
-                  .toList(),
-            ),
-            if (badges.length > 3) ...[
-              const SizedBox(height: 14),
-              TextButton(
-                onPressed: onToggleShowAll,
-                child: Text(
-                  showAll ? 'Ver menos' : 'Ver todas (${badges.length})',
-                ),
-              ),
-            ],
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-// ignore: unused_element
-class _AchievementFeaturedBadgeCard extends StatelessWidget {
-  const _AchievementFeaturedBadgeCard({
-    required this.badge,
-    this.eyebrow = 'Insignia em destaque',
-  });
-
-  final ProfileBadge badge;
-  final String eyebrow;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _AchievementBadgeArtwork(icon: badge.icon, size: 74),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  eyebrow,
-                  style: const TextStyle(
-                    color: AppColors.textHint,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  badge.name,
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  badge.description,
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 13,
-                    height: 1.35,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ignore: unused_element
-class _AchievementBadgeChip extends StatelessWidget {
-  const _AchievementBadgeChip({required this.badge});
-
-  final ProfileBadge badge;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 150,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _AchievementBadgeArtwork(icon: badge.icon, size: 56),
-          const SizedBox(height: 10),
-          Text(
-            badge.name,
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            badge.description,
-            maxLines: 3,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 12,
-              height: 1.3,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ignore: unused_element
-class _AchievementBadgeArtwork extends StatelessWidget {
-  const _AchievementBadgeArtwork({required this.icon, required this.size});
-
-  final String? icon;
-  final double size;
-
-  @override
-  Widget build(BuildContext context) {
-    final decoration = BoxDecoration(
-      color: const Color(0xFFFFF7ED),
-      borderRadius: BorderRadius.circular(18),
-      border: Border.all(color: const Color(0xFFF3D1AE)),
-    );
-
-    if (icon != null && icon!.startsWith('assets/')) {
-      return Container(
-        width: size,
-        height: size,
-        decoration: decoration,
-        padding: const EdgeInsets.all(8),
-        child: Image.asset(icon!, fit: BoxFit.contain),
-      );
-    }
-
-    if (icon != null && icon!.startsWith('http')) {
-      return Container(
-        width: size,
-        height: size,
-        decoration: decoration,
-        padding: const EdgeInsets.all(8),
-        child: Image.network(
-          icon!,
-          fit: BoxFit.contain,
-          errorBuilder: (_, _, _) => _fallback(decoration),
-        ),
-      );
-    }
-
-    return _fallback(decoration);
-  }
-
-  Widget _fallback(BoxDecoration decoration) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: decoration,
-      child: const Icon(
-        Icons.workspace_premium_rounded,
-        color: Color(0xFFB66A1E),
-        size: 34,
-      ),
-    );
-  }
-}
-
-class _ProfilePostsSection extends StatelessWidget {
-  const _ProfilePostsSection({required this.posts, required this.isOwnProfile});
-
-  final List<FeedPost> posts;
-  final bool isOwnProfile;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Posts',
-          style: TextStyle(
-            color: AppColors.textPrimary,
-            fontSize: 22,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        const SizedBox(height: 14),
-        if (posts.isEmpty)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: AppColors.background,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: AppColors.border),
-            ),
-            child: const Text(
-              'Nenhum reporte publicado para exibir.',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
-            ),
-          )
-        else
-          ...posts.map(
-            (post) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _ProfilePostCard(post: post, isOwnProfile: isOwnProfile),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-class _ProfilePostCard extends StatelessWidget {
-  const _ProfilePostCard({required this.post, required this.isOwnProfile});
-
-  final FeedPost post;
-  final bool isOwnProfile;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () => PostDetailScreen.open(context, post),
-        borderRadius: BorderRadius.circular(18),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.background,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: SizedBox(
-                  width: 72,
-                  height: 72,
-                  child:
-                      post.primaryImageUrl != null &&
-                          post.primaryImageUrl!.isNotEmpty
-                      ? Image.network(post.primaryImageUrl!, fit: BoxFit.cover)
-                      : const ColoredBox(
-                          color: AppColors.divider,
-                          child: Icon(
-                            Icons.image_outlined,
-                            color: AppColors.textHint,
-                          ),
-                        ),
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      post.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.textPrimary,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      '${post.categoryName} · ${post.cityName}',
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 13,
-                      ),
-                    ),
-                    if (isOwnProfile && post.isAnonymous) ...[
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFFF4E5),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: const Text(
-                          'Post anônimo - só você vê no seu perfil',
-                          style: TextStyle(
-                            color: Color(0xFF9A5B00),
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.favorite_border_rounded,
-                          size: 16,
-                          color: AppColors.textHint,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          '${post.supportsCount}',
-                          style: const TextStyle(
-                            color: AppColors.textHint,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-                        const Icon(
-                          Icons.mode_comment_outlined,
-                          size: 16,
-                          color: AppColors.textHint,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          '${post.commentsCount}',
-                          style: const TextStyle(
-                            color: AppColors.textHint,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _EditProfileResult {
   const _EditProfileResult({
     required this.fullName,
@@ -1514,13 +1640,6 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
   int? _selectedBadgeId;
   PlatformFile? _avatarFile;
 
-  ProfileBadge? get _selectedBadge {
-    for (final badge in widget.badgesOptions) {
-      if (badge.id == _selectedBadgeId) return badge;
-    }
-    return null;
-  }
-
   @override
   void initState() {
     super.initState();
@@ -1542,7 +1661,6 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
   }
 
   Future<void> _pickAvatar() async {
-    final messenger = ScaffoldMessenger.of(context);
     final result = await FilePicker.platform.pickFiles(
       withData: true,
       type: FileType.custom,
@@ -1553,13 +1671,9 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
 
     final file = result.files.first;
     const maxBytes = 5 * 1024 * 1024; // 5 MB
-    if ((file.size) > maxBytes) {
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text('A imagem deve ter no máximo 5 MB.'),
-          backgroundColor: AppColors.error,
-        ),
-      );
+    if (file.size > maxBytes) {
+      if (mounted)
+        showUrbSnack(context, 'A imagem deve ter no máximo 5 MB.', error: true);
       return;
     }
 
@@ -1582,142 +1696,270 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 24,
-        right: 24,
-        top: 24,
-        bottom: MediaQuery.viewInsetsOf(context).bottom + 24,
+    final avatarBytes = _avatarFile?.bytes;
+
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.85,
       ),
       child: SingleChildScrollView(
+        padding: const EdgeInsets.all(22),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
-              'Personalizar perfil',
-              style: TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-              ),
+            UrbDialogHeader(
+              title: 'Personalizar perfil',
+              subtitle: 'Como você aparece para a comunidade.',
+              onClose: () => Navigator.of(context).pop(),
             ),
-            const SizedBox(height: 16),
-            OutlinedButton.icon(
-              onPressed: _pickAvatar,
-              icon: const Icon(Icons.photo_camera_outlined),
-              label: Text(
-                _avatarFile == null ? 'Mudar foto' : _avatarFile!.name,
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _fullNameController,
-              decoration: const InputDecoration(labelText: 'Nome social'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _usernameController,
-              decoration: const InputDecoration(labelText: 'Nome de usuário'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _biographyController,
-              maxLength: 240,
-              minLines: 3,
-              maxLines: 5,
-              decoration: const InputDecoration(
-                labelText: 'Biografia',
-                hintText: 'Conte um pouco sobre sua participação na cidade',
-                alignLabelWithHint: true,
-              ),
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<int?>(
-              initialValue: _selectedCityId,
-              items: [
-                const DropdownMenuItem<int?>(
-                  value: null,
-                  child: Text('Sem cidade informada'),
-                ),
-                ...widget.cities.map(
-                  (city) => DropdownMenuItem<int?>(
-                    value: city.id,
-                    child: Text(city.name),
+            const SizedBox(height: 18),
+            Center(
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    width: 96,
+                    height: 96,
+                    padding: const EdgeInsets.all(4),
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: UrbGradients.gamification,
+                    ),
+                    child: ClipOval(
+                      child: avatarBytes != null
+                          ? Image.memory(avatarBytes, fit: BoxFit.cover)
+                          : _ProfileAvatar(
+                              avatarUrl: widget.profile.avatarUrl,
+                              label: widget.profile.fullName,
+                              size: 88,
+                            ),
+                    ),
                   ),
-                ),
-              ],
-              onChanged: (value) => setState(() => _selectedCityId = value),
-              decoration: const InputDecoration(labelText: 'Cidade'),
-            ),
-            const SizedBox(height: 12),
-            if (_selectedBadge != null) ...[
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: AppColors.background,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: Row(
-                  children: [
-                    _BadgeMedal(badge: _selectedBadge!, size: 54),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Insígnia selecionada',
-                            style: TextStyle(
-                              color: AppColors.textHint,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                            ),
+                  Positioned(
+                    right: -4,
+                    bottom: -4,
+                    child: Material(
+                      color: UrbColors.violet,
+                      shape: const CircleBorder(
+                        side: BorderSide(color: Colors.white, width: 3),
+                      ),
+                      child: InkWell(
+                        onTap: _pickAvatar,
+                        customBorder: const CircleBorder(),
+                        child: const SizedBox(
+                          width: 38,
+                          height: 38,
+                          child: Icon(
+                            Icons.photo_camera_outlined,
+                            color: Colors.white,
+                            size: 18,
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _selectedBadge!.name,
-                            style: const TextStyle(
-                              color: AppColors.textPrimary,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
                     ),
-                  ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: _pickAvatar,
+              child: Text(
+                _avatarFile == null ? 'Mudar foto' : _avatarFile!.name,
+                style: UrbText.body(
+                  size: 14,
+                  weight: FontWeight.w700,
+                  color: UrbColors.violetDeep,
+                  height: 1.2,
                 ),
               ),
-              const SizedBox(height: 12),
-            ],
+            ),
+            const SizedBox(height: 10),
+            UrbTextField(
+              label: 'Nome social',
+              controller: _fullNameController,
+              icon: Icons.badge_outlined,
+              hintText: 'Seu nome',
+            ),
+            const SizedBox(height: 18),
+            UrbTextField(
+              label: 'Nome de usuário',
+              controller: _usernameController,
+              icon: Icons.alternate_email_rounded,
+              hintText: 'seu.usuario',
+            ),
+            const SizedBox(height: 18),
+            Text(
+              'Biografia',
+              style: UrbText.body(
+                size: 13,
+                weight: FontWeight.w700,
+                color: const Color(0xFF374151),
+                height: 1.2,
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _biographyController,
+              minLines: 2,
+              maxLines: 4,
+              maxLength: 160,
+              textAlign: TextAlign.center,
+              style: UrbText.body(size: 15, color: UrbColors.ink, height: 1.4),
+              decoration: urbInputDecoration(
+                hintText: 'Conte um pouco sobre você e seu bairro',
+              ).copyWith(contentPadding: const EdgeInsets.all(16)),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Cidade',
+              style: UrbText.body(
+                size: 13,
+                weight: FontWeight.w700,
+                color: const Color(0xFF374151),
+                height: 1.2,
+              ),
+            ),
+            const SizedBox(height: 10),
             DropdownButtonFormField<int?>(
-              initialValue: _selectedBadgeId,
+              initialValue: _selectedCityId,
+              isExpanded: true,
+              alignment: Alignment.center,
+              borderRadius: BorderRadius.circular(16),
+              style: UrbText.body(size: 15, color: UrbColors.ink, height: 1.3),
               items: [
                 const DropdownMenuItem<int?>(
                   value: null,
-                  child: Text('Sem insígnia em destaque'),
+                  alignment: Alignment.center,
+                  child: Text('Sem cidade'),
                 ),
-                ...widget.badgesOptions.map(
-                  (badge) => DropdownMenuItem<int?>(
-                    value: badge.id,
-                    child: Text(badge.name),
+                for (final city in widget.cities)
+                  DropdownMenuItem<int?>(
+                    value: city.id,
+                    alignment: Alignment.center,
+                    child: Text(city.name),
                   ),
-                ),
               ],
-              onChanged: (value) => setState(() => _selectedBadgeId = value),
-              decoration: const InputDecoration(
-                labelText: 'Insígnia em destaque',
+              onChanged: (value) => setState(() => _selectedCityId = value),
+              decoration: urbInputDecoration(
+                icon: Icons.location_on_outlined,
+                suffix: const SizedBox(width: 0),
               ),
             ),
             const SizedBox(height: 18),
-            ElevatedButton(
-              onPressed: _save,
-              child: const Text('Salvar alterações'),
+            Text(
+              'Insígnia em destaque',
+              style: UrbText.body(
+                size: 13,
+                weight: FontWeight.w700,
+                color: const Color(0xFF374151),
+                height: 1.2,
+              ),
+            ),
+            const SizedBox(height: 10),
+            if (widget.badgesOptions.isEmpty)
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: UrbColors.surface,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Text(
+                  'Você ainda não conquistou insígnias. Suba de nível para desbloquear!',
+                  textAlign: TextAlign.center,
+                  style: UrbText.body(size: 13, height: 1.4),
+                ),
+              )
+            else
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  for (final badge in widget.badgesOptions)
+                    _BadgeChoice(
+                      badge: badge,
+                      selected: _selectedBadgeId == badge.id,
+                      onTap: () => setState(() {
+                        _selectedBadgeId = _selectedBadgeId == badge.id
+                            ? null
+                            : badge.id;
+                      }),
+                    ),
+                ],
+              ),
+            const SizedBox(height: 22),
+            Row(
+              children: [
+                Expanded(
+                  child: UrbSecondaryButton(
+                    label: 'Cancelar',
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: UrbPrimaryButton(label: 'Salvar', onPressed: _save),
+                ),
+              ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BadgeChoice extends StatelessWidget {
+  const _BadgeChoice({
+    required this.badge,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final ProfileBadge badge;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: badge.name,
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: UrbMotion.of(context, UrbMotion.fast),
+          width: 88,
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+          decoration: BoxDecoration(
+            color: selected ? UrbColors.lavender : Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: selected ? UrbColors.violet : UrbColors.border,
+              width: selected ? 2 : 1.5,
+            ),
+          ),
+          child: Column(
+            children: [
+              _BadgeMedal(badge: badge, size: 48),
+              const SizedBox(height: 6),
+              Text(
+                badge.name.replaceFirst('UrbApp ', ''),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: UrbText.body(
+                  size: 12,
+                  weight: FontWeight.w700,
+                  color: selected ? UrbColors.violetDeep : UrbColors.ink,
+                  height: 1.2,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

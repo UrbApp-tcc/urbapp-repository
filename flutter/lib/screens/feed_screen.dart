@@ -24,6 +24,8 @@ class FeedScreen extends StatefulWidget {
     required this.selectedCityId,
     required this.onCityChanged,
     required this.onOpenMap,
+    this.onToggleSupport,
+    this.awaitingValidationIds = const <int>{},
   });
 
   final List<FeedPost> posts;
@@ -36,6 +38,12 @@ class FeedScreen extends StatefulWidget {
   final int? selectedCityId;
   final ValueChanged<int?> onCityChanged;
   final VoidCallback onOpenMap;
+
+  /// Dá ou tira o apoio (curtida) de um reporte.
+  final ValueChanged<FeedPost>? onToggleSupport;
+
+  /// Reportes aguardando a validação da comunidade.
+  final Set<int> awaitingValidationIds;
 
   @override
   State<FeedScreen> createState() => _FeedScreenState();
@@ -100,11 +108,16 @@ class _FeedScreenState extends State<FeedScreen>
                   likedPostIds: widget.likedPostIds,
                   isLoading: widget.isLoading,
                   onOpenPost: widget.onOpenPost,
+                  onToggleSupport: widget.onToggleSupport,
+                  awaitingIds: widget.awaitingValidationIds,
                 ),
                 _TrendingList(
                   posts: widget.trendingPosts,
+                  likedPostIds: widget.likedPostIds,
                   isLoading: widget.isLoading,
                   onOpenPost: widget.onOpenPost,
+                  onToggleSupport: widget.onToggleSupport,
+                  awaitingIds: widget.awaitingValidationIds,
                 ),
               ],
             ),
@@ -337,12 +350,16 @@ class _RecentList extends StatelessWidget {
     required this.likedPostIds,
     required this.isLoading,
     required this.onOpenPost,
+    required this.onToggleSupport,
+    required this.awaitingIds,
   });
 
   final List<FeedPost> posts;
   final Set<int> likedPostIds;
   final bool isLoading;
   final ValueChanged<FeedPost> onOpenPost;
+  final ValueChanged<FeedPost>? onToggleSupport;
+  final Set<int> awaitingIds;
 
   @override
   Widget build(BuildContext context) {
@@ -376,9 +393,14 @@ class _RecentList extends StatelessWidget {
         }
         final post = posts[index - 1];
         final card = _PostCard(
+          key: ValueKey('card-${post.id}'),
           post: post,
           isLiked: likedPostIds.contains(post.id),
           onOpen: () => onOpenPost(post),
+          onToggleSupport: onToggleSupport == null
+              ? null
+              : () => onToggleSupport!(post),
+          awaitingValidation: awaitingIds.contains(post.id),
         );
         // Só os primeiros cartões animam ao abrir, para não pesar.
         return index <= 4
@@ -392,24 +414,58 @@ class _RecentList extends StatelessWidget {
   }
 }
 
-class _PostCard extends StatelessWidget {
+class _PostCard extends StatefulWidget {
   const _PostCard({
+    super.key,
     required this.post,
     required this.isLiked,
     required this.onOpen,
+    required this.onToggleSupport,
+    this.awaitingValidation = false,
   });
 
   final FeedPost post;
   final bool isLiked;
   final VoidCallback onOpen;
+  final VoidCallback? onToggleSupport;
+  final bool awaitingValidation;
+
+  @override
+  State<_PostCard> createState() => _PostCardState();
+}
+
+class _PostCardState extends State<_PostCard>
+    with SingleTickerProviderStateMixin {
+  /// Coração grande que aparece sobre a foto ao tocar duas vezes.
+  late final AnimationController _burst = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 700),
+  );
+
+  @override
+  void dispose() {
+    _burst.dispose();
+    super.dispose();
+  }
+
+  /// Dois toques: só curte (nunca descurte), como nas redes sociais.
+  void _onDoubleTap() {
+    if (!MediaQuery.disableAnimationsOf(context)) _burst.forward(from: 0);
+    if (!widget.isLiked) widget.onToggleSupport?.call();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final post = widget.post;
+    final isLiked = widget.isLiked;
+    final onOpen = widget.onOpen;
+
     return Material(
       color: Colors.white,
       borderRadius: BorderRadius.circular(24),
       child: InkWell(
         onTap: onOpen,
+        onDoubleTap: widget.onToggleSupport == null ? null : _onDoubleTap,
         borderRadius: BorderRadius.circular(24),
         child: Container(
           padding: const EdgeInsets.all(14),
@@ -463,11 +519,54 @@ class _PostCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  UrbStatusChip(status: post.status),
+                  UrbStatusChip(
+                    status: widget.awaitingValidation
+                        ? 'awaiting_validation'
+                        : post.status,
+                  ),
                 ],
               ),
               const SizedBox(height: 12),
-              _PostImage(url: post.primaryImageUrl, height: 180, radius: 18),
+              Stack(
+                alignment: Alignment.center,
+                children: [
+                  _PostImage(
+                    url: post.primaryImageUrl,
+                    height: 180,
+                    radius: 18,
+                  ),
+                  IgnorePointer(
+                    child: AnimatedBuilder(
+                      animation: _burst,
+                      builder: (context, _) {
+                        final t = _burst.value;
+                        if (t == 0 || t == 1) return const SizedBox.shrink();
+                        final scale = Curves.elasticOut.transform(
+                          (t * 1.6).clamp(0.0, 1.0),
+                        );
+                        final opacity = t < 0.7 ? 1.0 : (1 - (t - 0.7) / 0.3);
+                        return Opacity(
+                          opacity: opacity.clamp(0.0, 1.0),
+                          child: Transform.scale(
+                            scale: 0.4 + 0.8 * scale,
+                            child: const Icon(
+                              Icons.favorite_rounded,
+                              size: 96,
+                              color: Colors.white,
+                              shadows: [
+                                Shadow(
+                                  color: Color(0x80E0467C),
+                                  blurRadius: 24,
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: 12),
               Text(
                 post.title,
@@ -503,6 +602,7 @@ class _PostCard extends StatelessWidget {
                     count: post.supportsCount,
                     highlighted: isLiked,
                     semanticLabel: 'apoios',
+                    onTap: widget.onToggleSupport,
                   ),
                   const SizedBox(width: 8),
                   _CountPill(
@@ -528,6 +628,7 @@ class _CountPill extends StatelessWidget {
     required this.count,
     required this.semanticLabel,
     this.highlighted = false,
+    this.onTap,
   });
 
   final IconData icon;
@@ -535,11 +636,13 @@ class _CountPill extends StatelessWidget {
   final int count;
   final String semanticLabel;
   final bool highlighted;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
+    final pill = Semantics(
       label: '$count $semanticLabel',
+      button: onTap != null,
       excludeSemantics: true,
       child: AnimatedContainer(
         duration: UrbMotion.of(context, UrbMotion.fast),
@@ -552,7 +655,20 @@ class _CountPill extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 19, color: color),
+            AnimatedSwitcher(
+              duration: UrbMotion.of(
+                context,
+                const Duration(milliseconds: 320),
+              ),
+              transitionBuilder: (child, animation) => ScaleTransition(
+                scale: CurvedAnimation(
+                  parent: animation,
+                  curve: Curves.elasticOut,
+                ),
+                child: child,
+              ),
+              child: Icon(icon, key: ValueKey(icon), size: 19, color: color),
+            ),
             const SizedBox(width: 6),
             Text(
               '$count',
@@ -569,6 +685,16 @@ class _CountPill extends StatelessWidget {
         ),
       ),
     );
+
+    if (onTap == null) return pill;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: pill,
+      ),
+    );
   }
 }
 
@@ -579,13 +705,19 @@ class _CountPill extends StatelessWidget {
 class _TrendingList extends StatelessWidget {
   const _TrendingList({
     required this.posts,
+    required this.likedPostIds,
     required this.isLoading,
     required this.onOpenPost,
+    required this.onToggleSupport,
+    required this.awaitingIds,
   });
 
   final List<FeedPost> posts;
+  final Set<int> likedPostIds;
   final bool isLoading;
   final ValueChanged<FeedPost> onOpenPost;
+  final ValueChanged<FeedPost>? onToggleSupport;
+  final Set<int> awaitingIds;
 
   @override
   Widget build(BuildContext context) {
@@ -631,10 +763,18 @@ class _TrendingList extends StatelessWidget {
             ],
           );
         }
+        final post = posts[index - 1];
+        final isLiked = likedPostIds.contains(post.id);
         final row = _RankRow(
           position: index,
-          post: posts[index - 1],
-          onOpen: () => onOpenPost(posts[index - 1]),
+          post: post,
+          isLiked: isLiked,
+          onOpen: () => onOpenPost(post),
+          // Dois toques: curte (se ainda não curtiu).
+          onDoubleTap: onToggleSupport == null || isLiked
+              ? null
+              : () => onToggleSupport!(post),
+          awaitingValidation: awaitingIds.contains(post.id),
         );
         return index <= 6
             ? FadeSlideIn(
@@ -651,12 +791,18 @@ class _RankRow extends StatelessWidget {
   const _RankRow({
     required this.position,
     required this.post,
+    required this.isLiked,
     required this.onOpen,
+    required this.onDoubleTap,
+    this.awaitingValidation = false,
   });
 
   final int position;
   final FeedPost post;
+  final bool isLiked;
   final VoidCallback onOpen;
+  final VoidCallback? onDoubleTap;
+  final bool awaitingValidation;
 
   static const _medals = {
     1: [Color(0xFFF6D365), Color(0xFFD4A017)],
@@ -673,6 +819,7 @@ class _RankRow extends StatelessWidget {
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         onTap: onOpen,
+        onDoubleTap: onDoubleTap,
         borderRadius: BorderRadius.circular(20),
         child: Padding(
           padding: const EdgeInsets.all(12),
@@ -733,12 +880,35 @@ class _RankRow extends StatelessWidget {
                     const SizedBox(height: 6),
                     Row(
                       children: [
-                        Flexible(child: UrbStatusChip(status: post.status)),
+                        Flexible(
+                          child: UrbStatusChip(
+                            status: awaitingValidation
+                                ? 'awaiting_validation'
+                                : post.status,
+                          ),
+                        ),
                         const SizedBox(width: 8),
-                        const Icon(
-                          Icons.favorite_rounded,
-                          size: 14,
-                          color: UrbColors.heart,
+                        AnimatedSwitcher(
+                          duration: UrbMotion.of(
+                            context,
+                            const Duration(milliseconds: 320),
+                          ),
+                          transitionBuilder: (child, animation) =>
+                              ScaleTransition(
+                                scale: CurvedAnimation(
+                                  parent: animation,
+                                  curve: Curves.elasticOut,
+                                ),
+                                child: child,
+                              ),
+                          child: Icon(
+                            isLiked
+                                ? Icons.favorite_rounded
+                                : Icons.favorite_border_rounded,
+                            key: ValueKey(isLiked),
+                            size: 14,
+                            color: UrbColors.heart,
+                          ),
                         ),
                         const SizedBox(width: 4),
                         Text(

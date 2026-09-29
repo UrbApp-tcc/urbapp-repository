@@ -1,21 +1,26 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/feed_service.dart';
-import '../services/post_service.dart';
-import '../theme/app_theme.dart';
+import '../services/resolution_service.dart';
+import '../theme/urbapp_design.dart';
 import '../utils/error_formatter.dart';
+import '../widgets/urb_dialog.dart';
+import '../widgets/urb_post_image.dart';
+import '../widgets/urb_primary_button.dart';
+import '../widgets/urb_status_chip.dart';
+import '../widgets/urb_text_field.dart';
 
+/// Janela em que o autor informa a solução e pede a validação da comunidade.
 class ResolveComplaintScreen extends StatefulWidget {
   const ResolveComplaintScreen({super.key, required this.post});
 
   final FeedPost post;
 
   static Future<bool?> open(BuildContext context, FeedPost post) {
-    return Navigator.of(context).push<bool>(
-      MaterialPageRoute<bool>(
-        builder: (_) => ResolveComplaintScreen(post: post),
-      ),
+    return showUrbDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => ResolveComplaintScreen(post: post),
     );
   }
 
@@ -24,11 +29,13 @@ class ResolveComplaintScreen extends StatefulWidget {
 }
 
 class _ResolveComplaintScreenState extends State<ResolveComplaintScreen> {
-  final _postService = PostService();
+  final _formKey = GlobalKey<FormState>();
   final _noteController = TextEditingController();
+  final _service = ResolutionService();
 
+  bool _confirmed = false;
   bool _isSubmitting = false;
-  bool _confirmResolution = false;
+  String? _errorMessage;
 
   @override
   void dispose() {
@@ -36,285 +43,210 @@ class _ResolveComplaintScreenState extends State<ResolveComplaintScreen> {
     super.dispose();
   }
 
-  Future<void> _submitResolution() async {
-    final userId = Supabase.instance.client.auth.currentUser?.id;
-    if (userId == null) return;
-
-    if (!_confirmResolution) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (!_confirmed) {
+      setState(
+        () => _errorMessage =
             'Confirme que o problema foi resolvido para continuar.',
-          ),
-          backgroundColor: AppColors.pending,
-        ),
       );
       return;
     }
 
-    FocusScope.of(context).unfocus();
-    setState(() => _isSubmitting = true);
+    setState(() {
+      _isSubmitting = true;
+      _errorMessage = null;
+    });
 
     try {
-      await _postService.resolvePost(
+      await _service.requestResolution(
         postId: widget.post.id,
-        userId: userId,
-        fromStatus: widget.post.status,
         note: _noteController.text,
       );
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Reclamação marcada como resolvida.'),
-          backgroundColor: AppColors.resolved,
-        ),
-      );
-      Navigator.of(context).pop(true);
+      if (mounted) Navigator.of(context).pop(true);
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(friendlyError(error)),
-          backgroundColor: AppColors.error,
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _isSubmitting = false);
-      }
+      setState(() {
+        _isSubmitting = false;
+        _errorMessage = friendlyError(error);
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: _isSubmitting
-              ? null
-              : () => Navigator.of(context).pop(false),
-        ),
-        title: const Text('Resolver reclamação'),
-      ),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+    final post = widget.post;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(22),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _ResolutionHero(post: widget.post),
-            const SizedBox(height: 20),
-            const Text(
+            UrbDialogHeader(
+              icon: Icons.task_alt_rounded,
+              title: 'Resolver reclamação',
+              subtitle: 'Conte o que foi feito. Os vizinhos confirmam.',
+              onClose: _isSubmitting
+                  ? null
+                  : () => Navigator.of(context).pop(false),
+            ),
+            const SizedBox(height: 18),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: UrbColors.surface,
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Row(
+                children: [
+                  UrbPostImage(
+                    url: post.primaryImageUrl,
+                    height: 56,
+                    width: 56,
+                    radius: 14,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          post.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: UrbText.display(
+                            size: 16,
+                            weight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${post.categoryName} · ${post.cityName}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: UrbText.body(size: 12, height: 1.3),
+                        ),
+                      ],
+                    ),
+                  ),
+                  UrbStatusChip(status: post.status),
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
+            Text(
               'Resumo da resolução',
-              style: TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 17,
-                fontWeight: FontWeight.w800,
+              style: UrbText.body(
+                size: 13,
+                weight: FontWeight.w700,
+                color: const Color(0xFF374151),
+                height: 1.2,
               ),
             ),
             const SizedBox(height: 10),
-            TextField(
+            TextFormField(
               controller: _noteController,
-              minLines: 5,
-              maxLines: 8,
-              textInputAction: TextInputAction.newline,
-              decoration: const InputDecoration(
-                hintText:
-                    'Descreva o que foi feito para resolver a reclamação.',
-                alignLabelWithHint: true,
-              ),
+              minLines: 4,
+              maxLines: 6,
+              maxLength: 1000,
+              style: UrbText.body(size: 15, color: UrbColors.ink, height: 1.4),
+              validator: (value) {
+                final text = value?.trim() ?? '';
+                if (text.length < 5)
+                  return 'Descreva em poucas palavras o que foi feito.';
+                return null;
+              },
+              decoration: urbInputDecoration(
+                hintText: 'Ex.: A prefeitura tapou o buraco na terça-feira.',
+              ).copyWith(contentPadding: const EdgeInsets.all(16)),
             ),
-            const SizedBox(height: 14),
-            _ConfirmationTile(
-              value: _confirmResolution,
-              onChanged: _isSubmitting
+            const SizedBox(height: 6),
+            InkWell(
+              onTap: _isSubmitting
                   ? null
-                  : (value) =>
-                        setState(() => _confirmResolution = value ?? false),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton.icon(
-              onPressed: _isSubmitting ? null : _submitResolution,
-              icon: _isSubmitting
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.check_circle_outline_rounded),
-              label: Text(
-                _isSubmitting ? 'Salvando...' : 'Marcar como resolvida',
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'A reclamação será movida para concluída e a anotação ficará registrada no histórico do reporte.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: AppColors.textSecondary.withValues(alpha: 0.95),
-                fontSize: 13,
-                height: 1.45,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ResolutionHero extends StatelessWidget {
-  const _ResolutionHero({required this.post});
-
-  final FeedPost post;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 50,
-            height: 50,
-            decoration: BoxDecoration(
-              color: AppColors.resolved.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: const Icon(
-              Icons.task_alt_rounded,
-              color: AppColors.resolved,
-              size: 28,
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  post.title,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 18,
-                    height: 1.22,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
+                  : () => setState(() => _confirmed = !_confirmed),
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
                   children: [
-                    _InfoChip(
-                      icon: Icons.label_outline_rounded,
-                      label: post.categoryName,
+                    Checkbox(
+                      value: _confirmed,
+                      activeColor: UrbColors.violet,
+                      onChanged: _isSubmitting
+                          ? null
+                          : (value) =>
+                                setState(() => _confirmed = value ?? false),
                     ),
-                    _InfoChip(
-                      icon: Icons.location_city_outlined,
-                      label: post.cityName,
+                    Expanded(
+                      child: Text(
+                        'Confirmo que o problema foi resolvido.',
+                        style: UrbText.body(
+                          size: 14,
+                          color: const Color(0xFF374151),
+                          height: 1.4,
+                        ),
+                      ),
                     ),
                   ],
                 ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _InfoChip extends StatelessWidget {
-  const _InfoChip({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 15, color: AppColors.textSecondary),
-          const SizedBox(width: 6),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 170),
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: AppColors.textSecondary,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
               ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ConfirmationTile extends StatelessWidget {
-  const _ConfirmationTile({required this.value, required this.onChanged});
-
-  final bool value;
-  final ValueChanged<bool?>? onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onChanged == null ? null : () => onChanged!(!value),
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: value ? AppColors.resolved : AppColors.border,
-          ),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Checkbox(
-              value: value,
-              onChanged: onChanged,
-              visualDensity: VisualDensity.compact,
-            ),
-            const SizedBox(width: 8),
-            const Expanded(
-              child: Text(
-                'Confirmo que a reclamação foi resolvida e pode ser marcada como concluída.',
-                style: TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 14,
-                  height: 1.4,
-                  fontWeight: FontWeight.w600,
-                ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: UrbColors.lavender,
+                borderRadius: BorderRadius.circular(16),
               ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.groups_2_outlined,
+                    color: UrbColors.violetDeep,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Vizinhos a até 500 m do local vão confirmar. Com 3 confirmações o reporte vira Concluído e você ganha +50 XP.',
+                      style: UrbText.body(
+                        size: 13,
+                        color: const Color(0xFF3F2A8A),
+                        height: 1.45,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            AnimatedSize(
+              duration: UrbMotion.of(context, UrbMotion.fast),
+              child: _errorMessage == null
+                  ? const SizedBox(width: double.infinity)
+                  : Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: Text(
+                        _errorMessage!,
+                        textAlign: TextAlign.center,
+                        style: UrbText.body(
+                          size: 13,
+                          color: const Color(0xFFDC2626),
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+            ),
+            const SizedBox(height: 18),
+            UrbPrimaryButton(
+              label: 'Pedir validação',
+              icon: Icons.task_alt_rounded,
+              loading: _isSubmitting,
+              onPressed: _submit,
             ),
           ],
         ),

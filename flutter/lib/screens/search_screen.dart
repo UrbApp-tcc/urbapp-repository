@@ -24,6 +24,7 @@ class SearchScreen extends StatefulWidget {
     required this.cities,
     required this.selectedCityId,
     required this.onCityChanged,
+    this.awaitingValidationIds = const <int>{},
   });
 
   final List<FeedPost> posts;
@@ -34,6 +35,9 @@ class SearchScreen extends StatefulWidget {
   final List<CityOption> cities;
   final int? selectedCityId;
   final ValueChanged<int?> onCityChanged;
+
+  /// Reportes aguardando a validação da comunidade.
+  final Set<int> awaitingValidationIds;
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -49,6 +53,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   static const List<String> _statusOptions = [
     'open',
+    'awaiting_validation',
     'in_analysis',
     'in_progress',
     'completed',
@@ -143,9 +148,11 @@ class _SearchScreenState extends State<SearchScreen> {
   List<FeedPost> get _results {
     final textResults = _textResults;
     if (_selectedStatuses.isEmpty) return textResults;
-    return textResults
-        .where((post) => _selectedStatuses.contains(post.status))
-        .toList();
+    return textResults.where((post) {
+      final awaiting = widget.awaitingValidationIds.contains(post.id);
+      return _selectedStatuses.contains(post.status) ||
+          (awaiting && _selectedStatuses.contains('awaiting_validation'));
+    }).toList();
   }
 
   String get _statusButtonLabel {
@@ -269,6 +276,8 @@ class _SearchScreenState extends State<SearchScreen> {
                               ? FadeSlideIn(
                                   delay: Duration(milliseconds: 60 * i),
                                   child: _HighlightCard(
+                                    awaiting: widget.awaitingValidationIds
+                                        .contains(highlights[i].id),
                                     post: highlights[i],
                                     onOpen: () => PostDetailScreen.open(
                                       context,
@@ -293,6 +302,9 @@ class _SearchScreenState extends State<SearchScreen> {
                         key: ValueKey('result-${results[i].id}'),
                         delay: Duration(milliseconds: 40 * i),
                         child: _ResultRow(
+                          awaiting: widget.awaitingValidationIds.contains(
+                            results[i].id,
+                          ),
                           post: results[i],
                           onOpen: () =>
                               PostDetailScreen.open(context, results[i]),
@@ -300,6 +312,9 @@ class _SearchScreenState extends State<SearchScreen> {
                       )
                     else
                       _ResultRow(
+                        awaiting: widget.awaitingValidationIds.contains(
+                          results[i].id,
+                        ),
                         post: results[i],
                         onOpen: () =>
                             PostDetailScreen.open(context, results[i]),
@@ -599,10 +614,15 @@ class _SectionTitle extends StatelessWidget {
 }
 
 class _HighlightCard extends StatelessWidget {
-  const _HighlightCard({required this.post, required this.onOpen});
+  const _HighlightCard({
+    required this.post,
+    required this.onOpen,
+    this.awaiting = false,
+  });
 
   final FeedPost post;
   final VoidCallback onOpen;
+  final bool awaiting;
 
   @override
   Widget build(BuildContext context) {
@@ -631,7 +651,9 @@ class _HighlightCard extends StatelessWidget {
               Positioned(
                 left: 10,
                 top: 10,
-                child: UrbStatusChip(status: post.status),
+                child: UrbStatusChip(
+                  status: awaiting ? 'awaiting_validation' : post.status,
+                ),
               ),
               if (post.imageCount > 1)
                 Positioned(
@@ -692,10 +714,15 @@ class _HighlightCard extends StatelessWidget {
 }
 
 class _ResultRow extends StatelessWidget {
-  const _ResultRow({required this.post, required this.onOpen});
+  const _ResultRow({
+    required this.post,
+    required this.onOpen,
+    this.awaiting = false,
+  });
 
   final FeedPost post;
   final VoidCallback onOpen;
+  final bool awaiting;
 
   @override
   Widget build(BuildContext context) {
@@ -740,7 +767,13 @@ class _ResultRow extends StatelessWidget {
                     const SizedBox(height: 6),
                     Row(
                       children: [
-                        Flexible(child: UrbStatusChip(status: post.status)),
+                        Flexible(
+                          child: UrbStatusChip(
+                            status: awaiting
+                                ? 'awaiting_validation'
+                                : post.status,
+                          ),
+                        ),
                         const SizedBox(width: 8),
                         Flexible(
                           child: Text(

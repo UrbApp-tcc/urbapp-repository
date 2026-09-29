@@ -4,8 +4,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../theme/app_theme.dart';
+import '../theme/urbapp_design.dart';
+import 'urb_dialog.dart';
 
+/// Escolha das fotos do reporte: botão tracejado "Adicionar" e
+/// miniaturas com o "x" para remover.
 class MediaPickerWidget extends StatefulWidget {
   const MediaPickerWidget({
     super.key,
@@ -26,11 +29,17 @@ class _MediaPickerWidgetState extends State<MediaPickerWidget> {
   final ImagePicker _picker = ImagePicker();
   bool _isPicking = false;
 
+  static const double _tileSize = 92;
+
   Future<void> _pickImages() async {
     if (_isPicking) return;
 
     if (widget.images.length >= widget.maxImages) {
-      _showSnackBar('Voce pode adicionar no maximo ${widget.maxImages} imagens.');
+      showUrbSnack(
+        context,
+        'Você pode adicionar no máximo ${widget.maxImages} fotos.',
+        error: true,
+      );
       return;
     }
 
@@ -46,16 +55,21 @@ class _MediaPickerWidgetState extends State<MediaPickerWidget> {
       widget.onChanged([...widget.images, ...imagesToAdd]);
 
       if (selectedImages.length > availableSlots) {
-        _showSnackBar(
-          'Limite de ${widget.maxImages} imagens por reporte. Apenas as primeiras foram adicionadas.',
+        showUrbSnack(
+          context,
+          'Limite de ${widget.maxImages} fotos por reporte. Só as primeiras foram adicionadas.',
+          error: true,
         );
       }
     } catch (_) {
-      _showSnackBar('Nao foi possivel selecionar as imagens.');
+      if (mounted)
+        showUrbSnack(
+          context,
+          'Não foi possível selecionar as fotos.',
+          error: true,
+        );
     } finally {
-      if (mounted) {
-        setState(() => _isPicking = false);
-      }
+      if (mounted) setState(() => _isPicking = false);
     }
   }
 
@@ -64,182 +78,221 @@ class _MediaPickerWidgetState extends State<MediaPickerWidget> {
     widget.onChanged(updatedImages);
   }
 
-  void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.all(16),
-      ),
-    );
-  }
+  Widget _preview(XFile image) {
+    Widget error(BuildContext context, Object error, StackTrace? stackTrace) =>
+        const DecoratedBox(
+          decoration: BoxDecoration(gradient: UrbGradients.photo),
+          child: Center(
+            child: Icon(Icons.broken_image_outlined, color: Color(0xFF9FB0C6)),
+          ),
+        );
 
-  Widget _buildPreviewImage(XFile image) {
     if (kIsWeb) {
-      return Image.network(
-        image.path,
-        fit: BoxFit.cover,
-        errorBuilder: _buildImageError,
-      );
+      return Image.network(image.path, fit: BoxFit.cover, errorBuilder: error);
     }
-
-    return Image.file(
-      File(image.path),
-      fit: BoxFit.cover,
-      errorBuilder: _buildImageError,
-    );
-  }
-
-  Widget _buildImageError(BuildContext context, Object error, StackTrace? stackTrace) {
-    return Container(
-      color: Colors.white,
-      alignment: Alignment.center,
-      child: const Icon(
-        Icons.broken_image_outlined,
-        color: AppColors.textHint,
-      ),
-    );
+    return Image.file(File(image.path), fit: BoxFit.cover, errorBuilder: error);
   }
 
   @override
   Widget build(BuildContext context) {
-    final hasImages = widget.images.isNotEmpty;
+    final canAdd = widget.images.length < widget.maxImages;
 
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: _tileSize,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            clipBehavior: Clip.none,
             children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: AppColors.primaryLight,
-                  borderRadius: BorderRadius.circular(14),
+              if (canAdd) ...[
+                _AddTile(
+                  size: _tileSize,
+                  isLoading: _isPicking,
+                  onTap: _pickImages,
                 ),
-                child: const Icon(
-                  Icons.perm_media_outlined,
-                  color: AppColors.primaryDark,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Adicionar midia',
-                      style: TextStyle(
-                        color: AppColors.textPrimary,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${widget.images.length}/${widget.maxImages} imagens',
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 13,
-                        height: 1.35,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    const Text(
-                      'Selecione ate 5 imagens da galeria para anexar ao post.',
-                      style: TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 13,
-                        height: 1.35,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              TextButton.icon(
-                onPressed: _isPicking ? null : _pickImages,
-                icon: _isPicking
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.add_photo_alternate_outlined, size: 18),
-                label: Text(_isPicking ? 'Carregando' : 'Adicionar'),
-              ),
-            ],
-          ),
-          if (hasImages) ...[
-            const SizedBox(height: 14),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final crossAxisCount = constraints.maxWidth >= 360 ? 3 : 2;
-
-                return GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: widget.images.length,
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: crossAxisCount,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                    childAspectRatio: 1,
+                const SizedBox(width: 10),
+              ],
+              for (var i = 0; i < widget.images.length; i++) ...[
+                // Cada foto nova "cresce" ao entrar.
+                TweenAnimationBuilder<double>(
+                  key: ValueKey(widget.images[i].path),
+                  tween: Tween(begin: 0.7, end: 1),
+                  duration: UrbMotion.of(
+                    context,
+                    const Duration(milliseconds: 320),
                   ),
-                  itemBuilder: (context, index) {
-                    final image = widget.images[index];
-
-                    return Stack(
+                  curve: Curves.easeOutBack,
+                  builder: (context, scale, child) =>
+                      Transform.scale(scale: scale, child: child),
+                  child: SizedBox(
+                    width: _tileSize,
+                    height: _tileSize,
+                    child: Stack(
+                      fit: StackFit.expand,
                       children: [
-                        Positioned.fill(
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(16),
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                border: Border.all(color: AppColors.border),
-                                borderRadius: BorderRadius.circular(16),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(18),
+                          child: _preview(widget.images[i]),
+                        ),
+                        if (i == 0)
+                          Positioned(
+                            left: 6,
+                            bottom: 6,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 3,
                               ),
-                              child: _buildPreviewImage(image),
+                              decoration: BoxDecoration(
+                                color: const Color(0xB30D1520),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                'Capa',
+                                style: UrbText.body(
+                                  size: 11,
+                                  weight: FontWeight.w700,
+                                  color: Colors.white,
+                                  height: 1.2,
+                                ),
+                              ),
                             ),
                           ),
-                        ),
                         Positioned(
-                          top: 8,
-                          right: 8,
+                          right: 6,
+                          top: 6,
                           child: Material(
-                            color: Colors.black.withValues(alpha: 0.55),
+                            color: Colors.white.withValues(alpha: 0.92),
                             shape: const CircleBorder(),
                             child: InkWell(
                               customBorder: const CircleBorder(),
-                              onTap: () => _removeImage(index),
-                              child: const Padding(
-                                padding: EdgeInsets.all(6),
-                                child: Icon(
-                                  Icons.close_rounded,
-                                  size: 16,
-                                  color: Colors.white,
+                              onTap: () => _removeImage(i),
+                              child: const Tooltip(
+                                message: 'Remover foto',
+                                child: SizedBox(
+                                  width: 26,
+                                  height: 26,
+                                  child: Icon(
+                                    Icons.close_rounded,
+                                    size: 15,
+                                    color: UrbColors.ink,
+                                  ),
                                 ),
                               ),
                             ),
                           ),
                         ),
                       ],
-                    );
-                  },
-                );
-              },
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          widget.images.isEmpty
+              ? 'Adicione até ${widget.maxImages} fotos. A primeira vira a capa do reporte.'
+              : '${widget.images.length} de ${widget.maxImages} fotos',
+          textAlign: TextAlign.center,
+          style: UrbText.body(
+            size: 12,
+            color: UrbColors.textMuted,
+            height: 1.35,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AddTile extends StatelessWidget {
+  const _AddTile({
+    required this.size,
+    required this.isLoading,
+    required this.onTap,
+  });
+
+  final double size;
+  final bool isLoading;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: 'Adicionar fotos',
+      child: GestureDetector(
+        onTap: isLoading ? null : onTap,
+        child: CustomPaint(
+          painter: _DashedBorderPainter(),
+          child: Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF7F5FD),
+              borderRadius: BorderRadius.circular(18),
             ),
-          ],
-        ],
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                isLoading
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(
+                        Icons.add_a_photo_outlined,
+                        color: UrbColors.violetDeep,
+                        size: 24,
+                      ),
+                const SizedBox(height: 6),
+                Text(
+                  'Adicionar',
+                  style: UrbText.body(
+                    size: 12,
+                    weight: FontWeight.w700,
+                    color: UrbColors.violetDeep,
+                    height: 1.2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
+}
+
+/// Borda tracejada arredondada do botão "Adicionar".
+class _DashedBorderPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rrect = RRect.fromRectAndRadius(
+      Offset.zero & size,
+      const Radius.circular(18),
+    );
+    final path = Path()..addRRect(rrect);
+    final paint = Paint()
+      ..color = const Color(0xFFB9ADE6)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+
+    for (final metric in path.computeMetrics()) {
+      var distance = 0.0;
+      while (distance < metric.length) {
+        canvas.drawPath(metric.extractPath(distance, distance + 6), paint);
+        distance += 11;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedBorderPainter oldDelegate) => false;
 }

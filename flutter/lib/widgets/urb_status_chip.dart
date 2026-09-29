@@ -42,6 +42,12 @@ class UrbStatusChip extends StatelessWidget {
           background: const Color(0xFFE5E7EB),
           foreground: const Color(0xFF374151),
         );
+      case 'awaiting_validation':
+        return (
+          label: 'Aguardando validação',
+          background: const Color(0xFFD1FAE5),
+          foreground: const Color(0xFF065F46),
+        );
       case 'expired':
         return (
           label: 'Expirado',

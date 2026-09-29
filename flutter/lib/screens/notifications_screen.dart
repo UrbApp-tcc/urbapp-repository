@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 
+import '../services/feed_service.dart';
 import '../services/notifications_service.dart';
 import '../theme/urbapp_design.dart';
 import '../utils/date_formatter.dart';
 import '../utils/error_formatter.dart';
 import '../widgets/city_skyline.dart';
 import '../widgets/fade_slide_in.dart';
+import '../widgets/urb_dialog.dart';
 import '../widgets/urb_post_image.dart';
+import 'post_detail_screen.dart';
+import 'profile_screen.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({
@@ -26,6 +30,10 @@ class NotificationsScreen extends StatefulWidget {
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
   final _notificationsService = NotificationsService();
+  final _feedService = FeedService();
+
+  /// Notificação que está abrindo (mostra a bolinha de carregamento).
+  String? _openingId;
 
   List<AppNotificationItem> _items = const [];
   bool _isLoading = true;
@@ -80,6 +88,52 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         _isLoading = false;
         _errorMessage = friendlyError(error);
       });
+    }
+  }
+
+  /// Leva ao que aconteceu: o perfil de quem seguiu ou o reporte
+  /// que recebeu apoio, comentário ou resposta.
+  Future<void> _openItem(AppNotificationItem item) async {
+    if (_openingId != null) return;
+
+    if (item.type == AppNotificationType.levelUp ||
+        item.type == AppNotificationType.badgeAwarded) {
+      final me = widget.currentUserId;
+      if (me != null)
+        ProfileScreen.open(context, profileUserId: me, currentUserId: me);
+      return;
+    }
+
+    final postId = item.postId;
+    if (item.type == AppNotificationType.newFollower || postId == null) {
+      final actorId = item.actorId;
+      if (actorId == null) return;
+      ProfileScreen.open(
+        context,
+        profileUserId: actorId,
+        currentUserId: widget.currentUserId,
+      );
+      return;
+    }
+
+    setState(() => _openingId = item.id);
+    try {
+      final post = await _feedService.fetchPostById(postId);
+      if (!mounted) return;
+      if (post == null) {
+        showUrbSnack(
+          context,
+          'Este reporte não está mais disponível.',
+          error: true,
+        );
+        return;
+      }
+      await PostDetailScreen.open(context, post);
+    } catch (error) {
+      if (!mounted) return;
+      showUrbSnack(context, friendlyError(error), error: true);
+    } finally {
+      if (mounted) setState(() => _openingId = null);
     }
   }
 
@@ -166,6 +220,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         child: _NotificationTile(
                           item: recentItems[i],
                           highlighted: true,
+                          isOpening: _openingId == recentItems[i].id,
+                          onTap: () => _openItem(recentItems[i]),
                         ),
                       ),
                       const SizedBox(height: 10),
@@ -182,12 +238,16 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                             child: _NotificationTile(
                               item: pastItems[i],
                               highlighted: false,
+                              isOpening: _openingId == pastItems[i].id,
+                              onTap: () => _openItem(pastItems[i]),
                             ),
                           )
                         else
                           _NotificationTile(
                             item: pastItems[i],
                             highlighted: false,
+                            isOpening: _openingId == pastItems[i].id,
+                            onTap: () => _openItem(pastItems[i]),
                           ),
                         const SizedBox(height: 8),
                       ],
@@ -356,19 +416,79 @@ class _SectionLabel extends StatelessWidget {
         color: UrbColors.commentBlue,
         background: const Color(0xFFE0ECFB),
       );
+    case AppNotificationType.statusChanged:
+      return (
+        icon: Icons.flag_rounded,
+        color: const Color(0xFF1E40AF),
+        background: const Color(0xFFDBEAFE),
+      );
+    case AppNotificationType.resolutionRequested:
+      return (
+        icon: Icons.how_to_vote_rounded,
+        color: const Color(0xFF065F46),
+        background: const Color(0xFFD1FAE5),
+      );
+    case AppNotificationType.resolutionRejected:
+      return (
+        icon: Icons.report_gmailerrorred_rounded,
+        color: const Color(0xFF92400E),
+        background: const Color(0xFFFEF3C7),
+      );
+    case AppNotificationType.resolutionExpired:
+      return (
+        icon: Icons.hourglass_bottom_rounded,
+        color: const Color(0xFF374151),
+        background: const Color(0xFFE5E7EB),
+      );
+    case AppNotificationType.levelUp:
+      return (
+        icon: Icons.trending_up_rounded,
+        color: UrbColors.violetDeep,
+        background: UrbColors.lavender,
+      );
+    case AppNotificationType.badgeAwarded:
+      return (
+        icon: Icons.military_tech_rounded,
+        color: const Color(0xFF9A6B00),
+        background: const Color(0xFFFEF3C7),
+      );
   }
 }
 
 class _NotificationTile extends StatelessWidget {
-  const _NotificationTile({required this.item, required this.highlighted});
+  const _NotificationTile({
+    required this.item,
+    required this.highlighted,
+    required this.isOpening,
+    required this.onTap,
+  });
 
   final AppNotificationItem item;
   final bool highlighted;
+  final bool isOpening;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final style = _typeStyle(item.type);
+    final opensPost =
+        item.postId != null && item.type != AppNotificationType.newFollower;
 
+    return Semantics(
+      button: true,
+      hint: opensPost ? 'Abrir o reporte' : 'Abrir o perfil',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(20),
+          child: Ink(child: _tileBody(style)),
+        ),
+      ),
+    );
+  }
+
+  Widget _tileBody(({IconData icon, Color color, Color background}) style) {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -394,21 +514,53 @@ class _NotificationTile extends StatelessWidget {
             child: Stack(
               clipBehavior: Clip.none,
               children: [
-                _Avatar(url: item.actorAvatarUrl, label: item.actorDisplayName),
-                Positioned(
-                  right: -4,
-                  bottom: -4,
-                  child: Container(
-                    width: 24,
-                    height: 24,
+                if (item.actorId == null)
+                  Container(
+                    width: 50,
+                    height: 50,
                     decoration: BoxDecoration(
-                      color: style.background,
+                      gradient:
+                          item.type == AppNotificationType.levelUp ||
+                              item.type == AppNotificationType.badgeAwarded
+                          ? UrbGradients.gamification
+                          : null,
+                      color:
+                          item.type == AppNotificationType.levelUp ||
+                              item.type == AppNotificationType.badgeAwarded
+                          ? null
+                          : style.background,
                       shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2),
                     ),
-                    child: Icon(style.icon, size: 12, color: style.color),
+                    child: Icon(
+                      style.icon,
+                      size: 24,
+                      color:
+                          item.type == AppNotificationType.levelUp ||
+                              item.type == AppNotificationType.badgeAwarded
+                          ? Colors.white
+                          : style.color,
+                    ),
+                  )
+                else
+                  _Avatar(
+                    url: item.actorAvatarUrl,
+                    label: item.actorDisplayName,
                   ),
-                ),
+                if (item.actorId != null)
+                  Positioned(
+                    right: -4,
+                    bottom: -4,
+                    child: Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: style.background,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                      ),
+                      child: Icon(style.icon, size: 12, color: style.color),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -451,8 +603,17 @@ class _NotificationTile extends StatelessWidget {
               ],
             ),
           ),
-          if (highlighted) ...[
-            const SizedBox(width: 8),
+          const SizedBox(width: 8),
+          if (isOpening)
+            const Padding(
+              padding: EdgeInsets.only(top: 4),
+              child: SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          else if (highlighted)
             Container(
               margin: const EdgeInsets.only(top: 6),
               width: 9,
@@ -461,8 +622,13 @@ class _NotificationTile extends StatelessWidget {
                 color: UrbColors.violet,
                 shape: BoxShape.circle,
               ),
+            )
+          else
+            const Icon(
+              Icons.chevron_right_rounded,
+              size: 20,
+              color: UrbColors.textMuted,
             ),
-          ],
         ],
       ),
     );

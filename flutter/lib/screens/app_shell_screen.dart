@@ -7,9 +7,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/auth_service.dart';
 import '../services/city_service.dart';
 import '../services/feed_service.dart';
+import '../services/resolution_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/urbapp_design.dart';
 import '../widgets/urb_bottom_bar.dart';
+import '../widgets/urb_dialog.dart';
 import '../utils/error_formatter.dart';
 import 'create_post_screen.dart';
 import 'city_map_screen.dart';
@@ -42,6 +44,13 @@ class _AppShellScreenState extends State<AppShellScreen> {
   List<FeedPost> _posts = const [];
   List<FeedPost> _trendingPosts = const [];
   Set<int> _likedPostIds = const <int>{};
+
+  /// Reportes aguardando a validação da comunidade.
+  Set<int> _awaitingValidationIds = const <int>{};
+  final _resolutionService = ResolutionService();
+
+  /// Reportes com a curtida sendo enviada (evita toques repetidos).
+  final Set<int> _pendingSupportIds = <int>{};
   List<CityOption> _cities = const [];
   int? _selectedCityId;
   bool _isLoading = true;
@@ -263,8 +272,10 @@ class _AppShellScreenState extends State<AppShellScreen> {
         trendingError = error;
       }
 
-      final likedPostIds = await _feedService.fetchLikedPostIds(
-        _mergePostIds(posts: posts, trendingPosts: trendingPosts),
+      final postIds = _mergePostIds(posts: posts, trendingPosts: trendingPosts);
+      final likedPostIds = await _feedService.fetchLikedPostIds(postIds);
+      final awaitingIds = await _resolutionService.fetchAwaitingPostIds(
+        postIds,
       );
 
       if (!mounted) return;
@@ -272,6 +283,7 @@ class _AppShellScreenState extends State<AppShellScreen> {
         _posts = posts;
         _trendingPosts = trendingPosts;
         _likedPostIds = likedPostIds;
+        _awaitingValidationIds = awaitingIds;
       });
 
       if (trendingError != null) {
@@ -430,6 +442,55 @@ class _AppShellScreenState extends State<AppShellScreen> {
     }.toList();
   }
 
+  /// Dá ou tira o apoio (curtida) direto do Início.
+  /// A tela muda na hora e volta atrás se o envio falhar.
+  Future<void> _toggleSupport(FeedPost post) async {
+    final userId = _resolveCurrentUserId();
+    if (userId == null || _pendingSupportIds.contains(post.id)) return;
+
+    final wasLiked = _likedPostIds.contains(post.id);
+    _pendingSupportIds.add(post.id);
+
+    void apply(bool liked) {
+      setState(() {
+        _likedPostIds = liked
+            ? {..._likedPostIds, post.id}
+            : _likedPostIds.where((id) => id != post.id).toSet();
+        _updatePostCollections(
+          post.id,
+          (current) => current.copyWith(
+            supportsCount: liked
+                ? current.supportsCount + 1
+                : (current.supportsCount > 0 ? current.supportsCount - 1 : 0),
+          ),
+        );
+      });
+    }
+
+    apply(!wasLiked);
+
+    try {
+      if (wasLiked) {
+        await _supabase
+            .from('post_supports')
+            .delete()
+            .eq('post_id', post.id)
+            .eq('user_id', userId);
+      } else {
+        await _supabase.from('post_supports').insert({
+          'post_id': post.id,
+          'user_id': userId,
+        });
+      }
+    } catch (error) {
+      if (!mounted) return;
+      apply(wasLiked);
+      showUrbSnack(context, friendlyError(error), error: true);
+    } finally {
+      _pendingSupportIds.remove(post.id);
+    }
+  }
+
   void _updatePostCollections(
     int postId,
     FeedPost Function(FeedPost post) update,
@@ -506,6 +567,8 @@ class _AppShellScreenState extends State<AppShellScreen> {
                             selectedCityId: _selectedCityId,
                             onCityChanged: _changeCityFilter,
                             onOpenMap: _openCityMap,
+                            onToggleSupport: _toggleSupport,
+                            awaitingValidationIds: _awaitingValidationIds,
                           ),
                           SearchScreen(
                             posts: _posts,
@@ -514,6 +577,7 @@ class _AppShellScreenState extends State<AppShellScreen> {
                             cities: _cities,
                             selectedCityId: _selectedCityId,
                             onCityChanged: _changeCityFilter,
+                            awaitingValidationIds: _awaitingValidationIds,
                           ),
                           NotificationsScreen(
                             currentUserId: currentUserId,
