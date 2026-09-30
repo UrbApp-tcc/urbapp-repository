@@ -1,5 +1,9 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
 import '../services/city_service.dart';
@@ -43,6 +47,15 @@ class _CityMapScreenState extends State<CityMapScreen> {
   final _postService = PostService();
   final _mapController = MapController();
 
+  /// Busca de endereço ou bairro na barra de baixo.
+  final _searchController = TextEditingController();
+  final _searchFocus = FocusNode();
+  Timer? _searchDebounce;
+  List<_PlaceResult> _searchResults = const [];
+  bool _isSearching = false;
+  bool _searchDone = false;
+  LatLng? _searchedPoint;
+
   int? _selectedCityId;
   int? _selectedCategoryId;
   List<LookupOption> _categories = const [];
@@ -59,6 +72,9 @@ class _CityMapScreenState extends State<CityMapScreen> {
   @override
   void dispose() {
     _mapController.dispose();
+    _searchDebounce?.cancel();
+    _searchController.dispose();
+    _searchFocus.dispose();
     super.dispose();
   }
 
@@ -236,6 +252,125 @@ class _CityMapScreenState extends State<CityMapScreen> {
     }
   }
 
+  void _onSearchChanged(String value) {
+    _searchDebounce?.cancel();
+    final query = value.trim();
+    if (query.length < 3) {
+      setState(() {
+        _searchResults = const [];
+        _isSearching = false;
+        _searchDone = false;
+      });
+      return;
+    }
+    setState(() => _isSearching = true);
+    // Espera parar de digitar: o serviço de mapas aceita 1 consulta por segundo.
+    _searchDebounce = Timer(
+      const Duration(milliseconds: 700),
+      () => _searchPlace(query),
+    );
+  }
+
+  Future<void> _searchPlace(String query) async {
+    LatLng center;
+    try {
+      center = _mapController.camera.center;
+    } catch (_) {
+      center = const LatLng(-23.55052, -46.63331);
+    }
+
+    final cityName = _selectedCity?.name;
+    final fullQuery =
+        cityName != null &&
+            !query.toLowerCase().contains(cityName.toLowerCase())
+        ? '$query, $cityName'
+        : query;
+
+    try {
+      final uri = Uri.https('nominatim.openstreetmap.org', '/search', {
+        'format': 'jsonv2',
+        'q': fullQuery,
+        'limit': '5',
+        'countrycodes': 'br',
+        'accept-language': 'pt-BR',
+        'viewbox':
+            '${center.longitude - 0.4},${center.latitude + 0.4},'
+            '${center.longitude + 0.4},${center.latitude - 0.4}',
+        'bounded': '0',
+      });
+      final response = await http
+          .get(uri, headers: const {'Accept': 'application/json'})
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode != 200) {
+        throw Exception('Não foi possível buscar o endereço agora.');
+      }
+
+      final results = (jsonDecode(response.body) as List<dynamic>)
+          .map((item) => item as Map<String, dynamic>)
+          .map((item) {
+            final lat = double.tryParse('${item['lat']}');
+            final lon = double.tryParse('${item['lon']}');
+            if (lat == null || lon == null) return null;
+            return _PlaceResult(
+              label: '${item['display_name'] ?? ''}',
+              point: LatLng(lat, lon),
+            );
+          })
+          .whereType<_PlaceResult>()
+          .toList();
+
+      if (!mounted || _searchController.text.trim() != query) return;
+      setState(() {
+        _searchResults = results;
+        _isSearching = false;
+        _searchDone = true;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isSearching = false;
+        _searchDone = true;
+        _searchResults = const [];
+      });
+      showUrbSnack(context, friendlyError(error), error: true);
+    }
+  }
+
+  void _goToPlace(_PlaceResult place) {
+    _searchFocus.unfocus();
+    _searchDebounce?.cancel();
+    _searchController.text = place.label.split(',').take(2).join(',').trim();
+    setState(() {
+      _searchResults = const [];
+      _searchDone = false;
+      _searchedPoint = place.point;
+    });
+    try {
+      _mapController.move(place.point, 16.5);
+    } catch (_) {}
+  }
+
+  void _clearSearch() {
+    _searchDebounce?.cancel();
+    _searchController.clear();
+    setState(() {
+      _searchResults = const [];
+      _isSearching = false;
+      _searchDone = false;
+      _searchedPoint = null;
+    });
+  }
+
+  void _zoomBy(double delta) {
+    try {
+      final camera = _mapController.camera;
+      final zoom = (camera.zoom + delta).clamp(4.0, 19.0);
+      _mapController.move(camera.center, zoom);
+    } catch (_) {
+      // O mapa ainda não terminou de abrir.
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final selectedCity = _selectedCity;
@@ -261,12 +396,28 @@ class _CityMapScreenState extends State<CityMapScreen> {
                 initialZoom: 12,
                 minZoom: 4,
                 maxZoom: 19,
+                // Pinça, dois toques e rodinha do mouse dão zoom.
+                // A rotação fica desligada para o mapa não girar sem querer na pinça.
+                interactionOptions: const InteractionOptions(
+                  flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+                ),
               ),
               children: [
                 TileLayer(
                   urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                   userAgentPackageName: 'br.com.urbapp.app',
                 ),
+                if (_searchedPoint != null)
+                  MarkerLayer(
+                    markers: [
+                      Marker(
+                        point: _searchedPoint!,
+                        width: 34,
+                        height: 34,
+                        child: const _SearchedPlaceDot(),
+                      ),
+                    ],
+                  ),
                 MarkerLayer(
                   markers: [
                     for (var i = 0; i < _posts.length; i++)
@@ -308,16 +459,28 @@ class _CityMapScreenState extends State<CityMapScreen> {
                   : _chooseCategory,
             ),
           ),
-          if (!_isLoading && _posts.isNotEmpty)
-            Positioned(
-              right: 16,
-              bottom: 24 + MediaQuery.paddingOf(context).bottom,
-              child: _RoundMapButton(
-                icon: Icons.center_focus_strong_rounded,
-                tooltip: 'Ver todos os reportes',
-                onPressed: () => _centerMap(_posts),
-              ),
+          // Botões de zoom (para quem não consegue fazer a pinça, como no computador).
+          Positioned(
+            right: 16,
+            bottom: 100 + MediaQuery.paddingOf(context).bottom,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _ZoomButtons(
+                  onZoomIn: () => _zoomBy(1),
+                  onZoomOut: () => _zoomBy(-1),
+                ),
+                if (!_isLoading && _posts.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  _RoundMapButton(
+                    icon: Icons.center_focus_strong_rounded,
+                    tooltip: 'Ver todos os reportes',
+                    onPressed: () => _centerMap(_posts),
+                  ),
+                ],
+              ],
             ),
+          ),
           if (_isLoading)
             const Center(child: _LoadingPill())
           else if (_posts.isEmpty)
@@ -368,6 +531,22 @@ class _CityMapScreenState extends State<CityMapScreen> {
                 ),
               ),
             ),
+          // Barra de busca no rodapé, com as sugestões aparecendo por cima.
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 16 + MediaQuery.paddingOf(context).bottom,
+            child: _MapSearchBar(
+              controller: _searchController,
+              focusNode: _searchFocus,
+              isSearching: _isSearching,
+              showEmpty: _searchDone && !_isSearching && _searchResults.isEmpty,
+              results: _searchResults,
+              onChanged: _onSearchChanged,
+              onClear: _clearSearch,
+              onSelect: _goToPlace,
+            ),
+          ),
         ],
       ),
     );
@@ -742,6 +921,256 @@ class _RoundMapButton extends StatelessWidget {
             child: Icon(icon, color: UrbColors.violetDeep),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Resultado da busca de endereço.
+class _PlaceResult {
+  const _PlaceResult({required this.label, required this.point});
+
+  final String label;
+  final LatLng point;
+}
+
+/// Ponto roxo pulsando no lugar buscado.
+class _SearchedPlaceDot extends StatelessWidget {
+  const _SearchedPlaceDot();
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: UrbMotion.of(context, const Duration(milliseconds: 500)),
+      curve: Curves.elasticOut,
+      builder: (context, value, child) =>
+          Transform.scale(scale: value, child: child),
+      child: Container(
+        decoration: BoxDecoration(
+          color: UrbColors.violet.withValues(alpha: 0.25),
+          shape: BoxShape.circle,
+        ),
+        alignment: Alignment.center,
+        child: Container(
+          width: 16,
+          height: 16,
+          decoration: BoxDecoration(
+            color: UrbColors.violet,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 3),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Barra de busca de endereço ou bairro, no rodapé do mapa.
+class _MapSearchBar extends StatelessWidget {
+  const _MapSearchBar({
+    required this.controller,
+    required this.focusNode,
+    required this.isSearching,
+    required this.showEmpty,
+    required this.results,
+    required this.onChanged,
+    required this.onClear,
+    required this.onSelect,
+  });
+
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final bool isSearching;
+  final bool showEmpty;
+  final List<_PlaceResult> results;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClear;
+  final ValueChanged<_PlaceResult> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AnimatedSize(
+          duration: UrbMotion.of(context, UrbMotion.fast),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.bottomCenter,
+          child: results.isEmpty && !showEmpty
+              ? const SizedBox(width: double.infinity)
+              : Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  constraints: const BoxConstraints(maxHeight: 260),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x332A1B6B),
+                        blurRadius: 24,
+                        offset: Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: showEmpty
+                      ? Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Text(
+                            'Nenhum lugar encontrado. Tente com o nome da rua ou do bairro.',
+                            textAlign: TextAlign.center,
+                            style: UrbText.body(
+                              size: 13,
+                              color: UrbColors.textMuted,
+                              height: 1.4,
+                            ),
+                          ),
+                        )
+                      : ListView.separated(
+                          shrinkWrap: true,
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          itemCount: results.length,
+                          separatorBuilder: (_, _) => const Divider(
+                            height: 1,
+                            indent: 48,
+                            color: UrbColors.border,
+                          ),
+                          itemBuilder: (context, index) => InkWell(
+                            onTap: () => onSelect(results[index]),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 11,
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.location_on_outlined,
+                                    color: UrbColors.violet,
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      results[index].label,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: UrbText.body(
+                                        size: 13,
+                                        color: UrbColors.ink,
+                                        height: 1.35,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                ),
+        ),
+        Material(
+          color: Colors.white,
+          elevation: 8,
+          shadowColor: const Color(0x552A1B6B),
+          borderRadius: BorderRadius.circular(22),
+          child: TextField(
+            controller: controller,
+            focusNode: focusNode,
+            onChanged: onChanged,
+            textInputAction: TextInputAction.search,
+            textAlign: TextAlign.center,
+            style: UrbText.body(size: 15, color: UrbColors.ink, height: 1.3),
+            decoration: InputDecoration(
+              hintText: 'Buscar endereço ou bairro',
+              hintStyle: UrbText.body(
+                size: 15,
+                color: UrbColors.textMuted,
+                height: 1.3,
+              ),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(vertical: 18),
+              prefixIcon: const Icon(
+                Icons.search_rounded,
+                color: UrbColors.violetDeep,
+              ),
+              suffixIcon: isSearching
+                  ? const Padding(
+                      padding: EdgeInsets.all(15),
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  : controller.text.isEmpty
+                  ? const SizedBox(width: 48)
+                  : IconButton(
+                      tooltip: 'Limpar busca',
+                      onPressed: onClear,
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: UrbColors.textMuted,
+                      ),
+                    ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Botões "+" e "−" empilhados, num cartão branco.
+class _ZoomButtons extends StatelessWidget {
+  const _ZoomButtons({required this.onZoomIn, required this.onZoomOut});
+
+  final VoidCallback onZoomIn;
+  final VoidCallback onZoomOut;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget button(
+      IconData icon,
+      String tooltip,
+      VoidCallback onTap,
+      BorderRadius radius,
+    ) => Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: radius,
+        child: SizedBox(
+          width: 50,
+          height: 50,
+          child: Icon(icon, color: UrbColors.violetDeep),
+        ),
+      ),
+    );
+
+    return Material(
+      color: Colors.white,
+      elevation: 6,
+      shadowColor: const Color(0x552A1B6B),
+      borderRadius: BorderRadius.circular(18),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          button(
+            Icons.add_rounded,
+            'Aproximar',
+            onZoomIn,
+            const BorderRadius.vertical(top: Radius.circular(18)),
+          ),
+          Container(width: 30, height: 1, color: UrbColors.border),
+          button(
+            Icons.remove_rounded,
+            'Afastar',
+            onZoomOut,
+            const BorderRadius.vertical(bottom: Radius.circular(18)),
+          ),
+        ],
       ),
     );
   }
