@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../services/auth_service.dart';
-import '../../theme/urbapp_design.dart';
 import '../../utils/error_formatter.dart';
 import '../../widgets/fade_slide_in.dart';
 import '../../widgets/urb_dialog.dart';
