@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:http/http.dart' as http;
@@ -55,6 +57,9 @@ class _CityMapScreenState extends State<CityMapScreen> {
   bool _isSearching = false;
   bool _searchDone = false;
   LatLng? _searchedPoint;
+
+  /// Escala da pinça do touchpad no começo do gesto (para calcular o zoom).
+  double _lastPanZoomScale = 1;
 
   int? _selectedCityId;
   int? _selectedCategoryId;
@@ -361,6 +366,25 @@ class _CityMapScreenState extends State<CityMapScreen> {
     });
   }
 
+  /// Pinça no touchpad do notebook e Ctrl + rodinha no navegador.
+  /// O mapa já trata a pinça com os dedos na tela; estes eventos chegam
+  /// de outro jeito e precisam ser convertidos em zoom aqui.
+  void _onPointerSignal(PointerSignalEvent event) {
+    if (event is PointerScaleEvent && event.scale > 0) {
+      _zoomBy(math.log(event.scale) / math.ln2);
+    }
+  }
+
+  void _onPanZoomStart(PointerPanZoomStartEvent event) => _lastPanZoomScale = 1;
+
+  void _onPanZoomUpdate(PointerPanZoomUpdateEvent event) {
+    if (event.scale <= 0 || _lastPanZoomScale <= 0) return;
+    final factor = event.scale / _lastPanZoomScale;
+    _lastPanZoomScale = event.scale;
+    if ((factor - 1).abs() < 0.001) return;
+    _zoomBy(math.log(factor) / math.ln2);
+  }
+
   void _zoomBy(double delta) {
     try {
       final camera = _mapController.camera;
@@ -389,56 +413,65 @@ class _CityMapScreenState extends State<CityMapScreen> {
       body: Stack(
         children: [
           Positioned.fill(
-            child: FlutterMap(
-              mapController: _mapController,
-              options: MapOptions(
-                initialCenter: fallbackCenter,
-                initialZoom: 12,
-                minZoom: 4,
-                maxZoom: 19,
-                // Pinça, dois toques e rodinha do mouse dão zoom.
-                // A rotação fica desligada para o mapa não girar sem querer na pinça.
-                interactionOptions: const InteractionOptions(
-                  flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+            child: Listener(
+              onPointerSignal: _onPointerSignal,
+              onPointerPanZoomStart: _onPanZoomStart,
+              onPointerPanZoomUpdate: _onPanZoomUpdate,
+              child: FlutterMap(
+                mapController: _mapController,
+                options: MapOptions(
+                  initialCenter: fallbackCenter,
+                  initialZoom: 12,
+                  minZoom: 4,
+                  maxZoom: 19,
+                  // Pinça, dois toques e rodinha do mouse dão zoom.
+                  // A rotação fica desligada para o mapa não girar sem querer na pinça.
+                  interactionOptions: const InteractionOptions(
+                    flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+                  ),
                 ),
-              ),
-              children: [
-                TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'br.com.urbapp.app',
-                ),
-                if (_searchedPoint != null)
+                children: [
+                  TileLayer(
+                    urlTemplate:
+                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    userAgentPackageName: 'br.com.urbapp.app',
+                  ),
+                  if (_searchedPoint != null)
+                    MarkerLayer(
+                      markers: [
+                        Marker(
+                          point: _searchedPoint!,
+                          width: 34,
+                          height: 34,
+                          child: const _SearchedPlaceDot(),
+                        ),
+                      ],
+                    ),
                   MarkerLayer(
                     markers: [
-                      Marker(
-                        point: _searchedPoint!,
-                        width: 34,
-                        height: 34,
-                        child: const _SearchedPlaceDot(),
-                      ),
+                      for (var i = 0; i < _posts.length; i++)
+                        Marker(
+                          point: LatLng(
+                            _posts[i].latitude,
+                            _posts[i].longitude,
+                          ),
+                          width: 52,
+                          height: 58,
+                          alignment: Alignment.topCenter,
+                          child: _MapPin(
+                            // A key faz os pinos "caírem" de novo ao trocar de filtro.
+                            key: ValueKey(
+                              'pin-$_selectedCityId-$_selectedCategoryId-${_posts[i].id}',
+                            ),
+                            post: _posts[i],
+                            delay: Duration(milliseconds: 30 * (i % 12)),
+                            onTap: () => _showPostPreview(_posts[i]),
+                          ),
+                        ),
                     ],
                   ),
-                MarkerLayer(
-                  markers: [
-                    for (var i = 0; i < _posts.length; i++)
-                      Marker(
-                        point: LatLng(_posts[i].latitude, _posts[i].longitude),
-                        width: 52,
-                        height: 58,
-                        alignment: Alignment.topCenter,
-                        child: _MapPin(
-                          // A key faz os pinos "caírem" de novo ao trocar de filtro.
-                          key: ValueKey(
-                            'pin-$_selectedCityId-$_selectedCategoryId-${_posts[i].id}',
-                          ),
-                          post: _posts[i],
-                          delay: Duration(milliseconds: 30 * (i % 12)),
-                          onTap: () => _showPostPreview(_posts[i]),
-                        ),
-                      ),
-                  ],
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           Positioned(
