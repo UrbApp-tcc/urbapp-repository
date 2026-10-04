@@ -6,6 +6,8 @@ enum AppNotificationType {
   commentSupport,
   postComment,
   commentReply,
+  occurrenceEvent,
+  levelUp,
 }
 
 class AppNotificationItem {
@@ -30,7 +32,7 @@ class AppNotificationItem {
 
 class NotificationsService {
   NotificationsService({SupabaseClient? supabase})
-      : _supabase = supabase ?? Supabase.instance.client;
+    : _supabase = supabase ?? Supabase.instance.client;
 
   final SupabaseClient _supabase;
 
@@ -40,9 +42,9 @@ class NotificationsService {
     try {
       final initialResults = await Future.wait<dynamic>([
         _supabase
-            .from('posts')
+            .from('post_feed_rows')
             .select('id, title')
-            .eq('user_id', userId)
+            .eq('author_id', userId)
             .order('created_at', ascending: false)
             .limit(100),
         _supabase
@@ -70,6 +72,7 @@ class NotificationsService {
       final ownCommentIds = ownComments.keys.toList();
 
       final activityResults = await Future.wait<dynamic>([
+        _fetchStoredNotifications(userId),
         _fetchFollowerRows(userId),
         _fetchPostSupportRows(userId, ownPostIds),
         _fetchCommentLikeRows(userId, ownCommentIds),
@@ -84,11 +87,12 @@ class NotificationsService {
         ),
       ]);
 
-      final followerRows = activityResults[0] as List<_ActivityRow>;
-      final postSupportRows = activityResults[1] as List<_ActivityRow>;
-      final commentLikeRows = activityResults[2] as List<_ActivityRow>;
-      final postCommentRows = activityResults[3] as List<_CommentActivityRow>;
-      final commentReplyRows = activityResults[4] as List<_CommentActivityRow>;
+      final storedRows = activityResults[0] as List<_StoredNotificationRow>;
+      final followerRows = activityResults[1] as List<_ActivityRow>;
+      final postSupportRows = activityResults[2] as List<_ActivityRow>;
+      final commentLikeRows = activityResults[3] as List<_ActivityRow>;
+      final postCommentRows = activityResults[4] as List<_CommentActivityRow>;
+      final commentReplyRows = activityResults[5] as List<_CommentActivityRow>;
 
       final actorIds = <String>{
         ...followerRows.map((row) => row.actorId),
@@ -101,6 +105,18 @@ class NotificationsService {
       final profilesById = await _fetchProfiles(actorIds);
 
       final items = <AppNotificationItem>[
+        ...storedRows.map(
+          (row) => AppNotificationItem(
+            id: 'stored-${row.id}',
+            type: row.type == 'level_up'
+                ? AppNotificationType.levelUp
+                : AppNotificationType.occurrenceEvent,
+            createdAt: row.createdAt,
+            actorDisplayName: 'UrbApp',
+            title: row.title,
+            description: row.body,
+          ),
+        ),
         ...followerRows.map(
           (row) => AppNotificationItem(
             id: 'follower-${row.actorId}-${row.createdAt.toIso8601String()}',
@@ -109,7 +125,8 @@ class NotificationsService {
             actorDisplayName: _profileLabel(profilesById[row.actorId]),
             actorAvatarUrl: profilesById[row.actorId]?.avatarUrl,
             title: 'Novo seguidor',
-            description: '${_profileLabel(profilesById[row.actorId])} começou a seguir você.',
+            description:
+                '${_profileLabel(profilesById[row.actorId])} começou a seguir você.',
           ),
         ),
         ...postSupportRows.map(
@@ -124,22 +141,20 @@ class NotificationsService {
                 '${_profileLabel(profilesById[row.actorId])} apoiou seu post "${ownPosts[row.targetId] ?? 'seu post'}".',
           ),
         ),
-        ...commentLikeRows.map(
-          (row) {
-            final comment = ownComments[row.targetId];
-            final preview = _truncate(comment?.body ?? 'seu comentário');
-            return AppNotificationItem(
-              id: 'comment-support-${row.targetId}-${row.actorId}-${row.createdAt.toIso8601String()}',
-              type: AppNotificationType.commentSupport,
-              createdAt: row.createdAt,
-              actorDisplayName: _profileLabel(profilesById[row.actorId]),
-              actorAvatarUrl: profilesById[row.actorId]?.avatarUrl,
-              title: 'Curtida em comentário',
-              description:
-                  '${_profileLabel(profilesById[row.actorId])} curtiu seu comentário "$preview".',
-            );
-          },
-        ),
+        ...commentLikeRows.map((row) {
+          final comment = ownComments[row.targetId];
+          final preview = _truncate(comment?.body ?? 'seu comentário');
+          return AppNotificationItem(
+            id: 'comment-support-${row.targetId}-${row.actorId}-${row.createdAt.toIso8601String()}',
+            type: AppNotificationType.commentSupport,
+            createdAt: row.createdAt,
+            actorDisplayName: _profileLabel(profilesById[row.actorId]),
+            actorAvatarUrl: profilesById[row.actorId]?.avatarUrl,
+            title: 'Curtida em comentário',
+            description:
+                '${_profileLabel(profilesById[row.actorId])} curtiu seu comentário "$preview".',
+          );
+        }),
         ...postCommentRows.map(
           (row) => AppNotificationItem(
             id: 'post-comment-${row.id}-${row.actorId}',
@@ -147,27 +162,27 @@ class NotificationsService {
             createdAt: row.createdAt,
             actorDisplayName: _profileLabel(profilesById[row.actorId]),
             actorAvatarUrl: profilesById[row.actorId]?.avatarUrl,
-            title: row.isReply ? 'Nova resposta no seu post' : 'Novo comentário no seu post',
+            title: row.isReply
+                ? 'Nova resposta no seu post'
+                : 'Novo comentário no seu post',
             description:
                 '${_profileLabel(profilesById[row.actorId])} ${row.isReply ? 'respondeu em um comentário' : 'comentou'} no seu post "${ownPosts[row.postId] ?? 'seu post'}".',
           ),
         ),
-        ...commentReplyRows.map(
-          (row) {
-            final comment = ownComments[row.parentCommentId];
-            final preview = _truncate(comment?.body ?? 'seu comentário');
-            return AppNotificationItem(
-              id: 'comment-reply-${row.id}-${row.actorId}',
-              type: AppNotificationType.commentReply,
-              createdAt: row.createdAt,
-              actorDisplayName: _profileLabel(profilesById[row.actorId]),
-              actorAvatarUrl: profilesById[row.actorId]?.avatarUrl,
-              title: 'Nova resposta no seu comentário',
-              description:
-                  '${_profileLabel(profilesById[row.actorId])} respondeu seu comentário "$preview".',
-            );
-          },
-        ),
+        ...commentReplyRows.map((row) {
+          final comment = ownComments[row.parentCommentId];
+          final preview = _truncate(comment?.body ?? 'seu comentário');
+          return AppNotificationItem(
+            id: 'comment-reply-${row.id}-${row.actorId}',
+            type: AppNotificationType.commentReply,
+            createdAt: row.createdAt,
+            actorDisplayName: _profileLabel(profilesById[row.actorId]),
+            actorAvatarUrl: profilesById[row.actorId]?.avatarUrl,
+            title: 'Nova resposta no seu comentário',
+            description:
+                '${_profileLabel(profilesById[row.actorId])} respondeu seu comentário "$preview".',
+          );
+        }),
       ]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
       return items;
@@ -176,6 +191,30 @@ class NotificationsService {
     } catch (error) {
       throw Exception('Erro inesperado ao carregar notificações: $error');
     }
+  }
+
+  Future<List<_StoredNotificationRow>> _fetchStoredNotifications(
+    String userId,
+  ) async {
+    final response = await _supabase
+        .from('notifications')
+        .select('id, type, title, body, created_at')
+        .eq('user_id', userId)
+        .inFilter('type', ['occurrence_event', 'level_up'])
+        .order('created_at', ascending: false)
+        .limit(50);
+    return (response as List<dynamic>)
+        .map((item) => item as Map<String, dynamic>)
+        .map(
+          (item) => _StoredNotificationRow(
+            id: (item['id'] as num).toInt(),
+            type: item['type'] as String,
+            title: item['title'] as String,
+            body: item['body'] as String,
+            createdAt: DateTime.parse(item['created_at'] as String),
+          ),
+        )
+        .toList();
   }
 
   Future<List<_ActivityRow>> _fetchFollowerRows(String userId) async {
@@ -197,7 +236,10 @@ class NotificationsService {
         .toList();
   }
 
-  Future<List<_ActivityRow>> _fetchPostSupportRows(String userId, List<int> ownPostIds) async {
+  Future<List<_ActivityRow>> _fetchPostSupportRows(
+    String userId,
+    List<int> ownPostIds,
+  ) async {
     if (ownPostIds.isEmpty) return const <_ActivityRow>[];
 
     final response = await _supabase
@@ -219,7 +261,10 @@ class NotificationsService {
         .toList();
   }
 
-  Future<List<_ActivityRow>> _fetchCommentLikeRows(String userId, List<int> ownCommentIds) async {
+  Future<List<_ActivityRow>> _fetchCommentLikeRows(
+    String userId,
+    List<int> ownCommentIds,
+  ) async {
     if (ownCommentIds.isEmpty) return const <_ActivityRow>[];
 
     final response = await _supabase
@@ -266,7 +311,11 @@ class NotificationsService {
             createdAt: DateTime.parse(item['created_at'] as String),
           ),
         )
-        .where((row) => row.parentCommentId == null || !ownCommentIds.contains(row.parentCommentId))
+        .where(
+          (row) =>
+              row.parentCommentId == null ||
+              !ownCommentIds.contains(row.parentCommentId),
+        )
         .toList();
   }
 
@@ -330,6 +379,22 @@ class NotificationsService {
     if (normalized.length <= maxLength) return normalized;
     return '${normalized.substring(0, maxLength - 1)}…';
   }
+}
+
+class _StoredNotificationRow {
+  const _StoredNotificationRow({
+    required this.id,
+    required this.type,
+    required this.title,
+    required this.body,
+    required this.createdAt,
+  });
+
+  final int id;
+  final String type;
+  final String title;
+  final String body;
+  final DateTime createdAt;
 }
 
 class _ProfileRef {

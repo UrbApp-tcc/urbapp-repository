@@ -21,6 +21,16 @@ const Set<String> finalStatuses = {'completed', 'closed', 'expired'};
 
 bool isFinalStatus(String status) => finalStatuses.contains(status);
 
+const Set<String> resolutionValidationStartStatuses = {
+  'open',
+  'in_analysis',
+  'in_progress',
+  'reopened',
+};
+
+bool canStartResolutionValidation(String status) =>
+    resolutionValidationStartStatuses.contains(status);
+
 // Returns true when the acting user is the author of the post (self-support).
 bool isSelfSupport(String currentUserId, String postAuthorId) =>
     currentUserId == postAuthorId;

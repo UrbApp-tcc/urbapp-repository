@@ -230,6 +230,25 @@ void main() {
     });
   });
 
+  group('canStartResolutionValidation', () {
+    test('permite estados operacionais e reaberto', () {
+      for (final status in ['open', 'in_analysis', 'in_progress', 'reopened']) {
+        expect(canStartResolutionValidation(status), isTrue, reason: status);
+      }
+    });
+
+    test('bloqueia validacao pendente e estados finais', () {
+      for (final status in [
+        'awaiting_validation',
+        'completed',
+        'closed',
+        'expired',
+      ]) {
+        expect(canStartResolutionValidation(status), isFalse, reason: status);
+      }
+    });
+  });
+
   group('isSelfSupport', () {
     test('usuário não pode apoiar o próprio post', () {
       expect(isSelfSupport('user-abc', 'user-abc'), isTrue);

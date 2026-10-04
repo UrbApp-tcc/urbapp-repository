@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../services/feed_service.dart';
+import 'city_indicators_screen.dart';
 import 'city_ranking_screen.dart';
 import 'post_detail_screen.dart';
 
@@ -12,11 +13,13 @@ class SearchScreen extends StatefulWidget {
     required this.posts,
     required this.isLoading,
     required this.currentUserId,
+    required this.selectedCityId,
   });
 
   final List<FeedPost> posts;
   final bool isLoading;
   final String? currentUserId;
+  final int? selectedCityId;
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -32,6 +35,8 @@ class _SearchScreenState extends State<SearchScreen> {
     'open',
     'in_analysis',
     'in_progress',
+    'awaiting_validation',
+    'reopened',
     'completed',
     'closed',
     'expired',
@@ -45,16 +50,18 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   static String _haystack(FeedPost post) {
-    return _normalizeSearchText([
-      post.title,
-      post.description,
-      post.categoryName,
-      post.cityName,
-      post.street ?? '',
-      post.neighborhood ?? '',
-      post.authorDisplayName,
-      post.agencyName ?? '',
-    ].join(' '));
+    return _normalizeSearchText(
+      [
+        post.title,
+        post.description,
+        post.categoryName,
+        post.cityName,
+        post.street ?? '',
+        post.neighborhood ?? '',
+        post.authorDisplayName,
+        post.agencyName ?? '',
+      ].join(' '),
+    );
   }
 
   static String _normalizeSearchText(String value) {
@@ -122,7 +129,11 @@ class _SearchScreenState extends State<SearchScreen> {
       case 'in_progress':
         return 'Em andamento';
       case 'completed':
-        return 'Concluído';
+        return 'Resolvido';
+      case 'awaiting_validation':
+        return 'Aguardando validação';
+      case 'reopened':
+        return 'Reaberto';
       case 'closed':
         return 'Encerrado';
       case 'expired':
@@ -173,6 +184,13 @@ class _SearchScreenState extends State<SearchScreen> {
           onOpen: () => CityRankingScreen.open(
             context,
             currentUserId: widget.currentUserId,
+          ),
+        ),
+        const SizedBox(height: 14),
+        _CityIndicatorsPromoCard(
+          onOpen: () => CityIndicatorsScreen.open(
+            context,
+            initialCityId: widget.selectedCityId,
           ),
         ),
         const SizedBox(height: 34),
@@ -237,6 +255,66 @@ class _SearchScreenState extends State<SearchScreen> {
           ),
         ],
       ],
+    );
+  }
+}
+
+class _CityIndicatorsPromoCard extends StatelessWidget {
+  const _CityIndicatorsPromoCard({required this.onOpen});
+
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onOpen,
+        borderRadius: BorderRadius.circular(22),
+        child: Ink(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF2F6F8),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: const Color(0xFFDCE4E8)),
+          ),
+          child: const Row(
+            children: [
+              CircleAvatar(
+                radius: 24,
+                backgroundColor: Color(0xFFDEEAF0),
+                child: Icon(Icons.insights_rounded, color: Color(0xFF274C5E)),
+              ),
+              SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Indicadores públicos da cidade',
+                      style: TextStyle(
+                        color: Color(0xFF17222D),
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Resoluções, categorias, regiões e evolução mensal.',
+                      style: TextStyle(
+                        color: Color(0xFF667085),
+                        fontSize: 12,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, color: Color(0xFF667085)),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

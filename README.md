@@ -1,83 +1,51 @@
 # UrbApp
 
-Trabalho de Conclusão de Curso - UrbApp
+Plataforma comunitária para registrar, acompanhar e validar problemas urbanos. O projeto combina um aplicativo Flutter com Supabase/PostgreSQL e separa explicitamente:
 
-## 📋 Descrição
+- ocorrências urbanas únicas de relatos individuais;
+- execução municipal de acompanhamento parlamentar;
+- conclusão informada de resolução confirmada pela comunidade;
+- dados calculados de manifestações oficiais.
 
-UrbApp é um projeto desenvolvido como Trabalho de Conclusão de Curso.
+## Estrutura
 
-## 🚀 Começando
-
-### Pré-requisitos
-- [Descrever pré-requisitos necessários]
-
-### Instalação
-
-1. Clone o repositório:
-```bash
-git clone https://github.com/UrbApp-tcc/Trabalho-de-Conclus-o-de-Curso.git
-cd Trabalho-de-Conclus-o-de-Curso
+```text
+flutter/                 aplicativo Flutter (web, Android e iOS)
+supabase/migrations/     schema, regras de negócio, RLS e RPCs
+supabase/tests/          testes pgTAP das regras críticas
+docs/                    arquitetura e rastreabilidade funcional
 ```
 
-2. Instale as dependências:
-```bash
-[comando de instalação]
+## Executar no PowerShell
+
+Pré-requisitos: Flutter, Node.js, Docker Desktop e Supabase CLI.
+
+```powershell
+cd C:\Users\gabri\Desktop\urbapp-repository
+npx supabase start
+npx supabase db reset
+
+cd flutter
+flutter pub get
+flutter run -d web-server --web-port 7357 --dart-define-from-file=dart_defines/dev.json
 ```
 
-3. Configure as variáveis de ambiente:
-```bash
-cp .env.example .env
+Abra `http://127.0.0.1:7357/`. O arquivo `flutter/dart_defines/dev.json` é local e não deve ser versionado. Use o projeto remoto para desenvolvimento integrado ou preencha um arquivo próprio com os valores retornados por `npx supabase status -o env` para testar contra o Supabase local.
+
+## Validar
+
+```powershell
+cd C:\Users\gabri\Desktop\urbapp-repository
+npx supabase db reset
+npx supabase test db
+npx supabase db lint --local --schema public --level warning
+
+cd flutter
+dart analyze
+flutter test
+flutter build web --dart-define-from-file=dart_defines/dev.json
 ```
 
-## 📊 Status do Projeto
+## Regras de negócio
 
-- ✅ **Repositório GitHub**: Configurado e funcional
-- ✅ **Estrutura inicial**: Pastas `src/`, `docs/`, `tests/` criadas
-- ✅ **Documentação**: README.md e guia de commits implementados
-- ✅ **Controle de versão**: Git configurado com SSH
-- 🔄 **Próximo passo**: Migração para organização "UrbApp-tcc" (AGUARDANDO TRANSFERÊNCIA)
-
-## 👥 Organização
-
-Este projeto está sendo migrado para a organização **UrbApp-tcc** para facilitar a colaboração em equipe.
-
-**URL futura**: `https://github.com/UrbApp-tcc/Trabalho-de-Conclus-o-de-Curso`
-
-## 🏗️ Próximos Passos
-
-1. **Criar organização**: "UrbApp-tcc" no GitHub
-2. **Transferir repositório**: Para a organização
-3. **Desenvolver funcionalidades**: Implementar o código do UrbApp
-4. **Documentação**: Completar docs/ com arquitetura e requisitos
-5. **Testes**: Implementar suítes de teste automatizados
-
-## 📁 Estrutura do Projeto
-
-```
-├── src/               # Código-fonte principal
-├── tests/             # Testes automatizados
-├── docs/              # Documentação
-├── .gitignore         # Arquivos ignorados pelo Git
-└── README.md          # Este arquivo
-```
-
-## 📝 Padrão de Commits
-
-Este projeto segue um padrão simples de commits:
-
-- **Adição**: Novos arquivos ou funcionalidades adicionados
-- **Modificação**: Alterações em arquivos existentes
-- **Correção**: Correção de bugs
-
-Exemplos:
-- `git commit -m "Adição: Novo módulo de autenticação"`
-- `git commit -m "Modificação: Atualizar interface do usuário"`
-- `git commit -m "Correção: Corrigir bug de login"`
-
-## 👥 Autor
-
-[Seu nome]
-
-## 📄 Licença
-
-[Especificar licença se aplicável]
+A matriz de aderência e as decisões técnicas estão em [docs/UrbApp_Aderencia_Regras_de_Negocio.md](docs/UrbApp_Aderencia_Regras_de_Negocio.md).

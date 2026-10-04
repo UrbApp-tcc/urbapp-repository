@@ -5,10 +5,7 @@ import '../theme/app_theme.dart';
 import '../utils/error_formatter.dart';
 
 class AgencyProfilesScreen extends StatefulWidget {
-  const AgencyProfilesScreen({
-    super.key,
-    required this.currentUserId,
-  });
+  const AgencyProfilesScreen({super.key, required this.currentUserId});
 
   final String currentUserId;
 
@@ -74,7 +71,9 @@ class _AgencyProfilesScreenState extends State<AgencyProfilesScreen> {
     if (_cities.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Cadastre cidades antes de enviar uma solicitação institucional.'),
+          content: Text(
+            'Cadastre cidades antes de enviar uma solicitação institucional.',
+          ),
           backgroundColor: AppColors.error,
         ),
       );
@@ -88,10 +87,8 @@ class _AgencyProfilesScreenState extends State<AgencyProfilesScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      builder: (context) => _RequestAgencySheet(
-        cities: _cities,
-        agencyService: _agencyService,
-      ),
+      builder: (context) =>
+          _RequestAgencySheet(cities: _cities, agencyService: _agencyService),
     );
 
     if (created == true) {
@@ -165,7 +162,9 @@ class _AgencyProfilesScreenState extends State<AgencyProfilesScreen> {
                   ElevatedButton.icon(
                     onPressed: _openRequestSheet,
                     icon: const Icon(Icons.account_balance_outlined),
-                    label: const Text('Solicitar perfil de prefeitura/secretaria'),
+                    label: const Text(
+                      'Solicitar perfil de prefeitura/secretaria',
+                    ),
                   ),
                   const SizedBox(height: 24),
                   const Text(
@@ -178,7 +177,9 @@ class _AgencyProfilesScreenState extends State<AgencyProfilesScreen> {
                   ),
                   const SizedBox(height: 12),
                   if (_requests.isEmpty)
-                    _emptyCard('Você ainda não enviou nenhuma solicitação institucional.')
+                    _emptyCard(
+                      'Você ainda não enviou nenhuma solicitação institucional.',
+                    )
                   else
                     ..._requests.map(
                       (request) => Padding(
@@ -197,7 +198,9 @@ class _AgencyProfilesScreenState extends State<AgencyProfilesScreen> {
                   ),
                   const SizedBox(height: 12),
                   if (_approvedAgencies.isEmpty)
-                    _emptyCard('Você ainda não está vinculado a nenhum perfil institucional aprovado.')
+                    _emptyCard(
+                      'Você ainda não está vinculado a nenhum perfil institucional aprovado.',
+                    )
                   else
                     ..._approvedAgencies.map(
                       (agency) => Padding(
@@ -221,10 +224,7 @@ class _AgencyProfilesScreenState extends State<AgencyProfilesScreen> {
       ),
       child: Text(
         message,
-        style: const TextStyle(
-          color: AppColors.textSecondary,
-          fontSize: 14,
-        ),
+        style: const TextStyle(color: AppColors.textSecondary, fontSize: 14),
       ),
     );
   }
@@ -238,9 +238,21 @@ class _AgencyRequestCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final statusPalette = switch (request.status) {
-      'approved' => (bg: const Color(0xFFE8F8F0), fg: AppColors.resolved, label: 'Aprovado'),
-      'rejected' => (bg: const Color(0xFFFDECEC), fg: AppColors.error, label: 'Rejeitado'),
-      _ => (bg: const Color(0xFFFFF4E5), fg: AppColors.pending, label: 'Em análise'),
+      'approved' => (
+        bg: const Color(0xFFE8F8F0),
+        fg: AppColors.resolved,
+        label: 'Aprovado',
+      ),
+      'rejected' => (
+        bg: const Color(0xFFFDECEC),
+        fg: AppColors.error,
+        label: 'Rejeitado',
+      ),
+      _ => (
+        bg: const Color(0xFFFFF4E5),
+        fg: AppColors.pending,
+        label: 'Em análise',
+      ),
     };
 
     return Container(
@@ -266,7 +278,10 @@ class _AgencyRequestCard extends StatelessWidget {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: statusPalette.bg,
                   borderRadius: BorderRadius.circular(999),
@@ -284,7 +299,7 @@ class _AgencyRequestCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            '${request.agencyType} · ${request.cityName}',
+            '${request.requestKind == 'administration' ? 'Gestão municipal' : request.agencyType} · ${request.cityName}',
             style: const TextStyle(
               color: AppColors.textSecondary,
               fontSize: 13,
@@ -363,10 +378,7 @@ class _ApprovedAgencyCard extends StatelessWidget {
           const SizedBox(height: 10),
           Text(
             agency.contactEmail,
-            style: const TextStyle(
-              color: AppColors.textHint,
-              fontSize: 12,
-            ),
+            style: const TextStyle(color: AppColors.textHint, fontSize: 12),
           ),
           const SizedBox(height: 10),
           Text(
@@ -406,6 +418,7 @@ class _RequestAgencySheetState extends State<_RequestAgencySheet> {
   final _proofLinksController = TextEditingController();
   bool _isSaving = false;
   int? _selectedCityId;
+  String _requestKind = 'agency';
 
   @override
   void initState() {
@@ -434,6 +447,7 @@ class _RequestAgencySheetState extends State<_RequestAgencySheet> {
         cityId: _selectedCityId!,
         name: _nameController.text,
         type: _typeController.text,
+        requestKind: _requestKind,
         contactEmail: _emailController.text,
         requesterRole: _roleController.text,
         proofSummary: _proofSummaryController.text,
@@ -494,6 +508,26 @@ class _RequestAgencySheetState extends State<_RequestAgencySheet> {
                 ),
               ),
               const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                initialValue: _requestKind,
+                items: const [
+                  DropdownMenuItem(
+                    value: 'agency',
+                    child: Text('Secretaria ou órgão municipal'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'administration',
+                    child: Text('Prefeitura / gestão municipal'),
+                  ),
+                ],
+                onChanged: (value) {
+                  if (value != null) setState(() => _requestKind = value);
+                },
+                decoration: const InputDecoration(
+                  labelText: 'Perfil solicitado',
+                ),
+              ),
+              const SizedBox(height: 12),
               DropdownButtonFormField<int>(
                 initialValue: _selectedCityId,
                 items: widget.cities
@@ -510,8 +544,10 @@ class _RequestAgencySheetState extends State<_RequestAgencySheet> {
               const SizedBox(height: 12),
               TextFormField(
                 controller: _nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Nome da secretaria/órgão',
+                decoration: InputDecoration(
+                  labelText: _requestKind == 'administration'
+                      ? 'Nome da gestão/prefeitura'
+                      : 'Nome da secretaria/órgão',
                 ),
                 validator: (value) => value == null || value.trim().isEmpty
                     ? 'Informe o nome institucional.'
@@ -520,9 +556,11 @@ class _RequestAgencySheetState extends State<_RequestAgencySheet> {
               const SizedBox(height: 12),
               TextFormField(
                 controller: _typeController,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Tipo',
-                  hintText: 'Secretaria, autarquia, empresa pública...',
+                  hintText: _requestKind == 'administration'
+                      ? 'Ex.: Prefeitura Municipal'
+                      : 'Secretaria, autarquia, empresa pública...',
                 ),
                 validator: (value) => value == null || value.trim().isEmpty
                     ? 'Informe o tipo do órgão.'
@@ -554,7 +592,8 @@ class _RequestAgencySheetState extends State<_RequestAgencySheet> {
                 maxLines: 5,
                 decoration: const InputDecoration(
                   labelText: 'Provas e contexto',
-                  hintText: 'Descreva como você comprova o vínculo institucional.',
+                  hintText:
+                      'Descreva como você comprova o vínculo institucional.',
                 ),
                 validator: (value) => value == null || value.trim().isEmpty
                     ? 'Descreva as provas para análise.'
@@ -567,7 +606,8 @@ class _RequestAgencySheetState extends State<_RequestAgencySheet> {
                 maxLines: 4,
                 decoration: const InputDecoration(
                   labelText: 'Links de apoio',
-                  hintText: 'Links de portal oficial, LinkedIn, nomeação, site da prefeitura...',
+                  hintText:
+                      'Links de portal oficial, LinkedIn, nomeação, site da prefeitura...',
                 ),
               ),
               const SizedBox(height: 18),

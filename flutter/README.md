@@ -1,17 +1,26 @@
-# meu_app
+# UrbApp Flutter
 
-A new Flutter project.
+Aplicativo cliente do UrbApp. As regras críticas ficam no Supabase; o Flutter apresenta os fluxos, coleta evidências e usa as RPCs autorizadas.
 
-## Getting Started
+## Configuração
 
-This project is a starting point for a Flutter application.
+Crie `dart_defines/dev.json` a partir de `dart_defines/dev.json.example` e informe `SUPABASE_URL` e `SUPABASE_ANON_KEY`. Esse arquivo é local e não deve ser enviado ao Git.
 
-A few resources to get you started if this is your first Flutter project:
+## PowerShell
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+```powershell
+cd C:\Users\gabri\Desktop\urbapp-repository\flutter
+flutter pub get
+flutter run -d web-server --web-port 7357 --dart-define-from-file=dart_defines/dev.json
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Durante a execução, use `r` para hot reload, `R` para hot restart e `q` para encerrar.
+
+## Qualidade
+
+```powershell
+dart format --output=none --set-exit-if-changed lib test
+dart analyze
+flutter test
+flutter build web --dart-define-from-file=dart_defines/dev.json
+```

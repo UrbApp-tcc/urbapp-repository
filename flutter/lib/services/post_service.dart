@@ -12,6 +12,98 @@ class LookupOption {
   final String? stateCode;
 }
 
+class PotentialDuplicateOccurrence {
+  const PotentialDuplicateOccurrence({
+    required this.occurrenceId,
+    required this.title,
+    required this.summary,
+    required this.status,
+    required this.distanceKm,
+    required this.textMatch,
+    required this.reportsCount,
+  });
+
+  final int occurrenceId;
+  final String title;
+  final String summary;
+  final String status;
+  final double distanceKm;
+  final bool textMatch;
+  final int reportsCount;
+}
+
+class ResolutionCycleInfo {
+  const ResolutionCycleInfo({
+    required this.id,
+    required this.occurrenceId,
+    required this.initiatedBy,
+    required this.status,
+    required this.openedAt,
+    required this.expiresAt,
+    required this.confirmations,
+    required this.rejections,
+    required this.confirmationsRequired,
+    required this.rejectionsRequired,
+  });
+
+  final int id;
+  final int occurrenceId;
+  final String initiatedBy;
+  final String status;
+  final DateTime openedAt;
+  final DateTime expiresAt;
+  final int confirmations;
+  final int rejections;
+  final int confirmationsRequired;
+  final int rejectionsRequired;
+}
+
+class ResolutionVoteResult {
+  const ResolutionVoteResult({
+    required this.cycleStatus,
+    required this.confirmations,
+    required this.rejections,
+    required this.confirmationsRequired,
+    required this.rejectionsRequired,
+  });
+
+  final String cycleStatus;
+  final int confirmations;
+  final int rejections;
+  final int confirmationsRequired;
+  final int rejectionsRequired;
+}
+
+class OccurrenceTimelineEvent {
+  const OccurrenceTimelineEvent({
+    required this.id,
+    required this.actorKind,
+    required this.eventType,
+    required this.description,
+    required this.createdAt,
+    this.evidenceUrl,
+  });
+
+  final int id;
+  final String actorKind;
+  final String eventType;
+  final String description;
+  final DateTime createdAt;
+  final String? evidenceUrl;
+}
+
+class OccurrenceEngagementContext {
+  const OccurrenceEngagementContext({
+    required this.occurrenceId,
+    required this.isFollowing,
+    required this.reportsCount,
+  });
+
+  final int occurrenceId;
+  final bool isFollowing;
+  final int reportsCount;
+}
+
 class PostComment {
   const PostComment({
     required this.id,
@@ -96,8 +188,8 @@ const Object _sentinel = Object();
 
 class PostService {
   PostService({SupabaseClient? supabase, AgencyService? agencyService})
-      : _supabase = supabase ?? Supabase.instance.client,
-        _agencyService = agencyService ?? AgencyService();
+    : _supabase = supabase ?? Supabase.instance.client,
+      _agencyService = agencyService ?? AgencyService();
 
   final SupabaseClient _supabase;
   final AgencyService _agencyService;
@@ -153,7 +245,7 @@ class PostService {
 
   Future<int> createPost({
     required String userId,
-    int? cityId,
+    required int cityId,
     required int categoryId,
     required String title,
     required String description,
@@ -167,29 +259,93 @@ class PostService {
     try {
       await _supabase.rpc('ensure_my_profile');
 
-      final response = await _supabase
-          .from('posts')
-          .insert({
-            'city_id': cityId,
-            'category_id': categoryId,
-            'agency_id': agencyId,
-            'title': title.trim(),
-            'description': description.trim(),
-            'latitude': latitude,
-            'longitude': longitude,
-            'street': _nullIfEmpty(street),
-            'neighborhood': _nullIfEmpty(neighborhood),
-            'anonymity': isAnonymous,
-            'status': 'open',
-          })
-          .select('id')
-          .single();
+      final response = await _supabase.rpc(
+        'create_occurrence_report',
+        params: {
+          'target_city_id': cityId,
+          'target_category_id': categoryId,
+          'report_title': title.trim(),
+          'report_description': description.trim(),
+          'report_latitude': latitude,
+          'report_longitude': longitude,
+          'report_street': _nullIfEmpty(street),
+          'report_neighborhood': _nullIfEmpty(neighborhood),
+          'report_anonymous': isAnonymous,
+        },
+      );
 
-      return response['id'] as int;
+      final rows = response as List<dynamic>;
+      if (rows.isEmpty) {
+        throw Exception('O banco nao retornou o reporte criado.');
+      }
+      return ((rows.first as Map<String, dynamic>)['post_id'] as num).toInt();
     } on PostgrestException catch (error) {
       throw Exception('Erro ao criar o reporte: ${error.message}');
     } catch (error) {
       throw Exception('Erro inesperado ao criar o reporte: $error');
+    }
+  }
+
+  Future<List<PotentialDuplicateOccurrence>> findPotentialDuplicates({
+    required int cityId,
+    required int categoryId,
+    required double latitude,
+    required double longitude,
+    required String text,
+  }) async {
+    try {
+      final response = await _supabase.rpc(
+        'find_potential_duplicate_occurrences',
+        params: {
+          'target_city_id': cityId,
+          'target_category_id': categoryId,
+          'target_latitude': latitude,
+          'target_longitude': longitude,
+          'target_text': text.trim(),
+          'maximum_distance_km': 1,
+        },
+      );
+
+      return (response as List<dynamic>)
+          .map((item) => item as Map<String, dynamic>)
+          .map(
+            (item) => PotentialDuplicateOccurrence(
+              occurrenceId: (item['occurrence_id'] as num).toInt(),
+              title: (item['title'] as String?) ?? 'Ocorrencia urbana',
+              summary: (item['summary'] as String?) ?? '',
+              status: item['status'] as String,
+              distanceKm: (item['distance_km'] as num).toDouble(),
+              textMatch: item['text_match'] as bool? ?? false,
+              reportsCount: (item['reports_count'] as num?)?.toInt() ?? 0,
+            ),
+          )
+          .toList();
+    } on PostgrestException catch (error) {
+      throw Exception(
+        'Erro ao procurar ocorrencias semelhantes: ${error.message}',
+      );
+    }
+  }
+
+  Future<int> addReportToOccurrence({
+    required int occurrenceId,
+    required String title,
+    required String description,
+    required bool isAnonymous,
+  }) async {
+    try {
+      final response = await _supabase.rpc(
+        'add_report_to_occurrence',
+        params: {
+          'target_occurrence_id': occurrenceId,
+          'report_title': title.trim(),
+          'report_description': description.trim(),
+          'report_anonymous': isAnonymous,
+        },
+      );
+      return (response as num).toInt();
+    } on PostgrestException catch (error) {
+      throw Exception('Erro ao adicionar relato: ${error.message}');
     }
   }
 
@@ -208,27 +364,7 @@ class PostService {
     }
   }
 
-  Future<void> createInitialStatusHistory({
-    required int postId,
-    required String userId,
-  }) async {
-    try {
-      await _supabase.from('post_status_history').insert({
-        'post_id': postId,
-        'changed_by': userId,
-        'from_status': null,
-        'to_status': 'open',
-        'note': 'Reporte criado pelo usuario.',
-      });
-    } on PostgrestException catch (error) {
-      throw Exception('Erro ao criar historico do reporte: ${error.message}');
-    } catch (error) {
-      throw Exception('Erro inesperado ao criar historico do reporte: $error');
-    }
-  }
-
   Future<void> uploadPostImages({
-    required String userId,
     required int postId,
     required List<XFile> files,
   }) async {
@@ -242,7 +378,7 @@ class PostService {
         final extension = _fileExtension(image.name);
         final fileName =
             '${DateTime.now().millisecondsSinceEpoch}_$index.$extension';
-        final storagePath = '$userId/posts/$postId/$fileName';
+        final storagePath = 'reports/$postId/$fileName';
 
         await _supabase.storage
             .from(_postImagesBucket)
@@ -426,7 +562,9 @@ class PostService {
       throw Exception('Você não pode apoiar o próprio reporte.');
     }
     if (isFinalStatus(postStatus)) {
-      throw Exception('Este reporte está encerrado e não aceita novas interações.');
+      throw Exception(
+        'Este reporte está encerrado e não aceita novas interações.',
+      );
     }
 
     try {
@@ -451,48 +589,291 @@ class PostService {
     }
   }
 
-  Future<void> resolvePost({
+  Future<int> openResolutionCycle({
     required int postId,
-    required String userId,
-    required String fromStatus,
     required String note,
+    String initiatorKind = 'citizen',
+    XFile? evidence,
   }) async {
-    if (isFinalStatus(fromStatus)) {
-      throw Exception(
-        'Este reporte ja esta em estado final ("$fromStatus") e nao pode ser alterado.',
-      );
-    }
-
-    final resolvedNote = note.trim();
-
+    String? uploadedEvidencePath;
     try {
-      final resolvedAt = DateTime.now().toUtc().toIso8601String();
-
-      final updatedPost = await _supabase
+      final post = await _supabase
           .from('posts')
-          .update({'status': 'completed', 'resolved_at': resolvedAt})
+          .select('occurrence_id')
           .eq('id', postId)
-          .eq('user_id', userId)
-          .select('id')
-          .maybeSingle();
-
-      if (updatedPost == null) {
-        throw Exception('Voce nao tem permissao para resolver este reporte.');
+          .single();
+      final occurrenceId = (post['occurrence_id'] as num?)?.toInt();
+      if (occurrenceId == null) {
+        throw Exception(
+          'Este reporte ainda nao esta vinculado a uma ocorrencia.',
+        );
       }
 
-      await _supabase.from('post_status_history').insert({
-        'post_id': postId,
-        'changed_by': userId,
-        'from_status': fromStatus,
-        'to_status': 'completed',
-        'note': resolvedNote.isEmpty
-            ? 'Reporte marcado como resolvido pelo autor.'
-            : resolvedNote,
-      });
+      if (evidence != null) {
+        if (!_isImageFile(evidence)) {
+          throw Exception('Selecione uma imagem válida como evidência.');
+        }
+        final extension = _fileExtension(evidence.name);
+        uploadedEvidencePath =
+            'occurrences/$occurrenceId/resolution/'
+            '${DateTime.now().microsecondsSinceEpoch}.$extension';
+        await _supabase.storage
+            .from(_postImagesBucket)
+            .uploadBinary(
+              uploadedEvidencePath,
+              await evidence.readAsBytes(),
+              fileOptions: FileOptions(
+                upsert: false,
+                contentType: _mimeFromExtension(extension),
+              ),
+            );
+      }
+
+      final response = await _supabase.rpc(
+        'open_resolution_cycle_with_evidence',
+        params: {
+          'target_occurrence_id': occurrenceId,
+          'resolution_description': note.trim(),
+          'initiator_kind': initiatorKind,
+          'evidence_storage_path': uploadedEvidencePath,
+        },
+      );
+      return (response as num).toInt();
     } on PostgrestException catch (error) {
-      throw Exception('Erro ao resolver o reporte: ${error.message}');
+      if (uploadedEvidencePath != null) {
+        try {
+          await _supabase.storage.from(_postImagesBucket).remove([
+            uploadedEvidencePath,
+          ]);
+        } catch (_) {
+          // A falha principal da regra de negócio deve permanecer visível.
+        }
+      }
+      throw Exception('Erro ao abrir validacao: ${error.message}');
+    } on StorageException catch (error) {
+      throw Exception('Erro ao enviar evidência: ${error.message}');
     } catch (error) {
-      throw Exception('Erro inesperado ao resolver o reporte: $error');
+      throw Exception('Erro inesperado ao abrir validacao: $error');
+    }
+  }
+
+  Future<ResolutionCycleInfo?> fetchActiveResolutionCycle(int postId) async {
+    try {
+      final post = await _supabase
+          .from('posts')
+          .select('occurrence_id')
+          .eq('id', postId)
+          .single();
+      final occurrenceId = (post['occurrence_id'] as num?)?.toInt();
+      if (occurrenceId == null) return null;
+
+      await _supabase.rpc(
+        'expire_resolution_cycles',
+        params: {'target_occurrence_id': occurrenceId},
+      );
+
+      final response = await _supabase.rpc(
+        'get_active_resolution_cycle',
+        params: {'target_occurrence_id': occurrenceId},
+      );
+      final rows = response as List<dynamic>;
+      if (rows.isEmpty) return null;
+      final cycle = rows.first as Map<String, dynamic>;
+
+      return ResolutionCycleInfo(
+        id: (cycle['cycle_id'] as num).toInt(),
+        occurrenceId: (cycle['occurrence_id'] as num).toInt(),
+        initiatedBy: cycle['initiated_by'] as String,
+        status: cycle['cycle_status'] as String,
+        openedAt: DateTime.parse(cycle['opened_at'] as String),
+        expiresAt: DateTime.parse(cycle['expires_at'] as String),
+        confirmations: (cycle['confirmations'] as num).toInt(),
+        rejections: (cycle['rejections'] as num).toInt(),
+        confirmationsRequired: (cycle['confirmations_required'] as num).toInt(),
+        rejectionsRequired: (cycle['rejections_required'] as num).toInt(),
+      );
+    } on PostgrestException catch (error) {
+      throw Exception('Erro ao carregar validacao: ${error.message}');
+    }
+  }
+
+  Future<ResolutionVoteResult> voteResolution({
+    required int cycleId,
+    required bool confirm,
+    required double latitude,
+    required double longitude,
+  }) async {
+    try {
+      final response = await _supabase.rpc(
+        'vote_resolution_cycle',
+        params: {
+          'target_cycle_id': cycleId,
+          'vote_decision': confirm ? 'confirm' : 'reject',
+          'voter_latitude': latitude,
+          'voter_longitude': longitude,
+        },
+      );
+      final data = response as Map<String, dynamic>;
+      return ResolutionVoteResult(
+        cycleStatus: data['cycle_status'] as String,
+        confirmations: (data['confirmations'] as num?)?.toInt() ?? 0,
+        rejections: (data['rejections'] as num?)?.toInt() ?? 0,
+        confirmationsRequired:
+            (data['confirmations_required'] as num?)?.toInt() ?? 3,
+        rejectionsRequired: (data['rejections_required'] as num?)?.toInt() ?? 2,
+      );
+    } on PostgrestException catch (error) {
+      throw Exception('Erro ao registrar validacao: ${error.message}');
+    }
+  }
+
+  Future<List<OccurrenceTimelineEvent>> fetchOccurrenceTimeline(
+    int postId,
+  ) async {
+    final post = await _supabase
+        .from('posts')
+        .select('occurrence_id')
+        .eq('id', postId)
+        .single();
+    final occurrenceId = (post['occurrence_id'] as num?)?.toInt();
+    if (occurrenceId == null) return const [];
+
+    final response = await _supabase
+        .from('occurrence_events')
+        .select('id, actor_kind, event_type, description, metadata, created_at')
+        .eq('occurrence_id', occurrenceId)
+        .order('created_at');
+    return (response as List<dynamic>)
+        .map((item) => item as Map<String, dynamic>)
+        .map((item) {
+          final metadata = item['metadata'] as Map<String, dynamic>?;
+          final evidencePath = metadata?['evidence_storage_path'] as String?;
+          return OccurrenceTimelineEvent(
+            id: (item['id'] as num).toInt(),
+            actorKind: item['actor_kind'] as String,
+            eventType: item['event_type'] as String,
+            description: item['description'] as String,
+            createdAt: DateTime.parse(item['created_at'] as String),
+            evidenceUrl: evidencePath == null || evidencePath.trim().isEmpty
+                ? null
+                : _supabase.storage
+                      .from(_postImagesBucket)
+                      .getPublicUrl(evidencePath),
+          );
+        })
+        .toList();
+  }
+
+  Future<OccurrenceEngagementContext?> fetchOccurrenceEngagement(
+    int postId,
+  ) async {
+    final userId = _supabase.auth.currentUser?.id;
+    final post = await _supabase
+        .from('posts')
+        .select('occurrence_id')
+        .eq('id', postId)
+        .single();
+    final occurrenceId = (post['occurrence_id'] as num?)?.toInt();
+    if (occurrenceId == null) return null;
+
+    final reportsResponse = await _supabase
+        .from('posts')
+        .select('id')
+        .eq('occurrence_id', occurrenceId)
+        .count(CountOption.exact);
+
+    var isFollowing = false;
+    if (userId != null) {
+      final following = await _supabase
+          .from('occurrence_followers')
+          .select('occurrence_id')
+          .eq('occurrence_id', occurrenceId)
+          .eq('user_id', userId)
+          .maybeSingle();
+      isFollowing = following != null;
+    }
+
+    return OccurrenceEngagementContext(
+      occurrenceId: occurrenceId,
+      isFollowing: isFollowing,
+      reportsCount: reportsResponse.count,
+    );
+  }
+
+  Future<bool> toggleOccurrenceFollowing({
+    required int occurrenceId,
+    required bool isFollowing,
+  }) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) {
+      throw Exception('Entre na sua conta para acompanhar a ocorrência.');
+    }
+
+    try {
+      if (isFollowing) {
+        await _supabase
+            .from('occurrence_followers')
+            .delete()
+            .eq('occurrence_id', occurrenceId)
+            .eq('user_id', userId);
+        return false;
+      }
+
+      await _supabase.from('occurrence_followers').insert({
+        'occurrence_id': occurrenceId,
+        'user_id': userId,
+      });
+      return true;
+    } on PostgrestException catch (error) {
+      throw Exception('Erro ao acompanhar ocorrência: ${error.message}');
+    }
+  }
+
+  Future<String> uploadReopeningEvidence({
+    required int occurrenceId,
+    required XFile file,
+  }) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) {
+      throw Exception('Entre na sua conta para reabrir a ocorrência.');
+    }
+    if (!_isImageFile(file)) {
+      throw Exception('Selecione uma imagem válida como nova evidência.');
+    }
+
+    final extension = _fileExtension(file.name);
+    final storagePath =
+        'occurrences/$occurrenceId/reopening/'
+        '${DateTime.now().millisecondsSinceEpoch}.$extension';
+    await _supabase.storage
+        .from(_postImagesBucket)
+        .uploadBinary(
+          storagePath,
+          await file.readAsBytes(),
+          fileOptions: FileOptions(
+            upsert: false,
+            contentType: _mimeFromExtension(extension),
+          ),
+        );
+    return storagePath;
+  }
+
+  Future<void> reopenOccurrence({
+    required int occurrenceId,
+    required String description,
+    required String evidenceStoragePath,
+  }) async {
+    try {
+      await _supabase.rpc(
+        'reopen_occurrence',
+        params: {
+          'target_occurrence_id': occurrenceId,
+          'reopening_description': description.trim(),
+          'evidence_storage_path': evidenceStoragePath,
+        },
+      );
+    } on PostgrestException catch (error) {
+      throw Exception('Erro ao reabrir ocorrência: ${error.message}');
     }
   }
 

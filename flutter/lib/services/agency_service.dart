@@ -1,10 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AgencyCityOption {
-  const AgencyCityOption({
-    required this.id,
-    required this.name,
-  });
+  const AgencyCityOption({required this.id, required this.name});
 
   final int id;
   final String name;
@@ -55,6 +52,7 @@ class AgencyProfileRequest {
     required this.cityName,
     required this.agencyName,
     required this.agencyType,
+    required this.requestKind,
     required this.institutionalEmail,
     this.requesterRole,
     required this.proofSummary,
@@ -68,6 +66,7 @@ class AgencyProfileRequest {
   final String cityName;
   final String agencyName;
   final String agencyType;
+  final String requestKind;
   final String institutionalEmail;
   final String? requesterRole;
   final String proofSummary;
@@ -78,13 +77,16 @@ class AgencyProfileRequest {
 
 class AgencyService {
   AgencyService({SupabaseClient? supabase})
-      : _supabase = supabase ?? Supabase.instance.client;
+    : _supabase = supabase ?? Supabase.instance.client;
 
   final SupabaseClient _supabase;
 
   Future<List<AgencyCityOption>> fetchCities() async {
     try {
-      final response = await _supabase.from('cities').select('id, name').order('name');
+      final response = await _supabase
+          .from('cities')
+          .select('id, name')
+          .order('name');
 
       return (response as List<dynamic>)
           .map(
@@ -95,7 +97,9 @@ class AgencyService {
           )
           .toList();
     } on PostgrestException catch (error) {
-      throw Exception('Erro ao carregar cidades institucionais: ${error.message}');
+      throw Exception(
+        'Erro ao carregar cidades institucionais: ${error.message}',
+      );
     } catch (_) {
       throw Exception('Erro inesperado ao carregar cidades institucionais.');
     }
@@ -121,7 +125,9 @@ class AgencyService {
           )
           .toList();
     } on PostgrestException catch (error) {
-      throw Exception('Erro ao carregar secretarias da cidade: ${error.message}');
+      throw Exception(
+        'Erro ao carregar secretarias da cidade: ${error.message}',
+      );
     } catch (_) {
       throw Exception('Erro inesperado ao carregar secretarias da cidade.');
     }
@@ -166,13 +172,19 @@ class AgencyService {
           .whereType<ManagedAgencyProfile>()
           .toList();
     } on PostgrestException catch (error) {
-      throw Exception('Erro ao carregar seus perfis institucionais: ${error.message}');
+      throw Exception(
+        'Erro ao carregar seus perfis institucionais: ${error.message}',
+      );
     } catch (_) {
-      throw Exception('Erro inesperado ao carregar seus perfis institucionais.');
+      throw Exception(
+        'Erro inesperado ao carregar seus perfis institucionais.',
+      );
     }
   }
 
-  Future<List<AgencyProfileRequest>> fetchOwnAgencyRequests(String userId) async {
+  Future<List<AgencyProfileRequest>> fetchOwnAgencyRequests(
+    String userId,
+  ) async {
     try {
       final response = await _supabase
           .from('agency_profile_requests')
@@ -181,6 +193,7 @@ class AgencyService {
             city_id,
             agency_name,
             agency_type,
+            request_kind,
             institutional_email,
             requester_role,
             proof_summary,
@@ -192,28 +205,31 @@ class AgencyService {
           .eq('requester_user_id', userId)
           .order('created_at', ascending: false);
 
-      return (response as List<dynamic>)
-          .map((item) {
-            final city = item['cities'] as Map<String, dynamic>?;
-            return AgencyProfileRequest(
-              id: (item['id'] as num).toInt(),
-              cityId: (item['city_id'] as num).toInt(),
-              cityName: (city?['name'] as String?) ?? 'Cidade',
-              agencyName: item['agency_name'] as String,
-              agencyType: item['agency_type'] as String,
-              institutionalEmail: item['institutional_email'] as String,
-              requesterRole: item['requester_role'] as String?,
-              proofSummary: item['proof_summary'] as String,
-              proofLinks: item['proof_links'] as String?,
-              status: item['status'] as String,
-              createdAt: DateTime.parse(item['created_at'] as String),
-            );
-          })
-          .toList();
+      return (response as List<dynamic>).map((item) {
+        final city = item['cities'] as Map<String, dynamic>?;
+        return AgencyProfileRequest(
+          id: (item['id'] as num).toInt(),
+          cityId: (item['city_id'] as num).toInt(),
+          cityName: (city?['name'] as String?) ?? 'Cidade',
+          agencyName: item['agency_name'] as String,
+          agencyType: item['agency_type'] as String,
+          requestKind: item['request_kind'] as String? ?? 'agency',
+          institutionalEmail: item['institutional_email'] as String,
+          requesterRole: item['requester_role'] as String?,
+          proofSummary: item['proof_summary'] as String,
+          proofLinks: item['proof_links'] as String?,
+          status: item['status'] as String,
+          createdAt: DateTime.parse(item['created_at'] as String),
+        );
+      }).toList();
     } on PostgrestException catch (error) {
-      throw Exception('Erro ao carregar suas solicitações institucionais: ${error.message}');
+      throw Exception(
+        'Erro ao carregar suas solicitações institucionais: ${error.message}',
+      );
     } catch (_) {
-      throw Exception('Erro inesperado ao carregar suas solicitações institucionais.');
+      throw Exception(
+        'Erro inesperado ao carregar suas solicitações institucionais.',
+      );
     }
   }
 
@@ -221,6 +237,7 @@ class AgencyService {
     required int cityId,
     required String name,
     required String type,
+    required String requestKind,
     required String contactEmail,
     String? requesterRole,
     required String proofSummary,
@@ -228,19 +245,22 @@ class AgencyService {
   }) async {
     try {
       await _supabase.rpc(
-        'create_agency_profile_request',
+        'create_institutional_profile_request',
         params: {
           'target_city_id': cityId,
-          'agency_name': name.trim(),
-          'agency_type': type.trim(),
+          'institution_name': name.trim(),
+          'institution_type': type.trim(),
           'institutional_email': contactEmail.trim(),
           'requester_role': requesterRole?.trim(),
           'proof_summary': proofSummary.trim(),
           'proof_links': proofLinks?.trim(),
+          'request_kind': requestKind,
         },
       );
     } on PostgrestException catch (error) {
-      throw Exception('Erro ao enviar solicitação institucional: ${error.message}');
+      throw Exception(
+        'Erro ao enviar solicitação institucional: ${error.message}',
+      );
     } catch (_) {
       throw Exception('Erro inesperado ao enviar solicitação institucional.');
     }

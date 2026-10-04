@@ -173,8 +173,9 @@ class ProfileService {
           .whereType<ProfileBadge>()
           .toList();
     } on PostgrestException catch (error) {
-      if (_isMissingOptionalProfileFeature(error))
+      if (_isMissingOptionalProfileFeature(error)) {
         return const <ProfileBadge>[];
+      }
       throw Exception('Erro ao carregar insignias: ${error.message}');
     } catch (error) {
       throw Exception('Erro inesperado ao carregar insignias: $error');
@@ -354,8 +355,9 @@ class ProfileService {
     try {
       return await _fetchBadges(userId);
     } on PostgrestException catch (error) {
-      if (_isMissingOptionalProfileFeature(error))
+      if (_isMissingOptionalProfileFeature(error)) {
         return const <ProfileBadge>[];
+      }
       rethrow;
     }
   }
@@ -439,33 +441,12 @@ class ProfileService {
     String? authorAvatarUrl,
   }) async {
     var query = _supabase
-        .from('posts')
-        .select('''
-          id,
-          title,
-          description,
-          status,
-          created_at,
-          updated_at,
-          resolved_at,
-          latitude,
-          longitude,
-          city_id,
-          category_id,
-          agency_id,
-          supports_count,
-          comments_count,
-          anonymity,
-          user_id,
-          cities(name),
-          problem_categories(name),
-          public_agencies(name),
-          post_images(id, storage_path, caption, position)
-        ''')
-        .eq('user_id', profileUserId);
+        .from('post_feed_rows')
+        .select()
+        .eq('author_id', profileUserId);
 
     if (!includeAnonymous) {
-      query = query.eq('anonymity', false);
+      query = query.eq('is_anonymous', false);
     }
 
     final response = await query.order('created_at', ascending: false);
@@ -489,7 +470,7 @@ class ProfileService {
     String? authorAvatarUrl,
   }) {
     final imageItems =
-        (data['post_images'] as List<dynamic>? ?? const [])
+        (data['images'] as List<dynamic>? ?? const [])
             .map((item) => item as Map<String, dynamic>)
             .map(
               (item) => FeedImage(
@@ -503,10 +484,7 @@ class ProfileService {
             .toList()
           ..sort((a, b) => a.position.compareTo(b.position));
 
-    final city = _asMap(data['cities']);
-    final category = _asMap(data['problem_categories']);
-    final agency = _asMap(data['public_agencies']);
-    final isAnonymous = data['anonymity'] as bool? ?? false;
+    final isAnonymous = data['is_anonymous'] as bool? ?? false;
 
     return FeedPost(
       id: (data['id'] as num).toInt(),
@@ -519,15 +497,17 @@ class ProfileService {
       latitude: (data['latitude'] as num?)?.toDouble() ?? 0.0,
       longitude: (data['longitude'] as num?)?.toDouble() ?? 0.0,
       cityId: (data['city_id'] as num?)?.toInt() ?? 0,
-      cityName: (city?['name'] as String?) ?? 'Cidade desconhecida',
+      cityName: (data['city_name'] as String?) ?? 'Cidade desconhecida',
+      street: data['street'] as String?,
+      neighborhood: data['neighborhood'] as String?,
       categoryId: (data['category_id'] as num?)?.toInt() ?? 0,
-      categoryName: (category?['name'] as String?) ?? 'Categoria',
+      categoryName: (data['category_name'] as String?) ?? 'Categoria',
       agencyId: (data['agency_id'] as num?)?.toInt(),
-      agencyName: agency?['name'] as String?,
+      agencyName: data['agency_name'] as String?,
       supportsCount: (data['supports_count'] as num?)?.toInt() ?? 0,
       commentsCount: (data['comments_count'] as num?)?.toInt() ?? 0,
       isAnonymous: isAnonymous,
-      authorId: isAnonymous ? null : data['user_id'] as String?,
+      authorId: isAnonymous ? null : data['author_id'] as String?,
       authorDisplayName: isAnonymous ? 'Anonimo' : authorDisplayName,
       authorUsername: isAnonymous ? null : authorUsername,
       authorAvatarUrl: isAnonymous ? null : authorAvatarUrl,

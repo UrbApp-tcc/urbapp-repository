@@ -10,7 +10,6 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
 
-import '../services/agency_service.dart';
 import '../services/auth_service.dart';
 import '../services/post_service.dart';
 import '../theme/app_theme.dart';
@@ -42,12 +41,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
   List<LookupOption> _cities = const [];
   List<LookupOption> _categories = const [];
-  List<AgencyOption> _agencies = const [];
   List<XFile> _images = [];
 
   LookupOption? _selectedCity;
   LookupOption? _selectedCategory;
-  AgencyOption? _selectedAgency;
 
   LatLng? _selectedPoint;
   String _locationLabel = 'Buscando sua localizacao atual...';
@@ -149,8 +146,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       setState(() {
         _selectedPoint = _fallbackPoint;
         _selectedCity = null;
-        _selectedAgency = null;
-        _agencies = const [];
         _isLoadingLocation = false;
         _locationLabel =
             'Nao foi possivel usar sua localizacao atual. Ajuste o pin manualmente no mapa.';
@@ -206,7 +201,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       setState(() {
         _selectedPoint = point;
         _selectedCity = matchedCity;
-        _selectedAgency = null;
         _cityLabel = locality.isNotEmpty ? locality : 'Cidade nao identificada';
         _resolvedStreet = street.isEmpty ? null : street;
         _resolvedNeighborhood = neighborhood.isEmpty ? null : neighborhood;
@@ -217,21 +211,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             ? 'Localizacao aproximada'
             : locationParts.join(' - ');
       });
-
-      if (matchedCity != null) {
-        await _loadAgenciesForCity(matchedCity.id);
-      } else if (mounted) {
-        setState(() => _agencies = const []);
-      }
-
     } catch (error) {
       if (!mounted) return;
 
       setState(() {
         _selectedPoint = point;
         _selectedCity = null;
-        _selectedAgency = null;
-        _agencies = const [];
         _cityLabel = 'Cidade nao identificada';
         _locationLabel = 'Localizacao aproximada';
         _resolvedStreet = null;
@@ -454,25 +439,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     return stateMap[normalizedState] ?? normalizedState;
   }
 
-  Future<void> _loadAgenciesForCity(int cityId) async {
-    try {
-      final agencies = await _postService.fetchAgenciesByCity(cityId);
-      if (!mounted) return;
-      setState(() {
-        _agencies = agencies;
-        if (_selectedAgency != null && _selectedAgency!.cityId != cityId) {
-          _selectedAgency = null;
-        }
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _agencies = const [];
-        _selectedAgency = null;
-      });
-    }
-  }
-
   Future<LookupOption?> _resolveCityForSubmission() async {
     final localMatch =
         _selectedCity ?? _matchCity(_cityLabel, stateCode: _resolvedStateCode);
@@ -507,6 +473,13 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
     final matchedCity = await _resolveCityForSubmission();
 
+    if (matchedCity == null) {
+      _showError(
+        'Nao foi possivel identificar uma cidade cadastrada para este ponto. Ajuste o pin no mapa.',
+      );
+      return;
+    }
+
     if (_selectedCategory == null) {
       _showError('Selecione uma categoria.');
       return;
@@ -518,34 +491,54 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
     int? createdPostId;
     try {
-      createdPostId = await _postService.createPost(
-        userId: currentUser.id,
-        cityId: matchedCity?.id,
+      final duplicates = await _postService.findPotentialDuplicates(
+        cityId: matchedCity.id,
         categoryId: _selectedCategory!.id,
-        title: _titleController.text,
-        description: _descriptionController.text,
         latitude: _selectedPoint!.latitude,
         longitude: _selectedPoint!.longitude,
-        street: _resolvedStreet,
-        neighborhood: _resolvedNeighborhood,
-        agencyId: _selectedAgency?.id,
-        isAnonymous: _isAnonymous,
+        text: '${_titleController.text} ${_descriptionController.text}',
       );
 
-      try {
-        await _postService.createInitialStatusHistory(
-          postId: createdPostId,
-          userId: currentUser.id,
-        );
+      final duplicateSelection = duplicates.isEmpty
+          ? const _DuplicateSelection.createNew()
+          : await _showDuplicateSelection(duplicates);
+      if (duplicateSelection == null || duplicateSelection.cancelled) {
+        return;
+      }
 
-        await _postService.uploadPostImages(
+      if (duplicateSelection.occurrenceId != null) {
+        createdPostId = await _postService.addReportToOccurrence(
+          occurrenceId: duplicateSelection.occurrenceId!,
+          title: _titleController.text,
+          description: _descriptionController.text,
+          isAnonymous: _isAnonymous,
+        );
+      } else {
+        createdPostId = await _postService.createPost(
           userId: currentUser.id,
+          cityId: matchedCity.id,
+          categoryId: _selectedCategory!.id,
+          title: _titleController.text,
+          description: _descriptionController.text,
+          latitude: _selectedPoint!.latitude,
+          longitude: _selectedPoint!.longitude,
+          street: _resolvedStreet,
+          neighborhood: _resolvedNeighborhood,
+          isAnonymous: _isAnonymous,
+        );
+      }
+
+      try {
+        await _postService.uploadPostImages(
           postId: createdPostId,
           files: _images,
         );
-      } catch (_) {
-        await _postService.deletePost(createdPostId);
-        rethrow;
+      } catch (error) {
+        if (mounted) {
+          _showInfo(
+            'O relato foi salvo, mas algumas imagens nao foram enviadas: ${friendlyError(error)}',
+          );
+        }
       }
 
       if (!mounted) return;
@@ -559,7 +552,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           ),
           backgroundColor: AppColors.resolved,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           margin: const EdgeInsets.all(16),
         ),
       );
@@ -573,15 +568,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         _isAnonymous = false;
         _selectedCity = matchedCity;
         _selectedCategory = null;
-        _selectedAgency = null;
         _images = [];
         _resolvedStateCode = null;
         _locationIsApproximate = false;
       });
-
-      if (matchedCity == null) {
-        _showInfo('Reporte publicado com localizacao aproximada.');
-      }
 
       if (widget.returnToPreviousOnSuccess &&
           mounted &&
@@ -595,6 +585,67 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         setState(() => _isSubmitting = false);
       }
     }
+  }
+
+  Future<_DuplicateSelection?> _showDuplicateSelection(
+    List<PotentialDuplicateOccurrence> duplicates,
+  ) {
+    return showModalBottomSheet<_DuplicateSelection>(
+      context: context,
+      isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Encontramos ocorrencias proximas',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Se for o mesmo problema, adicione seu relato. A cidade contabilizara apenas uma ocorrencia.',
+                style: TextStyle(color: AppColors.textSecondary, height: 1.4),
+              ),
+              const SizedBox(height: 16),
+              ...duplicates
+                  .take(3)
+                  .map(
+                    (duplicate) => Card(
+                      child: ListTile(
+                        title: Text(duplicate.title),
+                        subtitle: Text(
+                          '${duplicate.distanceKm.toStringAsFixed(2)} km - ${duplicate.reportsCount} relato(s)',
+                        ),
+                        trailing: const Icon(Icons.add_comment_outlined),
+                        onTap: () => Navigator.of(context).pop(
+                          _DuplicateSelection.existing(duplicate.occurrenceId),
+                        ),
+                      ),
+                    ),
+                  ),
+              const SizedBox(height: 12),
+              ElevatedButton(
+                onPressed: () => Navigator.of(
+                  context,
+                ).pop(const _DuplicateSelection.createNew()),
+                child: const Text('E outro problema - criar nova ocorrencia'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(
+                  context,
+                ).pop(const _DuplicateSelection.cancelled()),
+                child: const Text('Cancelar'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _showError(String message) {
@@ -935,8 +986,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   }
 
   Widget _buildAgencySelector() {
-    final selectedCity = _selectedCity;
-
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -947,47 +996,22 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Selecione a secretaria ou orgao que deve receber esse chamado. Esse vinculo e opcional, mas ajuda a prefeitura a assumir o reporte.',
-            style: TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 13,
-              height: 1.35,
-            ),
-          ),
-          const SizedBox(height: 14),
-          DropdownButtonFormField<int?>(
-            initialValue: _selectedAgency?.id,
-            items: [
-              const DropdownMenuItem<int?>(
-                value: null,
-                child: Text('Nenhum orgao vinculado'),
-              ),
-              ..._agencies.map(
-                (agency) => DropdownMenuItem<int?>(
-                  value: agency.id,
-                  child: Text('${agency.name} (${agency.type})'),
+          const Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.auto_awesome_outlined, color: AppColors.primary),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'O UrbApp identifica automaticamente o orgao responsavel usando a cidade e a categoria. O vinculo existe mesmo quando o perfil institucional ainda nao foi reivindicado.',
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 13,
+                    height: 1.4,
+                  ),
                 ),
               ),
             ],
-            onChanged: selectedCity == null
-                ? null
-                : (value) {
-                    setState(() {
-                      _selectedAgency = value == null
-                          ? null
-                          : _agencies.firstWhere((agency) => agency.id == value);
-                    });
-                  },
-            decoration: InputDecoration(
-              labelText: 'Secretaria/orgao',
-              hintText: selectedCity == null
-                  ? 'Defina primeiro a cidade do reporte no mapa'
-                  : _agencies.isEmpty
-                      ? 'Nenhuma secretaria cadastrada para ${selectedCity.name}'
-                      : 'Selecione a secretaria responsavel',
-              prefixIcon: const Icon(Icons.account_balance_outlined, size: 22),
-            ),
           ),
         ],
       ),
@@ -1085,7 +1109,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                     ),
                     children: [
                       TileLayer(
-                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        urlTemplate:
+                            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                         userAgentPackageName: 'com.example.meu_app',
                       ),
                     ],
@@ -1190,8 +1215,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                     ),
                   )
                 : selectedOption != null
-                    ? const Icon(Icons.check_circle, color: AppColors.resolved)
-                    : const Icon(Icons.search_rounded),
+                ? const Icon(Icons.check_circle, color: AppColors.resolved)
+                : const Icon(Icons.search_rounded),
           ),
         );
       },
@@ -1265,4 +1290,17 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     }
     return '';
   }
+}
+
+class _DuplicateSelection {
+  const _DuplicateSelection.createNew()
+    : occurrenceId = null,
+      cancelled = false;
+
+  const _DuplicateSelection.existing(this.occurrenceId) : cancelled = false;
+
+  const _DuplicateSelection.cancelled() : occurrenceId = null, cancelled = true;
+
+  final int? occurrenceId;
+  final bool cancelled;
 }

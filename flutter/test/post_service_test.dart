@@ -16,11 +16,10 @@ class MockAgencyService extends Mock implements AgencyService {}
 PostService _makeService({
   MockSupabaseClient? supabase,
   MockAgencyService? agencyService,
-}) =>
-    PostService(
-      supabase: supabase ?? MockSupabaseClient(),
-      agencyService: agencyService ?? MockAgencyService(),
-    );
+}) => PostService(
+  supabase: supabase ?? MockSupabaseClient(),
+  agencyService: agencyService ?? MockAgencyService(),
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -52,22 +51,24 @@ void main() {
       );
     });
 
-    test('lança exceção para cada status final (completed, closed, expired)',
-        () {
-      for (final status in ['completed', 'closed', 'expired']) {
-        expect(
-          () => service.toggleSupport(
-            postId: 1,
-            currentUserId: 'user-abc',
-            postAuthorId: 'user-xyz',
-            isCurrentlyLiked: false,
-            postStatus: status,
-          ),
-          throwsA(isA<Exception>()),
-          reason: 'status "$status" deveria bloquear novas interações',
-        );
-      }
-    });
+    test(
+      'lança exceção para cada status final (completed, closed, expired)',
+      () {
+        for (final status in ['completed', 'closed', 'expired']) {
+          expect(
+            () => service.toggleSupport(
+              postId: 1,
+              currentUserId: 'user-abc',
+              postAuthorId: 'user-xyz',
+              isCurrentlyLiked: false,
+              postStatus: status,
+            ),
+            throwsA(isA<Exception>()),
+            reason: 'status "$status" deveria bloquear novas interações',
+          );
+        }
+      },
+    );
 
     test('não lança regra de negócio para status não-finais', () async {
       // O mock não está configurado, então o erro virá do banco (não da validação).
@@ -88,7 +89,8 @@ void main() {
               isNot(anyOf(contains('próprio reporte'), contains('encerrado'))),
             ),
           ),
-          reason: 'status "$status" não deveria ser bloqueado pelas regras de negócio',
+          reason:
+              'status "$status" não deveria ser bloqueado pelas regras de negócio',
         );
       }
     });
@@ -107,85 +109,34 @@ void main() {
       );
     });
 
-    test('não bloqueia apoio quando postAuthorId é null (post anônimo)', () async {
-      await expectLater(
-        service.toggleSupport(
-          postId: 1,
-          currentUserId: 'user-abc',
-          postAuthorId: null,
-          isCurrentlyLiked: false,
-          postStatus: 'open',
-        ),
-        throwsA(
-          isA<Exception>().having(
-            (e) => e.toString(),
-            'mensagem',
-            isNot(contains('próprio reporte')),
-          ),
-        ),
-      );
-    });
-  });
-
-  // ──────────────────────────────────────────────────────────────────────────
-  // resolvePost — regras de negócio
-  // ──────────────────────────────────────────────────────────────────────────
-  group('PostService.resolvePost — validações', () {
-    late PostService service;
-
-    setUp(() => service = _makeService());
-
-    test('lança exceção para cada status final antes de chamar o banco', () async {
-      for (final status in ['completed', 'closed', 'expired']) {
+    test(
+      'não bloqueia apoio quando postAuthorId é null (post anônimo)',
+      () async {
         await expectLater(
-          service.resolvePost(
+          service.toggleSupport(
             postId: 1,
-            userId: 'user-abc',
-            fromStatus: status,
-            note: 'alguma nota',
+            currentUserId: 'user-abc',
+            postAuthorId: null,
+            isCurrentlyLiked: false,
+            postStatus: 'open',
           ),
           throwsA(
             isA<Exception>().having(
               (e) => e.toString(),
               'mensagem',
-              contains('estado final'),
+              isNot(contains('próprio reporte')),
             ),
           ),
-          reason: 'status "$status" não deveria permitir resolução',
         );
-      }
-    });
-
-    test('não bloqueia statuses não-finais pela regra de status', () async {
-      for (final status in ['open', 'in_progress']) {
-        await expectLater(
-          service.resolvePost(
-            postId: 1,
-            userId: 'user-abc',
-            fromStatus: status,
-            note: '',
-          ),
-          throwsA(
-            isA<Exception>().having(
-              (e) => e.toString(),
-              'mensagem',
-              isNot(contains('estado final')),
-            ),
-          ),
-          reason: 'status "$status" não deveria ser bloqueado pela guarda de status final',
-        );
-      }
-    });
+      },
+    );
   });
 
   // ──────────────────────────────────────────────────────────────────────────
   // PostComment.authorLabel — lógica de exibição do autor
   // ──────────────────────────────────────────────────────────────────────────
   group('PostComment.authorLabel', () {
-    PostComment _comment({
-      String displayName = '',
-      String? username,
-    }) =>
+    PostComment comment({String displayName = '', String? username}) =>
         PostComment(
           id: 1,
           postId: 1,
@@ -197,19 +148,25 @@ void main() {
         );
 
     test('exibe full_name quando preenchido', () {
-      expect(_comment(displayName: 'Gabriel Alves').authorLabel, 'Gabriel Alves');
+      expect(
+        comment(displayName: 'Gabriel Alves').authorLabel,
+        'Gabriel Alves',
+      );
     });
 
     test('exibe username quando full_name está vazio', () {
-      expect(_comment(displayName: '', username: 'gabriel').authorLabel, 'gabriel');
+      expect(
+        comment(displayName: '', username: 'gabriel').authorLabel,
+        'gabriel',
+      );
     });
 
     test('exibe "Usuario" quando ambos estão vazios', () {
-      expect(_comment(displayName: '').authorLabel, 'Usuario');
+      expect(comment(displayName: '').authorLabel, 'Usuario');
     });
 
     test('ignora espaços em branco no full_name', () {
-      expect(_comment(displayName: '   ').authorLabel, 'Usuario');
+      expect(comment(displayName: '   ').authorLabel, 'Usuario');
     });
   });
 }

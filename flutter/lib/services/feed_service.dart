@@ -133,7 +133,7 @@ class FeedPost {
 
 class FeedService {
   FeedService({SupabaseClient? supabase})
-      : _supabase = supabase ?? Supabase.instance.client;
+    : _supabase = supabase ?? Supabase.instance.client;
 
   final SupabaseClient _supabase;
   static const String _postImagesBucket = 'post-images';
@@ -311,15 +311,7 @@ class FeedService {
     required String? status,
     required bool includeAddress,
   }) async {
-    final addressColumns = includeAddress ? 'street, neighborhood,' : '';
-    var query = _supabase.from('posts').select('''
-      id, title, description, status, created_at, updated_at, resolved_at,
-      latitude, longitude, city_id, $addressColumns category_id, agency_id,
-      supports_count, comments_count, anonymity, user_id,
-      cities(name), problem_categories(name), public_agencies(name),
-      profiles!posts_user_id_fkey(full_name, username, avatar_url),
-      post_images(id, storage_path, caption, position)
-    ''');
+    var query = _supabase.from('post_feed_rows').select();
 
     if (cityId != null) {
       query = query.eq('city_id', cityId);
@@ -337,7 +329,7 @@ class FeedService {
         .range(offset, offset + limit - 1);
 
     return (response as List<dynamic>)
-        .map((item) => _mapDirectPost(item as Map<String, dynamic>))
+        .map((item) => _mapFeedPost(item as Map<String, dynamic>))
         .toList();
   }
 
@@ -476,6 +468,10 @@ class FeedService {
         return 90;
       case 'in_progress':
         return 70;
+      case 'awaiting_validation':
+        return 100;
+      case 'reopened':
+        return 95;
       case 'completed':
         return 30;
       case 'closed':
@@ -494,6 +490,10 @@ class FeedService {
         return 24 * 30;
       case 'in_progress':
         return 24 * 21;
+      case 'awaiting_validation':
+        return 72;
+      case 'reopened':
+        return 24 * 30;
       case 'completed':
       case 'closed':
         return 24 * 7;
@@ -509,6 +509,10 @@ class FeedService {
         return 0.90;
       case 'in_progress':
         return 0.60;
+      case 'awaiting_validation':
+        return 0.20;
+      case 'reopened':
+        return 0.90;
       case 'completed':
       case 'closed':
         return 0.15;
@@ -562,6 +566,8 @@ class FeedService {
       longitude: (data['longitude'] as num).toDouble(),
       cityId: (data['city_id'] as num?)?.toInt() ?? 0,
       cityName: (data['city_name'] as String?) ?? 'Cidade desconhecida',
+      street: data['street'] as String?,
+      neighborhood: data['neighborhood'] as String?,
       categoryId: (data['category_id'] as num?)?.toInt() ?? 0,
       categoryName: (data['category_name'] as String?) ?? 'Categoria',
       agencyId: (data['agency_id'] as num?)?.toInt(),
@@ -596,94 +602,16 @@ class FeedService {
       if (match != null) return match;
 
       final row = await _supabase
-          .from('posts')
-          .select('''
-            id, title, description, status, created_at, updated_at, resolved_at,
-            latitude, longitude, city_id, category_id, agency_id,
-            supports_count, comments_count, anonymity, user_id,
-            cities(name), problem_categories(name), public_agencies(name),
-            profiles!posts_user_id_fkey(full_name, username, avatar_url),
-            post_images(id, storage_path, caption, position)
-          ''')
+          .from('post_feed_rows')
+          .select()
           .eq('id', id)
           .maybeSingle();
 
       if (row == null) return null;
-      return _mapDirectPost(row);
+      return _mapFeedPost(row);
     } catch (_) {
       return null;
     }
-  }
-
-  FeedPost _mapDirectPost(Map<String, dynamic> data) {
-    final isAnonymous = data['anonymity'] as bool? ?? false;
-    final profile = data['profiles'];
-    final profileMap = profile is Map<String, dynamic>
-        ? profile
-        : profile is List && profile.isNotEmpty
-            ? profile.first as Map<String, dynamic>
-            : null;
-
-    final city = data['cities'];
-    final cityMap = city is Map<String, dynamic> ? city : null;
-    final category = data['problem_categories'];
-    final categoryMap = category is Map<String, dynamic> ? category : null;
-    final agency = data['public_agencies'];
-    final agencyMap = agency is Map<String, dynamic> ? agency : null;
-
-    final rawImages = data['post_images'];
-    final imageList = rawImages is List ? rawImages : const [];
-    final imageItems = imageList
-        .map((item) => item as Map<String, dynamic>)
-        .map(
-          (item) => FeedImage(
-            id: (item['id'] as num).toInt(),
-            storagePath: item['storage_path'] as String,
-            publicUrl: _resolveImageUrl(item['storage_path'] as String?),
-            caption: item['caption'] as String?,
-            position: (item['position'] as num?)?.toInt() ?? 0,
-          ),
-        )
-        .toList()
-      ..sort((a, b) => a.position.compareTo(b.position));
-
-    final authorName = isAnonymous
-        ? 'Anonimo'
-        : (() {
-            final name = (profileMap?['full_name'] as String?)?.trim();
-            if (name != null && name.isNotEmpty) return name;
-            return (profileMap?['username'] as String?)?.trim() ?? '';
-          })();
-
-    return FeedPost(
-      id: (data['id'] as num).toInt(),
-      title: (data['title'] as String?) ?? 'Sem titulo',
-      description: (data['description'] as String?) ?? '',
-      status: data['status'] as String,
-      createdAt: DateTime.parse(data['created_at'] as String),
-      updatedAt: _parseDate(data['updated_at']),
-      resolvedAt: _parseDate(data['resolved_at']),
-      latitude: (data['latitude'] as num?)?.toDouble() ?? 0.0,
-      longitude: (data['longitude'] as num?)?.toDouble() ?? 0.0,
-      cityId: (data['city_id'] as num?)?.toInt() ?? 0,
-      cityName: (cityMap?['name'] as String?) ?? 'Cidade desconhecida',
-      street: data['street'] as String?,
-      neighborhood: data['neighborhood'] as String?,
-      categoryId: (data['category_id'] as num?)?.toInt() ?? 0,
-      categoryName: (categoryMap?['name'] as String?) ?? 'Categoria',
-      agencyId: (data['agency_id'] as num?)?.toInt(),
-      agencyName: agencyMap?['name'] as String?,
-      supportsCount: (data['supports_count'] as num?)?.toInt() ?? 0,
-      commentsCount: (data['comments_count'] as num?)?.toInt() ?? 0,
-      isAnonymous: isAnonymous,
-      authorId: isAnonymous ? null : data['user_id'] as String?,
-      authorDisplayName: authorName,
-      authorUsername: isAnonymous ? null : profileMap?['username'] as String?,
-      authorAvatarUrl: isAnonymous ? null : profileMap?['avatar_url'] as String?,
-      imageCount: imageItems.length,
-      primaryImageUrl: imageItems.isNotEmpty ? imageItems.first.publicUrl : null,
-      images: imageItems,
-    );
   }
 
   DateTime? _parseDate(dynamic value) {

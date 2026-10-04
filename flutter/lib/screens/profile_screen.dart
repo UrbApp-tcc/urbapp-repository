@@ -5,7 +5,7 @@ import '../services/feed_service.dart';
 import '../services/profile_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/error_formatter.dart';
-import 'agency_profiles_screen.dart';
+import 'institutional_center_screen.dart';
 import 'post_detail_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -239,13 +239,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(Icons.account_balance_outlined),
-                  title: const Text('Perfis institucionais'),
+                  title: const Text('Central institucional'),
                   subtitle: const Text(
-                    'Criar ou gerenciar secretaria/prefeitura',
+                    'Órgãos, vereadores, indicadores e moderação',
                   ),
                   onTap: () {
                     Navigator.of(context).pop();
-                    AgencyProfilesScreen.open(
+                    InstitutionalCenterScreen.open(
                       context,
                       currentUserId: widget.currentUserId!,
                     );

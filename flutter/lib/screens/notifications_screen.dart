@@ -62,7 +62,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     });
 
     try {
-      final items = await _notificationsService.fetchNotifications(userId: userId);
+      final items = await _notificationsService.fetchNotifications(
+        userId: userId,
+      );
       if (!mounted) return;
       setState(() {
         _items = items;
@@ -80,7 +82,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   @override
   Widget build(BuildContext context) {
     final unreadItems = _items.take(3).toList();
-    final pastItems = _items.length > 3 ? _items.skip(3).toList() : const <AppNotificationItem>[];
+    final pastItems = _items.length > 3
+        ? _items.skip(3).toList()
+        : const <AppNotificationItem>[];
 
     return RefreshIndicator(
       onRefresh: _loadNotifications,
@@ -110,7 +114,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           else if (unreadItems.isEmpty)
             const _EmptyState(
               title: 'Nenhuma notificação ainda',
-              description: 'Quando alguém seguir, apoiar ou responder você, a atividade aparece aqui.',
+              description:
+                  'Quando alguém seguir, apoiar ou responder você, a atividade aparece aqui.',
             )
           else ...[
             const Text(
@@ -144,7 +149,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       if (!isLast)
                         Divider(
                           height: 1,
-                          color: const Color(0xFF141E28).withValues(alpha: 0.08),
+                          color: const Color(
+                            0xFF141E28,
+                          ).withValues(alpha: 0.08),
                         ),
                     ],
                   );
@@ -174,15 +181,18 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           else if (pastItems.isEmpty)
             const _EmptyState(
               title: 'Sem histórico anterior',
-              description: 'As notificações mais antigas vão ficando listadas aqui.',
+              description:
+                  'As notificações mais antigas vão ficando listadas aqui.',
             )
           else
             ...pastItems.asMap().entries.map(
-                  (entry) => Padding(
-                    padding: EdgeInsets.only(bottom: entry.key == pastItems.length - 1 ? 0 : 18),
-                    child: _NotificationTile(item: entry.value),
-                  ),
+              (entry) => Padding(
+                padding: EdgeInsets.only(
+                  bottom: entry.key == pastItems.length - 1 ? 0 : 18,
                 ),
+                child: _NotificationTile(item: entry.value),
+              ),
+            ),
         ],
       ),
     );
@@ -190,9 +200,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({
-    required this.onOpenSearch,
-  });
+  const _TopBar({required this.onOpenSearch});
 
   final VoidCallback onOpenSearch;
 
@@ -237,9 +245,7 @@ class _TopBar extends StatelessWidget {
 }
 
 class _NotificationTile extends StatelessWidget {
-  const _NotificationTile({
-    required this.item,
-  });
+  const _NotificationTile({required this.item});
 
   final AppNotificationItem item;
 
@@ -310,6 +316,8 @@ class _NotificationAvatar extends StatelessWidget {
       AppNotificationType.commentSupport => Icons.thumb_up_alt_rounded,
       AppNotificationType.postComment => Icons.chat_bubble_rounded,
       AppNotificationType.commentReply => Icons.reply_rounded,
+      AppNotificationType.occurrenceEvent => Icons.campaign_rounded,
+      AppNotificationType.levelUp => Icons.workspace_premium_rounded,
     };
 
     final fallback = Container(
@@ -408,10 +416,7 @@ class _PastNotificationSkeleton extends StatelessWidget {
 }
 
 class _EmptyState extends StatelessWidget {
-  const _EmptyState({
-    required this.title,
-    required this.description,
-  });
+  const _EmptyState({required this.title, required this.description});
 
   final String title;
   final String description;

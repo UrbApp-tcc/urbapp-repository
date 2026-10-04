@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../services/feed_service.dart';
 import '../services/post_service.dart';
@@ -29,6 +29,7 @@ class _ResolveComplaintScreenState extends State<ResolveComplaintScreen> {
 
   bool _isSubmitting = false;
   bool _confirmResolution = false;
+  XFile? _evidence;
 
   @override
   void dispose() {
@@ -37,15 +38,22 @@ class _ResolveComplaintScreenState extends State<ResolveComplaintScreen> {
   }
 
   Future<void> _submitResolution() async {
-    final userId = Supabase.instance.client.auth.currentUser?.id;
-    if (userId == null) return;
-
     if (!_confirmResolution) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Confirme que o problema foi resolvido para continuar.',
+            'Confirme que o problema aparenta estar resolvido para continuar.',
           ),
+          backgroundColor: AppColors.pending,
+        ),
+      );
+      return;
+    }
+
+    if (_noteController.text.trim().length < 3) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Descreva a possível resolução.'),
           backgroundColor: AppColors.pending,
         ),
       );
@@ -56,17 +64,16 @@ class _ResolveComplaintScreenState extends State<ResolveComplaintScreen> {
     setState(() => _isSubmitting = true);
 
     try {
-      await _postService.resolvePost(
+      await _postService.openResolutionCycle(
         postId: widget.post.id,
-        userId: userId,
-        fromStatus: widget.post.status,
         note: _noteController.text,
+        evidence: _evidence,
       );
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Reclamação marcada como resolvida.'),
+          content: Text('Validação comunitária aberta com sucesso.'),
           backgroundColor: AppColors.resolved,
         ),
       );
@@ -86,6 +93,14 @@ class _ResolveComplaintScreenState extends State<ResolveComplaintScreen> {
     }
   }
 
+  Future<void> _pickEvidence() async {
+    final file = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+    );
+    if (file != null && mounted) setState(() => _evidence = file);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -97,7 +112,7 @@ class _ResolveComplaintScreenState extends State<ResolveComplaintScreen> {
               ? null
               : () => Navigator.of(context).pop(false),
         ),
-        title: const Text('Resolver reclamação'),
+        title: const Text('Informar possível resolução'),
       ),
       body: SafeArea(
         child: ListView(
@@ -106,7 +121,7 @@ class _ResolveComplaintScreenState extends State<ResolveComplaintScreen> {
             _ResolutionHero(post: widget.post),
             const SizedBox(height: 20),
             const Text(
-              'Resumo da resolução',
+              'Evidência da possível resolução',
               style: TextStyle(
                 color: AppColors.textPrimary,
                 fontSize: 17,
@@ -121,10 +136,32 @@ class _ResolveComplaintScreenState extends State<ResolveComplaintScreen> {
               textInputAction: TextInputAction.newline,
               decoration: const InputDecoration(
                 hintText:
-                    'Descreva o que foi feito para resolver a reclamação.',
+                    'Descreva o que mudou e por que o problema aparenta estar resolvido.',
                 alignLabelWithHint: true,
               ),
             ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _isSubmitting ? null : _pickEvidence,
+              icon: const Icon(Icons.add_photo_alternate_outlined),
+              label: Text(
+                _evidence == null
+                    ? 'Adicionar foto recente (recomendado)'
+                    : _evidence!.name,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (_evidence != null)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: _isSubmitting
+                      ? null
+                      : () => setState(() => _evidence = null),
+                  icon: const Icon(Icons.close_rounded),
+                  label: const Text('Remover foto'),
+                ),
+              ),
             const SizedBox(height: 14),
             _ConfirmationTile(
               value: _confirmResolution,
@@ -147,12 +184,14 @@ class _ResolveComplaintScreenState extends State<ResolveComplaintScreen> {
                     )
                   : const Icon(Icons.check_circle_outline_rounded),
               label: Text(
-                _isSubmitting ? 'Salvando...' : 'Marcar como resolvida',
+                _isSubmitting
+                    ? 'Abrindo validação...'
+                    : 'Enviar para validação',
               ),
             ),
             const SizedBox(height: 12),
             Text(
-              'A reclamação será movida para concluída e a anotação ficará registrada no histórico do reporte.',
+              'A ocorrência ficará aguardando validação. O quórum, o raio e o prazo vigentes serão registrados neste ciclo; esta ação não a resolve sozinha.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: AppColors.textSecondary.withValues(alpha: 0.95),
@@ -307,7 +346,7 @@ class _ConfirmationTile extends StatelessWidget {
             const SizedBox(width: 8),
             const Expanded(
               child: Text(
-                'Confirmo que a reclamação foi resolvida e pode ser marcada como concluída.',
+                'Confirmo que o problema aparenta estar resolvido e pode ser enviado à validação comunitária.',
                 style: TextStyle(
                   color: AppColors.textPrimary,
                   fontSize: 14,

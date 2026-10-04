@@ -512,6 +512,7 @@ class _AppShellScreenState extends State<AppShellScreen> {
                             posts: _posts,
                             isLoading: _isLoading,
                             currentUserId: currentUserId,
+                            selectedCityId: _selectedCityId,
                           ),
                           NotificationsScreen(
                             currentUserId: currentUserId,
@@ -554,9 +555,9 @@ class _AppShellScreenState extends State<AppShellScreen> {
                               borderRadius: BorderRadius.circular(20),
                               boxShadow: [
                                 BoxShadow(
-                                  color: const Color(0xFF18222E).withValues(
-                                    alpha: 0.28,
-                                  ),
+                                  color: const Color(
+                                    0xFF18222E,
+                                  ).withValues(alpha: 0.28),
                                   blurRadius: 24,
                                   offset: const Offset(0, 12),
                                 ),
