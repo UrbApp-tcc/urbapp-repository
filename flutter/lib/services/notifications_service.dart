@@ -1,454 +1,120 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-enum AppNotificationType {
-  newFollower,
-  postSupport,
-  commentSupport,
-  postComment,
-  commentReply,
-  occurrenceEvent,
-  levelUp,
-}
+import '../domain/models.dart';
+import '../utils/error_formatter.dart';
 
-class AppNotificationItem {
-  const AppNotificationItem({
-    required this.id,
-    required this.type,
-    required this.createdAt,
-    required this.actorDisplayName,
-    this.actorAvatarUrl,
-    required this.title,
-    required this.description,
-  });
-
-  final String id;
-  final AppNotificationType type;
-  final DateTime createdAt;
-  final String actorDisplayName;
-  final String? actorAvatarUrl;
-  final String title;
-  final String description;
-}
-
+/// Alertas gerados pelo backend (spec §23). O cliente apenas lê e marca como lido.
 class NotificationsService {
-  NotificationsService({SupabaseClient? supabase})
-    : _supabase = supabase ?? Supabase.instance.client;
+  NotificationsService({SupabaseClient? supabase}) : _supabase = supabase ?? Supabase.instance.client;
 
   final SupabaseClient _supabase;
 
-  Future<List<AppNotificationItem>> fetchNotifications({
-    required String userId,
-  }) async {
+  /// Contador de não lidos compartilhado pelos sinos dos cabeçalhos.
+  static final ValueNotifier<int> unreadCount = ValueNotifier<int>(0);
+
+  static const _visibleTypes = [
+    'occurrence_event',
+    'occurrence_support',
+    'occurrence_comment',
+    'comment_reply',
+    'points_awarded',
+    'level_up',
+    'badge_awarded',
+  ];
+
+  RealtimeChannel? _channel;
+
+  Future<List<AppNotification>> fetch({int limit = 60}) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return const [];
     try {
-      final initialResults = await Future.wait<dynamic>([
-        _supabase
-            .from('post_feed_rows')
-            .select('id, title')
-            .eq('author_id', userId)
-            .order('created_at', ascending: false)
-            .limit(100),
-        _supabase
-            .from('comments')
-            .select('id, post_id, body')
-            .eq('user_id', userId)
-            .order('created_at', ascending: false)
-            .limit(100),
-      ]);
-
-      final ownPosts = {
-        for (final item in initialResults[0] as List<dynamic>)
-          (item['id'] as num).toInt(): (item['title'] as String?) ?? 'seu post',
-      };
-      final ownPostIds = ownPosts.keys.toList();
-
-      final ownComments = {
-        for (final item in initialResults[1] as List<dynamic>)
-          (item['id'] as num).toInt(): _CommentReference(
-            id: (item['id'] as num).toInt(),
-            postId: (item['post_id'] as num).toInt(),
-            body: (item['body'] as String?) ?? '',
-          ),
-      };
-      final ownCommentIds = ownComments.keys.toList();
-
-      final activityResults = await Future.wait<dynamic>([
-        _fetchStoredNotifications(userId),
-        _fetchFollowerRows(userId),
-        _fetchPostSupportRows(userId, ownPostIds),
-        _fetchCommentLikeRows(userId, ownCommentIds),
-        _fetchCommentsOnOwnPosts(
-          userId: userId,
-          ownPostIds: ownPostIds,
-          ownCommentIds: ownCommentIds.toSet(),
-        ),
-        _fetchRepliesToOwnComments(
-          userId: userId,
-          ownCommentIds: ownCommentIds,
-        ),
-      ]);
-
-      final storedRows = activityResults[0] as List<_StoredNotificationRow>;
-      final followerRows = activityResults[1] as List<_ActivityRow>;
-      final postSupportRows = activityResults[2] as List<_ActivityRow>;
-      final commentLikeRows = activityResults[3] as List<_ActivityRow>;
-      final postCommentRows = activityResults[4] as List<_CommentActivityRow>;
-      final commentReplyRows = activityResults[5] as List<_CommentActivityRow>;
-
-      final actorIds = <String>{
-        ...followerRows.map((row) => row.actorId),
-        ...postSupportRows.map((row) => row.actorId),
-        ...commentLikeRows.map((row) => row.actorId),
-        ...postCommentRows.map((row) => row.actorId),
-        ...commentReplyRows.map((row) => row.actorId),
-      }.toList();
-
-      final profilesById = await _fetchProfiles(actorIds);
-
-      final items = <AppNotificationItem>[
-        ...storedRows.map(
-          (row) => AppNotificationItem(
-            id: 'stored-${row.id}',
-            type: row.type == 'level_up'
-                ? AppNotificationType.levelUp
-                : AppNotificationType.occurrenceEvent,
-            createdAt: row.createdAt,
-            actorDisplayName: 'UrbApp',
-            title: row.title,
-            description: row.body,
-          ),
-        ),
-        ...followerRows.map(
-          (row) => AppNotificationItem(
-            id: 'follower-${row.actorId}-${row.createdAt.toIso8601String()}',
-            type: AppNotificationType.newFollower,
-            createdAt: row.createdAt,
-            actorDisplayName: _profileLabel(profilesById[row.actorId]),
-            actorAvatarUrl: profilesById[row.actorId]?.avatarUrl,
-            title: 'Novo seguidor',
-            description:
-                '${_profileLabel(profilesById[row.actorId])} começou a seguir você.',
-          ),
-        ),
-        ...postSupportRows.map(
-          (row) => AppNotificationItem(
-            id: 'post-support-${row.targetId}-${row.actorId}-${row.createdAt.toIso8601String()}',
-            type: AppNotificationType.postSupport,
-            createdAt: row.createdAt,
-            actorDisplayName: _profileLabel(profilesById[row.actorId]),
-            actorAvatarUrl: profilesById[row.actorId]?.avatarUrl,
-            title: 'Novo apoio em post',
-            description:
-                '${_profileLabel(profilesById[row.actorId])} apoiou seu post "${ownPosts[row.targetId] ?? 'seu post'}".',
-          ),
-        ),
-        ...commentLikeRows.map((row) {
-          final comment = ownComments[row.targetId];
-          final preview = _truncate(comment?.body ?? 'seu comentário');
-          return AppNotificationItem(
-            id: 'comment-support-${row.targetId}-${row.actorId}-${row.createdAt.toIso8601String()}',
-            type: AppNotificationType.commentSupport,
-            createdAt: row.createdAt,
-            actorDisplayName: _profileLabel(profilesById[row.actorId]),
-            actorAvatarUrl: profilesById[row.actorId]?.avatarUrl,
-            title: 'Curtida em comentário',
-            description:
-                '${_profileLabel(profilesById[row.actorId])} curtiu seu comentário "$preview".',
-          );
-        }),
-        ...postCommentRows.map(
-          (row) => AppNotificationItem(
-            id: 'post-comment-${row.id}-${row.actorId}',
-            type: AppNotificationType.postComment,
-            createdAt: row.createdAt,
-            actorDisplayName: _profileLabel(profilesById[row.actorId]),
-            actorAvatarUrl: profilesById[row.actorId]?.avatarUrl,
-            title: row.isReply
-                ? 'Nova resposta no seu post'
-                : 'Novo comentário no seu post',
-            description:
-                '${_profileLabel(profilesById[row.actorId])} ${row.isReply ? 'respondeu em um comentário' : 'comentou'} no seu post "${ownPosts[row.postId] ?? 'seu post'}".',
-          ),
-        ),
-        ...commentReplyRows.map((row) {
-          final comment = ownComments[row.parentCommentId];
-          final preview = _truncate(comment?.body ?? 'seu comentário');
-          return AppNotificationItem(
-            id: 'comment-reply-${row.id}-${row.actorId}',
-            type: AppNotificationType.commentReply,
-            createdAt: row.createdAt,
-            actorDisplayName: _profileLabel(profilesById[row.actorId]),
-            actorAvatarUrl: profilesById[row.actorId]?.avatarUrl,
-            title: 'Nova resposta no seu comentário',
-            description:
-                '${_profileLabel(profilesById[row.actorId])} respondeu seu comentário "$preview".',
-          );
-        }),
-      ]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-
+      final rows = await _supabase
+          .from('notifications')
+          .select('id, type, title, body, payload, read_at, created_at')
+          .eq('user_id', userId)
+          .inFilter('type', _visibleTypes)
+          .order('created_at', ascending: false)
+          .limit(limit);
+      final items = (rows as List)
+          .map((row) => AppNotification.fromJson(Map<String, dynamic>.from(row as Map)))
+          .toList();
+      unreadCount.value = items.where((item) => !item.read).length;
       return items;
     } on PostgrestException catch (error) {
-      throw Exception('Erro ao carregar notificações: ${error.message}');
-    } catch (error) {
-      throw Exception('Erro inesperado ao carregar notificações: $error');
+      throw Exception(friendlyBackendMessage(error.message, 'Não foi possível carregar os alertas.'));
     }
   }
 
-  Future<List<_StoredNotificationRow>> _fetchStoredNotifications(
-    String userId,
-  ) async {
-    final response = await _supabase
-        .from('notifications')
-        .select('id, type, title, body, created_at')
-        .eq('user_id', userId)
-        .inFilter('type', ['occurrence_event', 'level_up'])
-        .order('created_at', ascending: false)
-        .limit(50);
-    return (response as List<dynamic>)
-        .map((item) => item as Map<String, dynamic>)
-        .map(
-          (item) => _StoredNotificationRow(
-            id: (item['id'] as num).toInt(),
-            type: item['type'] as String,
-            title: item['title'] as String,
-            body: item['body'] as String,
-            createdAt: DateTime.parse(item['created_at'] as String),
-          ),
+  Future<void> refreshUnreadCount() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) {
+      unreadCount.value = 0;
+      return;
+    }
+    try {
+      final response = await _supabase
+          .from('notifications')
+          .select('id')
+          .eq('user_id', userId)
+          .inFilter('type', _visibleTypes)
+          .isFilter('read_at', null)
+          .count(CountOption.exact);
+      unreadCount.value = response.count;
+    } catch (_) {
+      // O contador é auxiliar; falhas não bloqueiam a navegação.
+    }
+  }
+
+  Future<void> markRead(int id) async {
+    try {
+      await _supabase
+          .from('notifications')
+          .update({'read_at': DateTime.now().toUtc().toIso8601String()})
+          .eq('id', id)
+          .isFilter('read_at', null);
+      if (unreadCount.value > 0) unreadCount.value -= 1;
+    } catch (_) {}
+  }
+
+  Future<void> markAllRead() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return;
+    try {
+      await _supabase
+          .from('notifications')
+          .update({'read_at': DateTime.now().toUtc().toIso8601String()})
+          .eq('user_id', userId)
+          .isFilter('read_at', null);
+      unreadCount.value = 0;
+    } on PostgrestException catch (error) {
+      throw Exception(friendlyBackendMessage(error.message, 'Não foi possível marcar os alertas como lidos.'));
+    }
+  }
+
+  /// Mantém o badge atualizado quando novos alertas chegam.
+  void listen() {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null || _channel != null) return;
+    _channel = _supabase
+        .channel('urbapp-alerts-$userId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'notifications',
+          filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'user_id', value: userId),
+          callback: (payload) {
+            if (_visibleTypes.contains(payload.newRecord['type'])) unreadCount.value += 1;
+          },
         )
-        .toList();
+        .subscribe();
   }
 
-  Future<List<_ActivityRow>> _fetchFollowerRows(String userId) async {
-    final response = await _supabase
-        .from('profile_followers')
-        .select('follower_id, created_at')
-        .eq('followed_id', userId)
-        .order('created_at', ascending: false)
-        .limit(20);
-
-    return (response as List<dynamic>)
-        .map(
-          (item) => _ActivityRow(
-            actorId: item['follower_id'] as String,
-            targetId: null,
-            createdAt: DateTime.parse(item['created_at'] as String),
-          ),
-        )
-        .toList();
+  Future<void> dispose() async {
+    final channel = _channel;
+    _channel = null;
+    if (channel != null) await _supabase.removeChannel(channel);
   }
-
-  Future<List<_ActivityRow>> _fetchPostSupportRows(
-    String userId,
-    List<int> ownPostIds,
-  ) async {
-    if (ownPostIds.isEmpty) return const <_ActivityRow>[];
-
-    final response = await _supabase
-        .from('post_supports')
-        .select('post_id, user_id, created_at')
-        .inFilter('post_id', ownPostIds)
-        .neq('user_id', userId)
-        .order('created_at', ascending: false)
-        .limit(20);
-
-    return (response as List<dynamic>)
-        .map(
-          (item) => _ActivityRow(
-            actorId: item['user_id'] as String,
-            targetId: (item['post_id'] as num).toInt(),
-            createdAt: DateTime.parse(item['created_at'] as String),
-          ),
-        )
-        .toList();
-  }
-
-  Future<List<_ActivityRow>> _fetchCommentLikeRows(
-    String userId,
-    List<int> ownCommentIds,
-  ) async {
-    if (ownCommentIds.isEmpty) return const <_ActivityRow>[];
-
-    final response = await _supabase
-        .from('comment_likes')
-        .select('comment_id, user_id, created_at')
-        .inFilter('comment_id', ownCommentIds)
-        .neq('user_id', userId)
-        .order('created_at', ascending: false)
-        .limit(20);
-
-    return (response as List<dynamic>)
-        .map(
-          (item) => _ActivityRow(
-            actorId: item['user_id'] as String,
-            targetId: (item['comment_id'] as num).toInt(),
-            createdAt: DateTime.parse(item['created_at'] as String),
-          ),
-        )
-        .toList();
-  }
-
-  Future<List<_CommentActivityRow>> _fetchCommentsOnOwnPosts({
-    required String userId,
-    required List<int> ownPostIds,
-    required Set<int> ownCommentIds,
-  }) async {
-    if (ownPostIds.isEmpty) return const <_CommentActivityRow>[];
-
-    final response = await _supabase
-        .from('comments')
-        .select('id, post_id, user_id, created_at, parent_comment_id')
-        .inFilter('post_id', ownPostIds)
-        .neq('user_id', userId)
-        .order('created_at', ascending: false)
-        .limit(30);
-
-    return (response as List<dynamic>)
-        .map(
-          (item) => _CommentActivityRow(
-            id: (item['id'] as num).toInt(),
-            actorId: item['user_id'] as String,
-            postId: (item['post_id'] as num).toInt(),
-            parentCommentId: (item['parent_comment_id'] as num?)?.toInt(),
-            createdAt: DateTime.parse(item['created_at'] as String),
-          ),
-        )
-        .where(
-          (row) =>
-              row.parentCommentId == null ||
-              !ownCommentIds.contains(row.parentCommentId),
-        )
-        .toList();
-  }
-
-  Future<List<_CommentActivityRow>> _fetchRepliesToOwnComments({
-    required String userId,
-    required List<int> ownCommentIds,
-  }) async {
-    if (ownCommentIds.isEmpty) return const <_CommentActivityRow>[];
-
-    final response = await _supabase
-        .from('comments')
-        .select('id, post_id, user_id, created_at, parent_comment_id')
-        .inFilter('parent_comment_id', ownCommentIds)
-        .neq('user_id', userId)
-        .order('created_at', ascending: false)
-        .limit(30);
-
-    return (response as List<dynamic>)
-        .map(
-          (item) => _CommentActivityRow(
-            id: (item['id'] as num).toInt(),
-            actorId: item['user_id'] as String,
-            postId: (item['post_id'] as num).toInt(),
-            parentCommentId: (item['parent_comment_id'] as num?)?.toInt(),
-            createdAt: DateTime.parse(item['created_at'] as String),
-          ),
-        )
-        .where((row) => row.parentCommentId != null)
-        .toList();
-  }
-
-  Future<Map<String, _ProfileRef>> _fetchProfiles(List<String> actorIds) async {
-    if (actorIds.isEmpty) return const <String, _ProfileRef>{};
-
-    final response = await _supabase
-        .from('profiles')
-        .select('id, full_name, username, avatar_url')
-        .inFilter('id', actorIds);
-
-    return {
-      for (final item in response as List<dynamic>)
-        item['id'] as String: _ProfileRef(
-          id: item['id'] as String,
-          fullName: item['full_name'] as String?,
-          username: item['username'] as String?,
-          avatarUrl: item['avatar_url'] as String?,
-        ),
-    };
-  }
-
-  String _profileLabel(_ProfileRef? profile) {
-    final fullName = profile?.fullName?.trim();
-    if (fullName != null && fullName.isNotEmpty) return fullName;
-    final username = profile?.username?.trim();
-    if (username != null && username.isNotEmpty) return username;
-    return 'Alguém';
-  }
-
-  String _truncate(String value, {int maxLength = 42}) {
-    final normalized = value.trim().replaceAll(RegExp(r'\s+'), ' ');
-    if (normalized.length <= maxLength) return normalized;
-    return '${normalized.substring(0, maxLength - 1)}…';
-  }
-}
-
-class _StoredNotificationRow {
-  const _StoredNotificationRow({
-    required this.id,
-    required this.type,
-    required this.title,
-    required this.body,
-    required this.createdAt,
-  });
-
-  final int id;
-  final String type;
-  final String title;
-  final String body;
-  final DateTime createdAt;
-}
-
-class _ProfileRef {
-  const _ProfileRef({
-    required this.id,
-    this.fullName,
-    this.username,
-    this.avatarUrl,
-  });
-
-  final String id;
-  final String? fullName;
-  final String? username;
-  final String? avatarUrl;
-}
-
-class _CommentReference {
-  const _CommentReference({
-    required this.id,
-    required this.postId,
-    required this.body,
-  });
-
-  final int id;
-  final int postId;
-  final String body;
-}
-
-class _ActivityRow {
-  const _ActivityRow({
-    required this.actorId,
-    required this.createdAt,
-    this.targetId,
-  });
-
-  final String actorId;
-  final int? targetId;
-  final DateTime createdAt;
-}
-
-class _CommentActivityRow {
-  const _CommentActivityRow({
-    required this.id,
-    required this.actorId,
-    required this.postId,
-    required this.createdAt,
-    this.parentCommentId,
-  });
-
-  final int id;
-  final String actorId;
-  final int postId;
-  final DateTime createdAt;
-  final int? parentCommentId;
-
-  bool get isReply => parentCommentId != null;
 }

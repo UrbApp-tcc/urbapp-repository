@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../theme/app_theme.dart';
+import 'urb/urb_components.dart';
 
 /// Envolve a tela principal e escuta, em tempo real, as notificações
 /// do usuário logado na tabela `notifications`.
@@ -82,66 +83,40 @@ class _GamificationListenerState extends State<GamificationListener> {
 
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        contentPadding: const EdgeInsets.fromLTRB(24, 32, 24, 8),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 88,
-              height: 88,
-              alignment: Alignment.center,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  colors: [AppColors.gradientViolet, AppColors.gradientBlue],
+      builder: (dialogContext) => Dialog(
+        backgroundColor: UrbColors.canvas,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 30, 24, 22),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 72,
+                height: 72,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: UrbColors.lime,
+                  borderRadius: BorderRadius.circular(22),
+                  boxShadow: [BoxShadow(color: UrbColors.lime.withValues(alpha: 0.35), blurRadius: 28, offset: const Offset(0, 10))],
                 ),
+                child: Text(newLevel?.toString() ?? '↑', style: UrbText.h1.copyWith(fontSize: 34)),
               ),
-              child: Text(
-                newLevel?.toString() ?? '↑',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 40,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'Você subiu de nível!',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            if (levelTitle != null && levelTitle.isNotEmpty) ...[
+              const SizedBox(height: 20),
+              const UrbEyebrow('Novo nível'),
+              const SizedBox(height: 6),
+              Text('Você subiu de nível!', textAlign: TextAlign.center, style: UrbText.h2.copyWith(color: UrbColors.navy)),
+              if (levelTitle != null && levelTitle.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(levelTitle, style: UrbText.title.copyWith(color: UrbColors.blue)),
+              ],
               const SizedBox(height: 8),
-              Text(
-                levelTitle,
-                style: const TextStyle(
-                  color: AppColors.accentPurple,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+              Text(body, textAlign: TextAlign.center, style: UrbText.bodySmall),
+              const SizedBox(height: 20),
+              UrbButton(label: 'Continuar', expand: true, onPressed: () => Navigator.of(dialogContext).pop()),
             ],
-            const SizedBox(height: 8),
-            Text(
-              body,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: AppColors.textSecondary),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Continuar'),
           ),
-        ],
+        ),
       ),
     );
 

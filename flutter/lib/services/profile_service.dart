@@ -1,15 +1,9 @@
-import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../domain/models.dart';
 import '../logic/app_rules.dart';
-import 'feed_service.dart';
-
-class ProfileCityOption {
-  const ProfileCityOption({required this.id, required this.name});
-
-  final int id;
-  final String name;
-}
+import '../utils/error_formatter.dart';
 
 class ProfileBadge {
   const ProfileBadge({
@@ -17,7 +11,7 @@ class ProfileBadge {
     required this.name,
     required this.slug,
     required this.description,
-    this.icon,
+    this.minLevel,
     this.awardedAt,
   });
 
@@ -25,12 +19,83 @@ class ProfileBadge {
   final String name;
   final String slug;
   final String description;
-  final String? icon;
+  final int? minLevel;
   final DateTime? awardedAt;
+
+  bool get earned => awardedAt != null;
 }
 
-class UserProfileData {
-  const UserProfileData({
+class ParticipationSummary {
+  const ParticipationSummary({this.reports = 0, this.supports = 0, this.validations = 0, this.following = 0});
+
+  final int reports;
+  final int supports;
+  final int validations;
+  final int following;
+}
+
+class ProfileContribution {
+  const ProfileContribution({
+    required this.occurrence,
+    required this.isAnonymous,
+    required this.isInitiator,
+    required this.contributedAt,
+  });
+
+  final Occurrence occurrence;
+  final bool isAnonymous;
+  final bool isInitiator;
+  final DateTime contributedAt;
+}
+
+class ValidationHistoryItem {
+  const ValidationHistoryItem({
+    required this.occurrence,
+    required this.confirmed,
+    required this.votedAt,
+    required this.cycleStatus,
+  });
+
+  final Occurrence occurrence;
+  final bool confirmed;
+  final DateTime votedAt;
+  final String cycleStatus;
+}
+
+class NotificationPreferences {
+  const NotificationPreferences({
+    this.occurrenceUpdates = true,
+    this.comments = true,
+    this.officialUpdates = true,
+    this.validations = true,
+    this.councilorActivity = true,
+  });
+
+  final bool occurrenceUpdates;
+  final bool comments;
+  final bool officialUpdates;
+  final bool validations;
+  final bool councilorActivity;
+
+  Map<String, bool> toJson() => {
+        'occurrence_updates': occurrenceUpdates,
+        'comments': comments,
+        'official_updates': officialUpdates,
+        'validations': validations,
+        'councilor_activity': councilorActivity,
+      };
+
+  NotificationPreferences copyWithKey(String key, bool value) => NotificationPreferences(
+        occurrenceUpdates: key == 'occurrence_updates' ? value : occurrenceUpdates,
+        comments: key == 'comments' ? value : comments,
+        officialUpdates: key == 'official_updates' ? value : officialUpdates,
+        validations: key == 'validations' ? value : validations,
+        councilorActivity: key == 'councilor_activity' ? value : councilorActivity,
+      );
+}
+
+class UserProfile {
+  const UserProfile({
     required this.id,
     required this.fullName,
     required this.username,
@@ -38,16 +103,15 @@ class UserProfileData {
     this.avatarUrl,
     this.cityId,
     this.cityName,
+    this.cityState,
+    required this.isPublic,
     required this.currentXp,
-    required this.currentLevel,
-    required this.levelProgress,
     required this.currentPoints,
+    required this.levelProgress,
+    this.featuredBadgeId,
+    this.createdAt,
     required this.followersCount,
-    required this.likesReceived,
-    required this.isFollowing,
-    this.featuredBadge,
-    required this.badges,
-    required this.posts,
+    required this.isFollowedByMe,
   });
 
   final String id;
@@ -57,538 +121,281 @@ class UserProfileData {
   final String? avatarUrl;
   final int? cityId;
   final String? cityName;
+  final String? cityState;
+  final bool isPublic;
   final int currentXp;
-  final int currentLevel;
-  final LevelProgress levelProgress;
   final int currentPoints;
+  final LevelProgress levelProgress;
+  final int? featuredBadgeId;
+  final DateTime? createdAt;
   final int followersCount;
-  final int likesReceived;
-  final bool isFollowing;
-  final ProfileBadge? featuredBadge;
-  final List<ProfileBadge> badges;
-  final List<FeedPost> posts;
+  final bool isFollowedByMe;
 
-  int get xpIntoCurrentLevel => levelProgress.xpIntoLevel;
-  int get xpToNextLevel => levelProgress.xpToNextLevel;
+  String get cityLabel {
+    if (cityName == null) return 'Cidade não informada';
+    return cityState == null ? cityName! : '$cityName, ${cityState!.toUpperCase()}';
+  }
 }
 
 class ProfileService {
-  ProfileService({SupabaseClient? supabase})
-    : _supabase = supabase ?? Supabase.instance.client;
+  ProfileService({SupabaseClient? supabase}) : _supabase = supabase ?? Supabase.instance.client;
 
   final SupabaseClient _supabase;
 
-  static const String _postImagesBucket = 'post-images';
-  static const String _profileImagesBucket = 'profile-images';
+  static const _profileImagesBucket = 'profile-images';
 
-  Future<UserProfileData> fetchProfile({
-    required String profileUserId,
-    String? viewerUserId,
-  }) async {
+  String? get currentUserId => _supabase.auth.currentUser?.id;
+  String? get currentEmail => _supabase.auth.currentUser?.email;
+
+  Future<T> _guard<T>(Future<T> Function() run, String fallback) async {
     try {
-      if (viewerUserId == profileUserId) {
-        await _supabase.rpc('ensure_my_profile');
-      }
-
-      final profileResponse = await _fetchProfileRow(profileUserId);
-      final fullName = _resolveDisplayName(profileResponse);
-      final username =
-          (profileResponse['username'] as String?)?.trim() ?? 'usuario';
-      final avatarUrl = profileResponse['avatar_url'] as String?;
-
-      final posts = await _fetchProfilePosts(
-        profileUserId: profileUserId,
-        includeAnonymous: viewerUserId == profileUserId,
-        authorDisplayName: fullName,
-        authorUsername: username,
-        authorAvatarUrl: avatarUrl,
-      );
-
-      final followersCount = await _fetchFollowersCountSafely(profileUserId);
-      final isFollowing = await _fetchIsFollowingSafely(
-        profileUserId: profileUserId,
-        viewerUserId: viewerUserId,
-      );
-      final badges = await _fetchBadgesSafely(profileUserId);
-      final levels = await _fetchLevelsSafely();
-      final currentXp = (profileResponse['current_xp'] as num?)?.toInt() ?? 0;
-      final likesReceived = posts.fold<int>(
-        0,
-        (sum, post) => sum + post.supportsCount,
-      );
-      final city = _asMap(profileResponse['cities']);
-
-      return UserProfileData(
-        id: profileResponse['id'] as String,
-        fullName: fullName,
-        username: username,
-        biography: profileResponse['biography'] as String?,
-        avatarUrl: avatarUrl,
-        cityId: (profileResponse['city_id'] as num?)?.toInt(),
-        cityName: city?['name'] as String?,
-        currentXp: currentXp,
-        currentLevel: (profileResponse['current_level'] as num?)?.toInt() ?? 1,
-        levelProgress: calculateLevelProgress(currentXp, levels),
-        currentPoints:
-            (profileResponse['current_points'] as num?)?.toInt() ?? 0,
-        followersCount: followersCount,
-        likesReceived: likesReceived,
-        isFollowing: isFollowing,
-        featuredBadge: _mapBadge(profileResponse['badges']),
-        badges: badges,
-        posts: posts,
-      );
+      return await run();
     } on PostgrestException catch (error) {
-      throw Exception('Erro ao carregar perfil: ${error.message}');
-    } catch (error) {
-      throw Exception('Erro inesperado ao carregar perfil: $error');
-    }
-  }
-
-  Future<List<ProfileCityOption>> fetchCities() async {
-    final response = await _supabase
-        .from('cities')
-        .select('id, name')
-        .order('name');
-
-    return (response as List<dynamic>)
-        .map(
-          (item) => ProfileCityOption(
-            id: (item['id'] as num).toInt(),
-            name: item['name'] as String,
-          ),
-        )
-        .toList();
-  }
-
-  Future<List<ProfileBadge>> fetchBadgeCatalog() async {
-    try {
-      final response = await _supabase
-          .from('badges')
-          .select('id, name, slug, description, icon')
-          .order('id');
-
-      return (response as List<dynamic>)
-          .map((item) => _mapBadge(item))
-          .whereType<ProfileBadge>()
-          .toList();
-    } on PostgrestException catch (error) {
-      if (_isMissingOptionalProfileFeature(error)) {
-        return const <ProfileBadge>[];
-      }
-      throw Exception('Erro ao carregar insignias: ${error.message}');
-    } catch (error) {
-      throw Exception('Erro inesperado ao carregar insignias: $error');
-    }
-  }
-
-  Future<void> updateProfile({
-    required String userId,
-    required String fullName,
-    required String username,
-    String? biography,
-    int? cityId,
-    int? featuredBadgeId,
-    String? avatarUrl,
-  }) async {
-    try {
-      await _supabase.rpc('ensure_my_profile');
-
-      final payload = {
-        'full_name': fullName.trim(),
-        'username': username.trim(),
-        'biography': _nullIfEmpty(biography),
-        'city_id': cityId,
-        'featured_badge_id': featuredBadgeId,
-        ...?switch (avatarUrl) {
-          final value? => {'avatar_url': value},
-          null => null,
-        },
-      };
-
-      await _supabase.from('profiles').update(payload).eq('id', userId);
-    } on PostgrestException catch (error) {
-      throw Exception('Erro ao atualizar perfil: ${error.message}');
-    } catch (error) {
-      throw Exception('Erro inesperado ao atualizar perfil: $error');
-    }
-  }
-
-  Future<String> uploadAvatar({
-    required String userId,
-    required PlatformFile file,
-  }) async {
-    try {
-      final bytes = file.bytes;
-      if (bytes == null) {
-        throw Exception('Nao foi possivel ler a imagem selecionada.');
-      }
-
-      final extension = _fileExtension(file.name);
-      final storagePath = '$userId/avatar/avatar.$extension';
-      final contentType = _mimeFromExtension(extension);
-
-      await _supabase.storage
-          .from(_profileImagesBucket)
-          .uploadBinary(
-            storagePath,
-            bytes,
-            fileOptions: FileOptions(upsert: true, contentType: contentType),
-          );
-
-      final publicUrl = _supabase.storage
-          .from(_profileImagesBucket)
-          .getPublicUrl(storagePath);
-      final cacheBuster = DateTime.now().millisecondsSinceEpoch;
-      return '$publicUrl?v=$cacheBuster';
+      throw Exception(friendlyBackendMessage(error.message, fallback));
     } on StorageException catch (error) {
-      final message = error.message.toLowerCase();
-      if (message.contains('bucket') && message.contains('not found')) {
-        throw Exception(
-          'O bucket de fotos de perfil ainda nao existe no Supabase. '
-          'Aplique a migration 20260419113000_add_profile_features.sql ou crie o bucket "profile-images".',
-        );
-      }
-
-      throw Exception('Erro ao enviar avatar: ${error.message}');
-    } catch (error) {
-      throw Exception('Erro inesperado ao enviar avatar: $error');
+      throw Exception('$fallback (${error.message})');
     }
   }
 
-  Future<void> followProfile({
-    required String viewerUserId,
-    required String profileUserId,
-  }) async {
-    try {
-      await _supabase.from('profile_followers').insert({
-        'follower_id': viewerUserId,
-        'followed_id': profileUserId,
-      });
-    } on PostgrestException catch (error) {
-      if (_isMissingProfileFollowersFeature(error)) {
-        throw Exception(
-          'O recurso de seguir perfis ainda nao foi criado no Supabase. '
-          'Aplique a migration 20260419113000_add_profile_features.sql.',
-        );
-      }
-
-      throw Exception('Erro ao seguir usuario: ${error.message}');
-    } catch (error) {
-      throw Exception('Erro inesperado ao seguir usuario: $error');
-    }
+  Future<UserProfile> fetchProfile(String profileId) {
+    return _guard(() async {
+      final viewer = currentUserId;
+      if (viewer == profileId) await _supabase.rpc('ensure_my_profile');
+      final responses = await Future.wait<dynamic>([
+        _supabase
+            .from('profiles')
+            .select('id, full_name, username, biography, avatar_url, city_id, is_public, current_xp, '
+                'current_points, featured_badge_id, created_at, cities(name, state)')
+            .eq('id', profileId)
+            .single(),
+        _fetchLevels(),
+        _supabase.from('profile_followers').select('follower_id').eq('followed_id', profileId).count(CountOption.exact),
+        viewer == null || viewer == profileId
+            ? Future<dynamic>.value(null)
+            : _supabase
+                .from('profile_followers')
+                .select('follower_id')
+                .eq('follower_id', viewer)
+                .eq('followed_id', profileId)
+                .maybeSingle(),
+      ]);
+      final row = Map<String, dynamic>.from(responses[0] as Map);
+      final city = asJsonMap(row['cities']);
+      final xp = (row['current_xp'] as num?)?.toInt() ?? 0;
+      final fullName = (row['full_name'] as String?)?.trim();
+      final username = (row['username'] as String?)?.trim() ?? 'cidadao';
+      return UserProfile(
+        id: row['id'] as String,
+        fullName: fullName == null || fullName.isEmpty ? username : fullName,
+        username: username,
+        biography: row['biography'] as String?,
+        avatarUrl: row['avatar_url'] as String?,
+        cityId: (row['city_id'] as num?)?.toInt(),
+        cityName: city?['name'] as String?,
+        cityState: city?['state'] as String?,
+        isPublic: row['is_public'] != false,
+        currentXp: xp,
+        currentPoints: (row['current_points'] as num?)?.toInt() ?? 0,
+        levelProgress: calculateLevelProgress(xp, responses[1] as List<LevelThreshold>),
+        featuredBadgeId: (row['featured_badge_id'] as num?)?.toInt(),
+        createdAt: DateTime.tryParse(row['created_at'] as String? ?? ''),
+        followersCount: (responses[2] as PostgrestResponse).count,
+        isFollowedByMe: responses[3] != null,
+      );
+    }, 'Não foi possível carregar o perfil.');
   }
 
-  Future<void> unfollowProfile({
-    required String viewerUserId,
-    required String profileUserId,
-  }) async {
+  Future<List<LevelThreshold>> _fetchLevels() async {
     try {
-      await _supabase
-          .from('profile_followers')
-          .delete()
-          .eq('follower_id', viewerUserId)
-          .eq('followed_id', profileUserId);
-    } on PostgrestException catch (error) {
-      if (_isMissingProfileFollowersFeature(error)) {
-        throw Exception(
-          'O recurso de seguir perfis ainda nao foi criado no Supabase. '
-          'Aplique a migration 20260419113000_add_profile_features.sql.',
-        );
-      }
-
-      throw Exception('Erro ao deixar de seguir usuario: ${error.message}');
-    } catch (error) {
-      throw Exception('Erro inesperado ao deixar de seguir usuario: $error');
-    }
-  }
-
-  Future<List<ProfileBadge>> _fetchBadges(String userId) async {
-    final response = await _supabase
-        .from('user_badges')
-        .select('awarded_at, badges(id, name, slug, description, icon)')
-        .eq('user_id', userId)
-        .order('awarded_at', ascending: false);
-
-    return (response as List<dynamic>)
-        .map((item) {
-          final badge = _asMap(item['badges']);
-          if (badge == null) return null;
-
-          return ProfileBadge(
-            id: (badge['id'] as num).toInt(),
-            name: badge['name'] as String,
-            slug: badge['slug'] as String,
-            description: badge['description'] as String,
-            icon: badge['icon'] as String?,
-            awardedAt: DateTime.parse(item['awarded_at'] as String),
-          );
-        })
-        .whereType<ProfileBadge>()
-        .toList();
-  }
-
-  /// Lê a tabela `levels`. Se falhar, usa a cópia local de [defaultLevels].
-  Future<List<LevelThreshold>> _fetchLevelsSafely() async {
-    try {
-      final response = await _supabase
-          .from('levels')
-          .select('level, min_xp, title')
-          .order('level');
-
-      final levels = (response as List<dynamic>).map((item) {
-        final row = item as Map<String, dynamic>;
-        return LevelThreshold(
-          level: (row['level'] as num).toInt(),
-          minXp: (row['min_xp'] as num).toInt(),
-          title: (row['title'] as String?) ?? '',
-        );
-      }).toList();
-
+      final rows = await _supabase.from('levels').select('level, min_xp, title').order('min_xp', ascending: true);
+      final levels = (rows as List)
+          .map((row) => LevelThreshold(
+                level: (row['level'] as num).toInt(),
+                minXp: (row['min_xp'] as num).toInt(),
+                title: row['title'] as String,
+              ))
+          .toList();
       return levels.isEmpty ? defaultLevels : levels;
     } catch (_) {
       return defaultLevels;
     }
   }
 
-  Future<List<ProfileBadge>> _fetchBadgesSafely(String userId) async {
-    try {
-      return await _fetchBadges(userId);
-    } on PostgrestException catch (error) {
-      if (_isMissingOptionalProfileFeature(error)) {
-        return const <ProfileBadge>[];
-      }
-      rethrow;
-    }
-  }
-
-  Future<int> _fetchFollowersCount(String userId) async {
-    final response = await _supabase
-        .from('profile_followers')
-        .select('followed_id')
-        .eq('followed_id', userId)
-        .count(CountOption.exact);
-
-    return response.count;
-  }
-
-  Future<int> _fetchFollowersCountSafely(String userId) async {
-    try {
-      return await _fetchFollowersCount(userId);
-    } on PostgrestException catch (error) {
-      if (_isMissingProfileFollowersFeature(error)) return 0;
-      rethrow;
-    }
-  }
-
-  Future<bool> _fetchIsFollowing({
-    required String profileUserId,
-    String? viewerUserId,
-  }) async {
-    if (viewerUserId == null || viewerUserId == profileUserId) return false;
-
-    final response = await _supabase
-        .from('profile_followers')
-        .select('followed_id')
-        .eq('followed_id', profileUserId)
-        .eq('follower_id', viewerUserId)
-        .maybeSingle();
-
-    return response != null;
-  }
-
-  Future<bool> _fetchIsFollowingSafely({
-    required String profileUserId,
-    String? viewerUserId,
-  }) async {
-    try {
-      return await _fetchIsFollowing(
-        profileUserId: profileUserId,
-        viewerUserId: viewerUserId,
+  Future<ParticipationSummary> fetchParticipation(String profileId) {
+    return _guard(() async {
+      final data = asJsonMap(await _supabase.rpc('get_participation_summary', params: {'target_profile_id': profileId}));
+      int read(String key) => (data?[key] as num?)?.toInt() ?? 0;
+      return ParticipationSummary(
+        reports: read('reports'),
+        supports: read('supports'),
+        validations: read('validations'),
+        following: read('following'),
       );
-    } on PostgrestException catch (error) {
-      if (_isMissingProfileFollowersFeature(error)) return false;
-      rethrow;
-    }
+    }, 'Não foi possível carregar sua participação.');
   }
 
-  Future<Map<String, dynamic>> _fetchProfileRow(String profileUserId) async {
-    return await _supabase
-        .from('profiles')
-        .select('''
-          id,
-          full_name,
-          username,
-          biography,
-          avatar_url,
-          city_id,
-          current_xp,
-          current_level,
-          current_points,
-          featured_badge_id,
-          cities(name),
-          badges!profiles_featured_badge_id_fkey(id, name, slug, description, icon)
-        ''')
-        .eq('id', profileUserId)
-        .single();
+  /// Contribuições (relatos). Anônimas aparecem apenas para o próprio autor.
+  Future<List<ProfileContribution>> fetchContributions(
+    String profileId,
+    Future<List<Occurrence>> Function(Iterable<int>) loadOccurrences,
+  ) {
+    return _guard(() async {
+      final rows = await _supabase.rpc('get_profile_contributions', params: {'target_profile_id': profileId}) as List;
+      final occurrences = {
+        for (final occurrence in await loadOccurrences(rows.map((row) => (row['occurrence_id'] as num).toInt())))
+          occurrence.id: occurrence,
+      };
+      final seen = <int>{};
+      final result = <ProfileContribution>[];
+      for (final row in rows) {
+        final occurrenceId = (row['occurrence_id'] as num).toInt();
+        final occurrence = occurrences[occurrenceId];
+        if (occurrence == null || !seen.add(occurrenceId)) continue;
+        result.add(ProfileContribution(
+          occurrence: occurrence,
+          isAnonymous: row['is_anonymous'] == true,
+          isInitiator: row['is_initiator'] == true,
+          contributedAt: DateTime.parse(row['contributed_at'] as String),
+        ));
+      }
+      return result;
+    }, 'Não foi possível carregar as contribuições.');
   }
 
-  Future<List<FeedPost>> _fetchProfilePosts({
-    required String profileUserId,
-    required bool includeAnonymous,
-    required String authorDisplayName,
-    required String authorUsername,
-    String? authorAvatarUrl,
-  }) async {
-    var query = _supabase
-        .from('post_feed_rows')
-        .select()
-        .eq('author_id', profileUserId);
-
-    if (!includeAnonymous) {
-      query = query.eq('is_anonymous', false);
-    }
-
-    final response = await query.order('created_at', ascending: false);
-
-    return (response as List<dynamic>)
-        .map(
-          (item) => _mapProfilePost(
-            item as Map<String, dynamic>,
-            authorDisplayName: authorDisplayName,
-            authorUsername: authorUsername,
-            authorAvatarUrl: authorAvatarUrl,
-          ),
-        )
-        .toList();
+  Future<List<ValidationHistoryItem>> fetchMyValidations(
+    Future<List<Occurrence>> Function(Iterable<int>) loadOccurrences,
+  ) {
+    return _guard(() async {
+      final rows = await _supabase.rpc('get_my_validation_votes') as List;
+      final occurrences = {
+        for (final occurrence in await loadOccurrences(rows.map((row) => (row['occurrence_id'] as num).toInt())))
+          occurrence.id: occurrence,
+      };
+      return rows
+          .map((row) {
+            final occurrence = occurrences[(row['occurrence_id'] as num).toInt()];
+            if (occurrence == null) return null;
+            return ValidationHistoryItem(
+              occurrence: occurrence,
+              confirmed: row['decision'] == 'confirm',
+              votedAt: DateTime.parse(row['voted_at'] as String),
+              cycleStatus: row['cycle_status'] as String? ?? 'pending',
+            );
+          })
+          .whereType<ValidationHistoryItem>()
+          .toList();
+    }, 'Não foi possível carregar suas validações.');
   }
 
-  FeedPost _mapProfilePost(
-    Map<String, dynamic> data, {
-    required String authorDisplayName,
-    required String authorUsername,
-    String? authorAvatarUrl,
+  /// Catálogo de insígnias com as conquistadas pelo usuário.
+  Future<List<ProfileBadge>> fetchBadges(String profileId) {
+    return _guard(() async {
+      final responses = await Future.wait<dynamic>([
+        _supabase.from('badges').select('id, name, slug, description, min_level').order('min_level', ascending: true),
+        _supabase.from('user_badges').select('badge_id, awarded_at').eq('user_id', profileId),
+      ]);
+      final awarded = {
+        for (final row in responses[1] as List) (row['badge_id'] as num).toInt(): DateTime.parse(row['awarded_at'] as String),
+      };
+      return (responses[0] as List)
+          .map((row) => ProfileBadge(
+                id: (row['id'] as num).toInt(),
+                name: row['name'] as String,
+                slug: row['slug'] as String,
+                description: row['description'] as String? ?? '',
+                minLevel: (row['min_level'] as num?)?.toInt(),
+                awardedAt: awarded[(row['id'] as num).toInt()],
+              ))
+          .toList();
+    }, 'Não foi possível carregar as conquistas.');
+  }
+
+  Future<void> updateProfile({
+    required String fullName,
+    required String username,
+    String? biography,
+    int? cityId,
+    String? avatarUrl,
+    int? featuredBadgeId,
+    bool clearFeaturedBadge = false,
   }) {
-    final imageItems =
-        (data['images'] as List<dynamic>? ?? const [])
-            .map((item) => item as Map<String, dynamic>)
-            .map(
-              (item) => FeedImage(
-                id: (item['id'] as num).toInt(),
-                storagePath: item['storage_path'] as String,
-                publicUrl: _resolveImageUrl(item['storage_path'] as String?),
-                caption: item['caption'] as String?,
-                position: (item['position'] as num?)?.toInt() ?? 0,
-              ),
-            )
-            .toList()
-          ..sort((a, b) => a.position.compareTo(b.position));
-
-    final isAnonymous = data['is_anonymous'] as bool? ?? false;
-
-    return FeedPost(
-      id: (data['id'] as num).toInt(),
-      title: (data['title'] as String?) ?? 'Sem titulo',
-      description: (data['description'] as String?) ?? '',
-      status: data['status'] as String,
-      createdAt: DateTime.parse(data['created_at'] as String),
-      updatedAt: _parseDate(data['updated_at']),
-      resolvedAt: _parseDate(data['resolved_at']),
-      latitude: (data['latitude'] as num?)?.toDouble() ?? 0.0,
-      longitude: (data['longitude'] as num?)?.toDouble() ?? 0.0,
-      cityId: (data['city_id'] as num?)?.toInt() ?? 0,
-      cityName: (data['city_name'] as String?) ?? 'Cidade desconhecida',
-      street: data['street'] as String?,
-      neighborhood: data['neighborhood'] as String?,
-      categoryId: (data['category_id'] as num?)?.toInt() ?? 0,
-      categoryName: (data['category_name'] as String?) ?? 'Categoria',
-      agencyId: (data['agency_id'] as num?)?.toInt(),
-      agencyName: data['agency_name'] as String?,
-      supportsCount: (data['supports_count'] as num?)?.toInt() ?? 0,
-      commentsCount: (data['comments_count'] as num?)?.toInt() ?? 0,
-      isAnonymous: isAnonymous,
-      authorId: isAnonymous ? null : data['author_id'] as String?,
-      authorDisplayName: isAnonymous ? 'Anonimo' : authorDisplayName,
-      authorUsername: isAnonymous ? null : authorUsername,
-      authorAvatarUrl: isAnonymous ? null : authorAvatarUrl,
-      imageCount: imageItems.length,
-      primaryImageUrl: imageItems.isNotEmpty
-          ? imageItems.first.publicUrl
-          : null,
-      images: imageItems,
-    );
+    final userId = currentUserId;
+    if (userId == null) throw Exception('Entre na sua conta para continuar.');
+    return _guard(() async {
+      await _supabase.from('profiles').update({
+        'full_name': fullName.trim(),
+        'username': username.trim(),
+        'biography': (biography?.trim().isEmpty ?? true) ? null : biography!.trim(),
+        'city_id': ?cityId,
+        'avatar_url': ?avatarUrl,
+        if (featuredBadgeId != null || clearFeaturedBadge) 'featured_badge_id': featuredBadgeId,
+      }).eq('id', userId);
+    }, 'Não foi possível salvar o perfil.');
   }
 
-  DateTime? _parseDate(dynamic value) {
-    if (value == null) return null;
-    return DateTime.parse(value as String);
+  Future<void> setPublicProfile(bool value) {
+    final userId = currentUserId;
+    if (userId == null) throw Exception('Entre na sua conta para continuar.');
+    return _guard(() async {
+      await _supabase.from('profiles').update({'is_public': value}).eq('id', userId);
+    }, 'Não foi possível atualizar a privacidade.');
   }
 
-  String? _resolveImageUrl(String? storagePath) {
-    if (storagePath == null || storagePath.isEmpty) return null;
-    return _supabase.storage.from(_postImagesBucket).getPublicUrl(storagePath);
+  Future<String> uploadAvatar(XFile file) {
+    final userId = currentUserId;
+    if (userId == null) throw Exception('Entre na sua conta para continuar.');
+    return _guard(() async {
+      final dot = file.name.lastIndexOf('.');
+      final extension = dot < 0 ? 'jpg' : file.name.substring(dot + 1).toLowerCase();
+      final path = '$userId/avatar/avatar.$extension';
+      await _supabase.storage.from(_profileImagesBucket).uploadBinary(
+            path,
+            await file.readAsBytes(),
+            fileOptions: FileOptions(upsert: true, contentType: extension == 'png' ? 'image/png' : 'image/jpeg'),
+          );
+      final url = _supabase.storage.from(_profileImagesBucket).getPublicUrl(path);
+      return '$url?v=${DateTime.now().millisecondsSinceEpoch}';
+    }, 'Não foi possível enviar a foto.');
   }
 
-  String _fileExtension(String name) {
-    final parts = name.split('.');
-    if (parts.length < 2) return 'jpg';
-    return parts.last.toLowerCase();
+  Future<void> setFollowingProfile(String profileId, bool follow) {
+    final userId = currentUserId;
+    if (userId == null) throw Exception('Entre na sua conta para continuar.');
+    return _guard(() async {
+      if (follow) {
+        await _supabase.from('profile_followers').insert({'follower_id': userId, 'followed_id': profileId});
+      } else {
+        await _supabase.from('profile_followers').delete().eq('follower_id', userId).eq('followed_id', profileId);
+      }
+    }, 'Não foi possível atualizar.');
   }
 
-  String _mimeFromExtension(String ext) {
-    switch (ext) {
-      case 'png':
-        return 'image/png';
-      case 'webp':
-        return 'image/webp';
-      case 'gif':
-        return 'image/gif';
-      default:
-        return 'image/jpeg';
-    }
+  Future<NotificationPreferences> fetchNotificationPreferences() {
+    final userId = currentUserId;
+    if (userId == null) return Future.value(const NotificationPreferences());
+    return _guard(() async {
+      final row = await _supabase.from('notification_preferences').select().eq('user_id', userId).maybeSingle();
+      if (row == null) return const NotificationPreferences();
+      return NotificationPreferences(
+        occurrenceUpdates: row['occurrence_updates'] != false,
+        comments: row['comments'] != false,
+        officialUpdates: row['official_updates'] != false,
+        validations: row['validations'] != false,
+        councilorActivity: row['councilor_activity'] != false,
+      );
+    }, 'Não foi possível carregar as preferências.');
   }
 
-  Map<String, dynamic>? _asMap(dynamic value) {
-    if (value is Map<String, dynamic>) return value;
-    if (value is Map) return value.cast<String, dynamic>();
-    if (value is List && value.isNotEmpty) return _asMap(value.first);
-    return null;
-  }
-
-  ProfileBadge? _mapBadge(dynamic rawValue) {
-    final badge = _asMap(rawValue);
-    if (badge == null) return null;
-
-    return ProfileBadge(
-      id: (badge['id'] as num).toInt(),
-      name: badge['name'] as String,
-      slug: badge['slug'] as String,
-      description: badge['description'] as String,
-      icon: badge['icon'] as String?,
-    );
-  }
-
-  String _resolveDisplayName(Map<String, dynamic> profileResponse) {
-    final fullName = (profileResponse['full_name'] as String?)?.trim();
-    if (fullName != null && fullName.isNotEmpty) return fullName;
-
-    final username = (profileResponse['username'] as String?)?.trim();
-    if (username != null && username.isNotEmpty) return username;
-
-    return 'Usuario';
-  }
-
-  String? _nullIfEmpty(String? value) {
-    final normalized = value?.trim();
-    return normalized == null || normalized.isEmpty ? null : normalized;
-  }
-
-  bool _isMissingOptionalProfileFeature(PostgrestException error) {
-    // 42703 = undefined column, 42P01 = undefined table/relation
-    return error.code == '42703' || error.code == '42P01';
-  }
-
-  bool _isMissingProfileFollowersFeature(PostgrestException error) {
-    return error.code == '42P01';
+  Future<void> saveNotificationPreferences(NotificationPreferences preferences) {
+    final userId = currentUserId;
+    if (userId == null) throw Exception('Entre na sua conta para continuar.');
+    return _guard(() async {
+      final existing = await _supabase.from('notification_preferences').select('user_id').eq('user_id', userId).maybeSingle();
+      if (existing == null) {
+        await _supabase.from('notification_preferences').insert({'user_id': userId, ...preferences.toJson()});
+      } else {
+        await _supabase.from('notification_preferences').update(preferences.toJson()).eq('user_id', userId);
+      }
+    }, 'Não foi possível salvar as preferências.');
   }
 }

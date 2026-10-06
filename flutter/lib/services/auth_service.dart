@@ -17,7 +17,10 @@ class AuthService {
     required String identifier,
     required String password,
   }) async {
-    final normalizedIdentifier = identifier.trim();
+    var normalizedIdentifier = identifier.trim();
+    if (normalizedIdentifier.startsWith('@')) {
+      normalizedIdentifier = normalizedIdentifier.substring(1).trim();
+    }
 
     try {
       if (!_isEmail(normalizedIdentifier)) {
@@ -84,6 +87,7 @@ class AuthService {
     required String username,
     required int cityId,
     String? phone,
+    String? institutionalIntent,
   }) async {
     try {
       return await _auth.signUp(
@@ -95,6 +99,7 @@ class AuthService {
           'full_name': username.trim(),
           'city_id': cityId,
           if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
+          'institutional_intent': ?institutionalIntent,
         },
       );
     } on AuthException catch (error) {
@@ -124,6 +129,23 @@ class AuthService {
       throw Exception(_mapAuthError(error));
     } catch (_) {
       throw Exception('Erro inesperado ao solicitar redefinição de senha.');
+    }
+  }
+
+  /// Login social. Depende do provedor Google habilitado no projeto Supabase.
+  Future<void> signInWithGoogle() async {
+    try {
+      final launched = await _auth.signInWithOAuth(
+        OAuthProvider.google,
+        redirectTo: 'urbapp://login-callback',
+      );
+      if (!launched) throw Exception('Não foi possível abrir o login com Google.');
+    } on AuthException catch (error) {
+      final message = error.message.toLowerCase();
+      if (message.contains('provider is not enabled') || message.contains('unsupported provider')) {
+        throw Exception('O login com Google ainda não está habilitado. Use e-mail e senha.');
+      }
+      throw Exception(_mapAuthError(error));
     }
   }
 

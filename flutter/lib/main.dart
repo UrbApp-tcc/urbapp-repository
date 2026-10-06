@@ -1,9 +1,11 @@
 import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'screens/auth/auth_gate.dart';
 import 'theme/app_theme.dart';
+import 'widgets/urb/urb_components.dart';
 
 const _supabaseUrl = String.fromEnvironment('SUPABASE_URL');
 const _supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
@@ -114,19 +116,50 @@ class UrbappApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Urbapp',
+      title: 'UrbApp',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
+      locale: const Locale('pt', 'BR'),
+      supportedLocales: const [Locale('pt', 'BR')],
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      builder: (context, child) => _PhoneFrame(child: child ?? const SizedBox.shrink()),
       home: const AuthGate(),
     );
   }
 }
 
+/// Em telas largas (web/desktop), mantém a composição mobile do protótipo
+/// centralizada com 430px, como no Figma.
+class _PhoneFrame extends StatelessWidget {
+  const _PhoneFrame({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+    if (width < 700) return child;
+    return ColoredBox(
+      color: const Color(0xFFE9EDE9),
+      child: Center(
+        child: Container(
+          width: 430,
+          decoration: const BoxDecoration(
+            color: UrbColors.canvas,
+            boxShadow: [BoxShadow(color: Color(0x1A11233D), blurRadius: 50)],
+          ),
+          child: MediaQuery(
+            data: MediaQuery.of(context).copyWith(size: Size(430, MediaQuery.sizeOf(context).height)),
+            child: child,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class ConfigurationErrorApp extends StatelessWidget {
-  const ConfigurationErrorApp({
-    super.key,
-    required this.message,
-  });
+  const ConfigurationErrorApp({super.key, required this.message});
 
   final String message;
 
@@ -134,88 +167,34 @@ class ConfigurationErrorApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+      theme: AppTheme.lightTheme,
       home: Scaffold(
-        backgroundColor: const Color(0xFFF7F8FA),
         body: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 520),
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.06),
-                      blurRadius: 24,
-                      offset: const Offset(0, 12),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const UrbBrand(compact: true),
+                  const SizedBox(height: 24),
+                  const UrbEyebrow('Configuração pendente'),
+                  const SizedBox(height: 8),
+                  Text('O app não encontrou a configuração do Supabase', style: UrbText.h2),
+                  const SizedBox(height: 12),
+                  SelectableText(message, style: UrbText.bodySmall),
+                  const SizedBox(height: 18),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(color: UrbColors.blueSoft, borderRadius: BorderRadius.circular(12)),
+                    child: SelectableText(
+                      'flutter run --dart-define-from-file=dart_defines/dev.json',
+                      style: UrbText.label.copyWith(color: UrbColors.blue),
                     ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Row(
-                      children: [
-                        Icon(
-                          Icons.settings_input_component_rounded,
-                          color: Color(0xFF8F6FE8),
-                          size: 28,
-                        ),
-                        SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            'Configuração do app pendente',
-                            style: TextStyle(
-                              color: Color(0xFF141E28),
-                              fontSize: 22,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'O app abriu, mas não conseguiu ler a configuração local do Supabase.',
-                      style: TextStyle(
-                        color: Color(0xFF4B5563),
-                        fontSize: 15,
-                        height: 1.45,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    SelectableText(
-                      message,
-                      style: const TextStyle(
-                        color: Color(0xFF141E28),
-                        fontSize: 14,
-                        height: 1.5,
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF7F4FF),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: const Color(0xFFE5DBFF)),
-                      ),
-                      child: const SelectableText(
-                        'flutter run --dart-define-from-file=dart_defines/dev.json',
-                        style: TextStyle(
-                          color: Color(0xFF5B43B5),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),

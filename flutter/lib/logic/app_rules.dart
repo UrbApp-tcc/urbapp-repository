@@ -1,4 +1,4 @@
-// Scoring weights (must match get_city_ranking SQL function)
+// Pontos de participação (spec §39). Devem coincidir com `points_value()` no SQL.
 const int pointsPerPost = 50;
 const int pointsPerSupportReceived = 15;
 const int pointsPerCommentReceived = 5;
@@ -15,25 +15,6 @@ int calculateRankingScore({
       commentsReceived * pointsPerCommentReceived +
       resolvedPostsCount * pointsPerResolvedPost;
 }
-
-// Statuses that represent a closed lifecycle — no further interactions allowed.
-const Set<String> finalStatuses = {'completed', 'closed', 'expired'};
-
-bool isFinalStatus(String status) => finalStatuses.contains(status);
-
-const Set<String> resolutionValidationStartStatuses = {
-  'open',
-  'in_analysis',
-  'in_progress',
-  'reopened',
-};
-
-bool canStartResolutionValidation(String status) =>
-    resolutionValidationStartStatuses.contains(status);
-
-// Returns true when the acting user is the author of the post (self-support).
-bool isSelfSupport(String currentUserId, String postAuthorId) =>
-    currentUserId == postAuthorId;
 
 /// Lightweight profile record used to sort/rank candidates client-side.
 /// Mirrors the ORDER BY clause in the get_city_ranking SQL function.

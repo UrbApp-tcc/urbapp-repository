@@ -1,59 +1,151 @@
-import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../domain/models.dart';
+import '../utils/error_formatter.dart';
+
+class InstitutionalMembership {
+  const InstitutionalMembership({
+    required this.id,
+    required this.name,
+    required this.cityId,
+    this.cityName,
+    required this.role,
+  });
+
+  final int id;
+  final String name;
+  final int cityId;
+  final String? cityName;
+  final String role;
+}
+
+class CouncilorIdentity {
+  const CouncilorIdentity({
+    required this.id,
+    required this.publicName,
+    required this.cityId,
+    this.party,
+    required this.status,
+    required this.mandateStartsOn,
+    required this.mandateEndsOn,
+  });
+
+  final int id;
+  final String publicName;
+  final int cityId;
+  final String? party;
+  final InstitutionalProfileStatus status;
+  final DateTime mandateStartsOn;
+  final DateTime mandateEndsOn;
+
+  bool get isActive {
+    final today = DateTime.now();
+    return status.isVerified &&
+        !today.isBefore(mandateStartsOn) &&
+        !today.isAfter(mandateEndsOn.add(const Duration(days: 1)));
+  }
+}
+
+/// Papéis adicionais do usuário. O UrbApp é um único aplicativo; papéis só
+/// liberam capacidades contextuais (spec §44.7).
 class InstitutionalAccess {
   const InstitutionalAccess({
-    required this.platformRoles,
-    required this.administrationMemberships,
-    required this.agencyMemberships,
-    this.councilorProfileId,
-    this.councilorName,
+    this.platformRoles = const {},
+    this.administrations = const [],
+    this.agencies = const [],
+    this.councilor,
   });
 
   final Set<String> platformRoles;
-  final List<String> administrationMemberships;
-  final List<String> agencyMemberships;
-  final int? councilorProfileId;
-  final String? councilorName;
+  final List<InstitutionalMembership> administrations;
+  final List<InstitutionalMembership> agencies;
+  final CouncilorIdentity? councilor;
 
   bool get isPlatformAdmin =>
       platformRoles.contains('admin') || platformRoles.contains('moderator');
+  bool get isCouncilor => councilor?.isActive ?? false;
   bool get hasInstitutionalRole =>
-      administrationMemberships.isNotEmpty || agencyMemberships.isNotEmpty;
+      administrations.isNotEmpty || agencies.isNotEmpty || isCouncilor;
 }
 
-class OccurrenceActorCapabilities {
-  const OccurrenceActorCapabilities({
-    required this.occurrenceId,
-    required this.cityId,
-    required this.canActForAdministration,
-    required this.canActForAgency,
-    required this.isEligibleCouncilor,
-    this.agencyId,
+/// O que o usuário pode fazer nesta ocorrência. A autorização definitiva é
+/// sempre conferida pelas RPCs no backend.
+class OccurrenceCapabilities {
+  const OccurrenceCapabilities({
+    this.canActForAdministration = false,
+    this.canActForAgency = false,
+    this.isEligibleCouncilor = false,
     this.councilorFollowingId,
     this.councilorFollowingStatus,
+    this.councilorHasConcreteAction = false,
+    this.councilorProfileId,
+    this.councilorFollowingStartedAt,
   });
 
-  final int occurrenceId;
-  final int cityId;
-  final int? agencyId;
   final bool canActForAdministration;
   final bool canActForAgency;
   final bool isEligibleCouncilor;
   final int? councilorFollowingId;
   final String? councilorFollowingStatus;
+  final bool councilorHasConcreteAction;
 
-  bool get hasActiveCouncilorFollowing =>
+  /// Perfil parlamentar do usuário (quando é vereador elegível).
+  final int? councilorProfileId;
+  final DateTime? councilorFollowingStartedAt;
+
+  bool get hasActiveFollowing =>
       councilorFollowingId != null &&
       councilorFollowingStatus != 'ended' &&
       councilorFollowingStatus != 'resolved';
+
+  bool get hasAnyRole =>
+      canActForAdministration || canActForAgency || isEligibleCouncilor;
 }
 
-class InstitutionalAgencyOption {
-  const InstitutionalAgencyOption({required this.id, required this.name});
+class OccurrenceFollower {
+  const OccurrenceFollower({
+    required this.councilorProfileId,
+    required this.name,
+    this.party,
+    required this.status,
+  });
+
+  final int councilorProfileId;
+  final String name;
+  final String? party;
+  final String status;
+}
+
+class CouncilorFollowingItem {
+  const CouncilorFollowingItem({
+    required this.followingId,
+    required this.occurrenceId,
+    required this.status,
+    required this.startedAt,
+    this.endedAt,
+    this.lastActionType,
+    this.lastActionAt,
+  });
+
+  final int followingId;
+  final int occurrenceId;
+  final String status;
+  final DateTime startedAt;
+  final DateTime? endedAt;
+  final String? lastActionType;
+  final DateTime? lastActionAt;
+}
+
+class AgencyChoice {
+  const AgencyChoice({
+    required this.id,
+    required this.name,
+    required this.status,
+  });
 
   final int id;
   final String name;
+  final InstitutionalProfileStatus status;
 }
 
 class ValidationSettingsInfo {
@@ -75,20 +167,22 @@ class ValidationSettingsInfo {
 class ModerationQueueItem {
   const ModerationQueueItem({
     required this.id,
+    required this.targetType,
     required this.targetId,
     required this.reason,
     required this.status,
     required this.createdAt,
     this.occurrenceId,
-    this.postTitle,
+    this.targetPreview,
   });
 
   final int id;
+  final String targetType;
   final int targetId;
   final int? occurrenceId;
   final String reason;
   final String status;
-  final String? postTitle;
+  final String? targetPreview;
   final DateTime createdAt;
 }
 
@@ -118,17 +212,30 @@ class InstitutionalService {
 
   final SupabaseClient _supabase;
 
-  Future<InstitutionalAccess> fetchMyAccess() async {
+  static InstitutionalAccess? _cachedAccess;
+  static String? _cachedFor;
+
+  Future<T> _guard<T>(Future<T> Function() run, String fallback) async {
+    try {
+      return await run();
+    } on PostgrestException catch (error) {
+      throw Exception(friendlyBackendMessage(error.message, fallback));
+    }
+  }
+
+  static void clearCache() {
+    _cachedAccess = null;
+    _cachedFor = null;
+  }
+
+  Future<InstitutionalAccess> fetchMyAccess({bool refresh = false}) async {
     final userId = _supabase.auth.currentUser?.id;
-    if (userId == null) {
-      return const InstitutionalAccess(
-        platformRoles: {},
-        administrationMemberships: [],
-        agencyMemberships: [],
-      );
+    if (userId == null) return const InstitutionalAccess();
+    if (!refresh && _cachedFor == userId && _cachedAccess != null) {
+      return _cachedAccess!;
     }
 
-    try {
+    return _guard(() async {
       final responses = await Future.wait<dynamic>([
         _supabase
             .from('platform_user_roles')
@@ -137,142 +244,216 @@ class InstitutionalService {
         _supabase
             .from('administration_users')
             .select(
-              'role, municipal_administrations!administration_users_administration_id_fkey(name)',
+              'role, municipal_administrations!administration_users_administration_id_fkey(id, name, city_id, cities(name))',
             )
             .eq('user_id', userId)
             .eq('is_active', true),
         _supabase
             .from('agency_users')
-            .select('role, public_agencies!agency_users_agency_id_fkey(name)')
+            .select(
+              'role, public_agencies!agency_users_agency_id_fkey(id, name, city_id, cities(name))',
+            )
             .eq('user_id', userId)
             .eq('is_active', true),
         _supabase
             .from('councilor_profiles')
-            .select('id, public_name')
+            .select(
+              'id, public_name, city_id, party, profile_status, mandate_starts_on, mandate_ends_on',
+            )
             .eq('profile_id', userId)
-            .inFilter('profile_status', ['verified', 'participant'])
             .maybeSingle(),
       ]);
 
-      return InstitutionalAccess(
-        platformRoles: (responses[0] as List<dynamic>)
-            .map((item) => (item as Map<String, dynamic>)['role'] as String)
+      InstitutionalMembership membership(dynamic raw, String key) {
+        final row = Map<String, dynamic>.from(raw as Map);
+        final entity = asJsonMap(row[key]) ?? const {};
+        return InstitutionalMembership(
+          id: (entity['id'] as num).toInt(),
+          name: entity['name'] as String? ?? '',
+          cityId: (entity['city_id'] as num).toInt(),
+          cityName: asJsonMap(entity['cities'])?['name'] as String?,
+          role: row['role'] as String? ?? '',
+        );
+      }
+
+      final councilorRow = asJsonMap(responses[3]);
+      final access = InstitutionalAccess(
+        platformRoles: (responses[0] as List)
+            .map((row) => row['role'] as String)
             .toSet(),
-        administrationMemberships: (responses[1] as List<dynamic>)
-            .map((item) => item as Map<String, dynamic>)
-            .map((item) {
-              final administration =
-                  item['municipal_administrations'] as Map<String, dynamic>?;
-              return '${administration?['name'] ?? 'Gestão municipal'} · ${item['role']}';
-            })
+        administrations: (responses[1] as List)
+            .map((row) => membership(row, 'municipal_administrations'))
             .toList(),
-        agencyMemberships: (responses[2] as List<dynamic>)
-            .map((item) => item as Map<String, dynamic>)
-            .map((item) {
-              final agency = item['public_agencies'] as Map<String, dynamic>?;
-              return '${agency?['name'] ?? 'Órgão municipal'} · ${item['role']}';
-            })
+        agencies: (responses[2] as List)
+            .map((row) => membership(row, 'public_agencies'))
             .toList(),
-        councilorProfileId:
-            ((responses[3] as Map<String, dynamic>?)?['id'] as num?)?.toInt(),
-        councilorName:
-            (responses[3] as Map<String, dynamic>?)?['public_name'] as String?,
+        councilor: councilorRow == null
+            ? null
+            : CouncilorIdentity(
+                id: (councilorRow['id'] as num).toInt(),
+                publicName: councilorRow['public_name'] as String,
+                cityId: (councilorRow['city_id'] as num).toInt(),
+                party: councilorRow['party'] as String?,
+                status: InstitutionalProfileStatus.fromCode(
+                  councilorRow['profile_status'] as String?,
+                ),
+                mandateStartsOn: DateTime.parse(
+                  councilorRow['mandate_starts_on'] as String,
+                ),
+                mandateEndsOn: DateTime.parse(
+                  councilorRow['mandate_ends_on'] as String,
+                ),
+              ),
       );
-    } on PostgrestException catch (error) {
-      throw Exception(
-        'Erro ao carregar acessos institucionais: ${error.message}',
-      );
-    }
+      _cachedAccess = access;
+      _cachedFor = userId;
+      return access;
+    }, 'Não foi possível carregar seus acessos institucionais.');
   }
 
-  Future<OccurrenceActorCapabilities> fetchCapabilitiesForPost(
-    int postId,
+  Future<OccurrenceCapabilities> fetchCapabilities(
+    Occurrence occurrence,
   ) async {
-    final userId = _supabase.auth.currentUser?.id;
-    final post = await _supabase
-        .from('posts')
-        .select(
-          'occurrence_id, occurrences(administration_id, agency_id, city_id)',
-        )
-        .eq('id', postId)
-        .single();
-    final occurrenceId = (post['occurrence_id'] as num).toInt();
-    final occurrence = post['occurrences'] as Map<String, dynamic>;
+    final access = await fetchMyAccess();
+    final canAdministration = access.administrations.any(
+      (item) => item.id == occurrence.administrationId,
+    );
+    final canAgency =
+        occurrence.agencyId != null &&
+        access.agencies.any((item) => item.id == occurrence.agencyId);
+    final councilor = access.councilor;
+    final eligibleCouncilor =
+        councilor != null &&
+        councilor.isActive &&
+        councilor.cityId == occurrence.cityId;
 
-    if (userId == null) {
-      return OccurrenceActorCapabilities(
-        occurrenceId: occurrenceId,
-        cityId: (occurrence['city_id'] as num).toInt(),
-        agencyId: (occurrence['agency_id'] as num?)?.toInt(),
-        canActForAdministration: false,
-        canActForAgency: false,
-        isEligibleCouncilor: false,
-      );
-    }
-
-    final administrationId = (occurrence['administration_id'] as num).toInt();
-    final agencyId = (occurrence['agency_id'] as num?)?.toInt();
-    final cityId = (occurrence['city_id'] as num).toInt();
-
-    final responses = await Future.wait<dynamic>([
-      _supabase
-          .from('administration_users')
-          .select('user_id')
-          .eq('administration_id', administrationId)
-          .eq('user_id', userId)
-          .eq('is_active', true)
-          .maybeSingle(),
-      agencyId == null
-          ? Future<Map<String, dynamic>?>.value(null)
-          : _supabase
-                .from('agency_users')
-                .select('user_id')
-                .eq('agency_id', agencyId)
-                .eq('user_id', userId)
-                .eq('is_active', true)
-                .maybeSingle(),
-      _supabase
-          .from('councilor_profiles')
-          .select('id')
-          .eq('profile_id', userId)
-          .eq('city_id', cityId)
-          .inFilter('profile_status', ['verified', 'participant'])
-          .lte(
-            'mandate_starts_on',
-            DateTime.now().toIso8601String().substring(0, 10),
-          )
-          .gte(
-            'mandate_ends_on',
-            DateTime.now().toIso8601String().substring(0, 10),
-          )
-          .maybeSingle(),
-    ]);
-
-    final councilorId = ((responses[2] as Map<String, dynamic>?)?['id'] as num?)
-        ?.toInt();
     int? followingId;
     String? followingStatus;
-    if (councilorId != null) {
+    DateTime? followingStartedAt;
+    var hasConcreteAction = false;
+    if (eligibleCouncilor) {
       final following = await _supabase
           .from('councilor_followings')
-          .select('id, status')
-          .eq('occurrence_id', occurrenceId)
-          .eq('councilor_profile_id', councilorId)
+          .select('id, status, started_at, councilor_actions(action_type)')
+          .eq('occurrence_id', occurrence.id)
+          .eq('councilor_profile_id', councilor.id)
           .maybeSingle();
       followingId = (following?['id'] as num?)?.toInt();
       followingStatus = following?['status'] as String?;
+      followingStartedAt = DateTime.tryParse(
+        following?['started_at'] as String? ?? '',
+      )?.toLocal();
+      hasConcreteAction =
+          ((following?['councilor_actions'] as List?) ?? const []).any(
+            (action) => action['action_type'] != 'possible_resolution',
+          );
     }
 
-    return OccurrenceActorCapabilities(
-      occurrenceId: occurrenceId,
-      cityId: cityId,
-      agencyId: agencyId,
-      canActForAdministration: responses[0] != null,
-      canActForAgency: responses[1] != null,
-      isEligibleCouncilor: councilorId != null,
+    return OccurrenceCapabilities(
+      canActForAdministration: canAdministration,
+      canActForAgency: canAgency,
+      isEligibleCouncilor: eligibleCouncilor,
       councilorFollowingId: followingId,
       councilorFollowingStatus: followingStatus,
+      councilorHasConcreteAction: hasConcreteAction,
+      councilorProfileId: eligibleCouncilor ? councilor.id : null,
+      councilorFollowingStartedAt: followingStartedAt,
     );
+  }
+
+  /// Vereadores que acompanham a ocorrência (vários podem acompanhar, spec §35).
+  Future<List<OccurrenceFollower>> fetchCouncilorsFollowing(int occurrenceId) {
+    return _guard(() async {
+      final rows = await _supabase
+          .from('councilor_followings')
+          .select('status, councilor_profiles(id, public_name, party)')
+          .eq('occurrence_id', occurrenceId)
+          .order('started_at', ascending: true);
+      return (rows as List)
+          .map((raw) {
+            final councilor = asJsonMap(raw['councilor_profiles']);
+            if (councilor == null) return null;
+            return OccurrenceFollower(
+              councilorProfileId: (councilor['id'] as num).toInt(),
+              name: councilor['public_name'] as String,
+              party: councilor['party'] as String?,
+              status: raw['status'] as String? ?? 'started',
+            );
+          })
+          .whereType<OccurrenceFollower>()
+          .toList();
+    }, 'Não foi possível carregar o acompanhamento parlamentar.');
+  }
+
+  Future<List<CouncilorFollowingItem>> fetchCouncilorFollowings(
+    int councilorProfileId, {
+    bool activeOnly = false,
+  }) {
+    return _guard(() async {
+      var query = _supabase
+          .from('councilor_followings')
+          .select(
+            'id, occurrence_id, status, started_at, ended_at, councilor_actions(action_type, created_at)',
+          )
+          .eq('councilor_profile_id', councilorProfileId);
+      if (activeOnly) query = query.isFilter('ended_at', null);
+      final rows = await query.order('started_at', ascending: false);
+      return (rows as List).map((raw) {
+        final actions =
+            ((raw['councilor_actions'] as List?) ?? const [])
+                .map((action) => Map<String, dynamic>.from(action as Map))
+                .toList()
+              ..sort(
+                (a, b) => (b['created_at'] as String).compareTo(
+                  a['created_at'] as String,
+                ),
+              );
+        return CouncilorFollowingItem(
+          followingId: (raw['id'] as num).toInt(),
+          occurrenceId: (raw['occurrence_id'] as num).toInt(),
+          status: raw['status'] as String? ?? 'started',
+          startedAt: DateTime.parse(raw['started_at'] as String),
+          endedAt: raw['ended_at'] == null
+              ? null
+              : DateTime.parse(raw['ended_at'] as String),
+          lastActionType: actions.isEmpty
+              ? null
+              : actions.first['action_type'] as String?,
+          lastActionAt: actions.isEmpty
+              ? null
+              : DateTime.parse(actions.first['created_at'] as String),
+        );
+      }).toList();
+    }, 'Não foi possível carregar os acompanhamentos.');
+  }
+
+  /// Ocorrências com acompanhamento parlamentar. Usado nos filtros de
+  /// descoberta sem misturar acompanhamento institucional com favoritos.
+  Future<Set<int>> fetchFollowingOccurrenceIds(
+    Iterable<int> occurrenceIds, {
+    int? councilorProfileId,
+    bool activeOnly = true,
+  }) {
+    final ids = occurrenceIds.toSet().toList();
+    if (ids.isEmpty) return Future.value(<int>{});
+    return _guard(() async {
+      var query = _supabase
+          .from('councilor_followings')
+          .select('occurrence_id, status')
+          .inFilter('occurrence_id', ids);
+      if (councilorProfileId != null) {
+        query = query.eq('councilor_profile_id', councilorProfileId);
+      }
+      final rows = await query;
+      return (rows as List)
+          .where(
+            (raw) =>
+                !activeOnly ||
+                (raw['status'] != 'ended' && raw['status'] != 'resolved'),
+          )
+          .map((raw) => (raw['occurrence_id'] as num).toInt())
+          .toSet();
+    }, 'Não foi possível carregar os acompanhamentos parlamentares.');
   }
 
   Future<void> registerInstitutionalAction({
@@ -282,8 +463,8 @@ class InstitutionalService {
     int? targetAgencyId,
     DateTime? forecastAt,
     String? evidenceStoragePath,
-  }) async {
-    try {
+  }) {
+    return _guard(() async {
       await _supabase.rpc(
         'register_institutional_action',
         params: {
@@ -295,44 +476,38 @@ class InstitutionalService {
           'evidence_storage_path': evidenceStoragePath,
         },
       );
-    } on PostgrestException catch (error) {
-      throw Exception('Erro ao registrar ação oficial: ${error.message}');
-    }
+    }, 'Não foi possível registrar a ação oficial.');
   }
 
-  Future<List<InstitutionalAgencyOption>> fetchAgenciesForCity(
-    int cityId,
-  ) async {
-    try {
-      final response = await _supabase
+  Future<List<AgencyChoice>> fetchAgenciesForCity(int cityId) {
+    return _guard(() async {
+      final rows = await _supabase
           .from('public_agencies')
-          .select('id, name')
+          .select('id, name, profile_status')
           .eq('city_id', cityId)
-          .order('name');
-      return (response as List<dynamic>)
-          .map((raw) => raw as Map<String, dynamic>)
+          .order('name', ascending: true);
+      return (rows as List)
           .map(
-            (row) => InstitutionalAgencyOption(
+            (row) => AgencyChoice(
               id: (row['id'] as num).toInt(),
               name: row['name'] as String,
+              status: InstitutionalProfileStatus.fromCode(
+                row['profile_status'] as String?,
+              ),
             ),
           )
           .toList();
-    } on PostgrestException catch (error) {
-      throw Exception('Erro ao carregar órgãos: ${error.message}');
-    }
+    }, 'Não foi possível carregar os órgãos.');
   }
 
-  Future<int> startCouncilorFollowing(int occurrenceId) async {
-    try {
+  Future<int> startCouncilorFollowing(int occurrenceId) {
+    return _guard(() async {
       final response = await _supabase.rpc(
         'start_councilor_following',
         params: {'target_occurrence_id': occurrenceId},
       );
       return (response as num).toInt();
-    } on PostgrestException catch (error) {
-      throw Exception('Erro ao iniciar acompanhamento: ${error.message}');
-    }
+    }, 'Não foi possível iniciar o acompanhamento.');
   }
 
   Future<void> registerCouncilorAction({
@@ -340,8 +515,8 @@ class InstitutionalService {
     required String actionType,
     required String description,
     String? evidenceStoragePath,
-  }) async {
-    try {
+  }) {
+    return _guard(() async {
       await _supabase.rpc(
         'register_councilor_action',
         params: {
@@ -351,61 +526,14 @@ class InstitutionalService {
           'evidence_storage_path': evidenceStoragePath,
         },
       );
-    } on PostgrestException catch (error) {
-      throw Exception('Erro ao registrar atuação: ${error.message}');
-    }
-  }
-
-  Future<String> uploadActionEvidence({
-    required int occurrenceId,
-    required XFile file,
-  }) async {
-    final userId = _supabase.auth.currentUser?.id;
-    if (userId == null) {
-      throw Exception('Entre na sua conta para anexar uma evidência.');
-    }
-    final extension = file.name.split('.').last.toLowerCase();
-    if (!{'jpg', 'jpeg', 'png', 'gif', 'webp'}.contains(extension)) {
-      throw Exception('Selecione uma imagem válida como evidência.');
-    }
-    final path =
-        'occurrences/$occurrenceId/institutional/'
-        '${DateTime.now().microsecondsSinceEpoch}.$extension';
-    try {
-      await _supabase.storage
-          .from('post-images')
-          .uploadBinary(
-            path,
-            await file.readAsBytes(),
-            fileOptions: FileOptions(
-              upsert: false,
-              contentType: switch (extension) {
-                'png' => 'image/png',
-                'gif' => 'image/gif',
-                'webp' => 'image/webp',
-                _ => 'image/jpeg',
-              },
-            ),
-          );
-      return path;
-    } on StorageException catch (error) {
-      throw Exception('Erro ao enviar evidência: ${error.message}');
-    }
-  }
-
-  Future<void> deleteActionEvidence(String storagePath) async {
-    try {
-      await _supabase.storage.from('post-images').remove([storagePath]);
-    } catch (_) {
-      // Limpeza compensatória: a falha original da ação continua prioritária.
-    }
+    }, 'Não foi possível registrar a atuação.');
   }
 
   Future<void> endCouncilorFollowing({
     required int followingId,
     required String description,
-  }) async {
-    try {
+  }) {
+    return _guard(() async {
       await _supabase.rpc(
         'end_councilor_following',
         params: {
@@ -413,9 +541,7 @@ class InstitutionalService {
           'closing_description': description.trim(),
         },
       );
-    } on PostgrestException catch (error) {
-      throw Exception('Erro ao encerrar acompanhamento: ${error.message}');
-    }
+    }, 'Não foi possível encerrar o acompanhamento.');
   }
 
   Future<void> submitCouncilorRequest({
@@ -427,10 +553,10 @@ class InstitutionalService {
     required String institutionalEmail,
     required String proofSummary,
     String? proofLinks,
-  }) async {
+  }) {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) throw Exception('Entre na sua conta para continuar.');
-    try {
+    return _guard(() async {
       await _supabase.from('councilor_profile_requests').insert({
         'requester_user_id': userId,
         'city_id': cityId,
@@ -440,66 +566,77 @@ class InstitutionalService {
         'mandate_ends_on': _dateOnly(mandateEndsOn),
         'institutional_email': institutionalEmail.trim().toLowerCase(),
         'proof_summary': proofSummary.trim(),
-        'proof_links': proofLinks?.trim().isEmpty == true
+        'proof_links': (proofLinks?.trim().isEmpty ?? true)
             ? null
-            : proofLinks?.trim(),
+            : proofLinks!.trim(),
       });
-    } on PostgrestException catch (error) {
-      throw Exception('Erro ao enviar solicitação: ${error.message}');
-    }
+    }, 'Não foi possível enviar a solicitação.');
   }
 
-  Future<List<ModerationQueueItem>> fetchModerationQueue() async {
-    try {
-      final response = await _supabase
-          .from('moderation_reports')
-          .select('id, target_id, occurrence_id, reason, status, created_at')
-          .inFilter('status', ['pending', 'in_analysis'])
-          .order('created_at');
-      final rows = response as List<dynamic>;
-      final targetIds = rows
-          .map(
-            (item) =>
-                ((item as Map<String, dynamic>)['target_id'] as num).toInt(),
-          )
-          .toSet()
-          .toList();
-      final titles = <int, String>{};
-      if (targetIds.isNotEmpty) {
+  Future<List<ModerationQueueItem>> fetchModerationQueue() {
+    return _guard(() async {
+      final rows =
+          (await _supabase
+                  .from('moderation_reports')
+                  .select(
+                    'id, target_type, target_id, occurrence_id, reason, status, created_at',
+                  )
+                  .inFilter('status', ['pending', 'in_analysis'])
+                  .order('created_at', ascending: true))
+              as List;
+      final postIds = rows
+          .where((row) => row['target_type'] == 'post')
+          .map((row) => (row['target_id'] as num).toInt())
+          .toSet();
+      final commentIds = rows
+          .where((row) => row['target_type'] == 'comment')
+          .map((row) => (row['target_id'] as num).toInt())
+          .toSet();
+      final previews = <String, String>{};
+      if (postIds.isNotEmpty) {
         final posts = await _supabase
-            .from('posts')
-            .select('id, title')
-            .inFilter('id', targetIds);
-        for (final raw in posts as List<dynamic>) {
-          final item = raw as Map<String, dynamic>;
-          titles[(item['id'] as num).toInt()] = item['title'] as String;
+            .from('post_feed_rows')
+            .select('id, title, description')
+            .inFilter('id', postIds.toList());
+        for (final post in posts as List) {
+          previews['post:${post['id']}'] =
+              '${post['title']} — ${post['description']}';
         }
       }
-
+      if (commentIds.isNotEmpty) {
+        final comments = await _supabase
+            .from('comments')
+            .select('id, body')
+            .inFilter('id', commentIds.toList());
+        for (final comment in comments as List) {
+          previews['comment:${comment['id']}'] = comment['body'] as String;
+        }
+      }
       return rows
-          .map((item) => item as Map<String, dynamic>)
           .map(
-            (item) => ModerationQueueItem(
-              id: (item['id'] as num).toInt(),
-              targetId: (item['target_id'] as num).toInt(),
-              occurrenceId: (item['occurrence_id'] as num?)?.toInt(),
-              reason: item['reason'] as String,
-              status: item['status'] as String,
-              postTitle: titles[(item['target_id'] as num).toInt()],
-              createdAt: DateTime.parse(item['created_at'] as String),
+            (row) => ModerationQueueItem(
+              id: (row['id'] as num).toInt(),
+              targetType: row['target_type'] as String,
+              targetId: (row['target_id'] as num).toInt(),
+              occurrenceId: (row['occurrence_id'] as num?)?.toInt(),
+              reason: row['reason'] as String,
+              status: row['status'] as String,
+              targetPreview:
+                  previews['${row['target_type']}:${row['target_id']}'],
+              createdAt: DateTime.parse(row['created_at'] as String),
             ),
           )
           .toList();
-    } on PostgrestException catch (error) {
-      throw Exception('Erro ao carregar moderação: ${error.message}');
-    }
+    }, 'Não foi possível carregar a fila de moderação.');
   }
 
-  Future<void> startModerationReview(int reportId) async {
-    await _supabase.rpc(
-      'start_moderation_review',
-      params: {'target_report_id': reportId},
-    );
+  Future<void> startModerationReview(int reportId) {
+    return _guard(() async {
+      await _supabase.rpc(
+        'start_moderation_review',
+        params: {'target_report_id': reportId},
+      );
+    }, 'Não foi possível iniciar a análise.');
   }
 
   Future<void> reviewModerationReport({
@@ -507,8 +644,8 @@ class InstitutionalService {
     required bool uphold,
     required String notes,
     required bool invalidateWholeOccurrence,
-  }) async {
-    try {
+  }) {
+    return _guard(() async {
       await _supabase.rpc(
         'review_moderation_report',
         params: {
@@ -518,9 +655,7 @@ class InstitutionalService {
           'invalidate_whole_occurrence': invalidateWholeOccurrence,
         },
       );
-    } on PostgrestException catch (error) {
-      throw Exception('Erro ao concluir moderação: ${error.message}');
-    }
+    }, 'Não foi possível concluir a moderação.');
   }
 
   Future<List<InstitutionalVerificationRequest>>
@@ -533,14 +668,14 @@ class InstitutionalService {
               'id, agency_name, request_kind, institutional_email, proof_summary, created_at, cities(name)',
             )
             .eq('status', 'pending')
-            .order('created_at'),
+            .order('created_at', ascending: true),
         _supabase
             .from('councilor_profile_requests')
             .select(
               'id, public_name, institutional_email, proof_summary, created_at, cities(name)',
             )
             .eq('status', 'pending')
-            .order('created_at'),
+            .order('created_at', ascending: true),
       ]);
 
       final requests = <InstitutionalVerificationRequest>[];
@@ -747,6 +882,21 @@ class InstitutionalService {
         'change_reason': reason.trim(),
       },
     );
+  }
+
+  Future<void> setCategoryResolutionEvidence({
+    required int categoryId,
+    required bool required,
+  }) {
+    return _guard(() async {
+      await _supabase.rpc(
+        'set_category_resolution_evidence',
+        params: {
+          'target_category_id': categoryId,
+          'evidence_required': required,
+        },
+      );
+    }, 'Não foi possível atualizar a categoria.');
   }
 
   int _intervalHours(Object? value) {

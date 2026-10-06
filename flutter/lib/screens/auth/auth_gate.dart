@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../app/app_session.dart';
 import '../../services/auth_service.dart';
+import '../../services/institutional_service.dart';
+import '../../theme/app_theme.dart';
 import '../../widgets/gamification_listener.dart';
-import '../app_shell_screen.dart';
+import '../../widgets/urb/urb_components.dart';
+import '../shell/app_shell.dart';
 import 'login_screen.dart';
 import 'reset_password_screen.dart';
 
@@ -16,6 +20,7 @@ class AuthGate extends StatefulWidget {
 
 class _AuthGateState extends State<AuthGate> {
   final _authService = AuthService();
+  String? _lastUserId;
 
   @override
   Widget build(BuildContext context) {
@@ -27,22 +32,23 @@ class _AuthGateState extends State<AuthGate> {
         }
 
         final session = snapshot.data?.session ?? _authService.currentSession;
-
-        if (snapshot.connectionState == ConnectionState.waiting &&
-            session == null) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
+        if (snapshot.connectionState == ConnectionState.waiting && session == null) {
+          return const Scaffold(backgroundColor: UrbColors.canvas, body: UrbLoadingView());
         }
 
-        if (session == null) {
-          return const LoginScreen();
+        final userId = session?.user.id;
+        if (userId != _lastUserId) {
+          _lastUserId = userId;
+          AppSession.instance.reset();
+          InstitutionalService.clearCache();
         }
 
-        // A key com o id do usuário recria o listener ao trocar de conta.
+        if (session == null) return const LoginScreen();
+
+        // A key recria o shell e o listener ao trocar de conta.
         return GamificationListener(
           key: ValueKey(session.user.id),
-          child: const AppShellScreen(),
+          child: AppShell(key: ValueKey('shell-${session.user.id}')),
         );
       },
     );

@@ -1,16 +1,20 @@
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
+import '../../app/institutional_intent.dart';
+import '../../domain/models.dart';
 import '../../services/auth_service.dart';
-import '../../services/profile_service.dart';
+import '../../services/occurrence_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/error_formatter.dart';
-import '../../widgets/app_logo.dart';
-import '../../widgets/auth_text_field.dart';
-import '../../widgets/gradient_button.dart';
+import '../../widgets/urb/city_picker.dart';
+import '../../widgets/urb/urb_components.dart';
+import '../../widgets/urb/urb_icon.dart';
 
 class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({super.key});
+  const RegisterScreen({super.key, this.institutionalKind});
+
+  /// Quando presente, a conta nasce com a intenção de solicitar esse papel.
+  final InstitutionalKind? institutionalKind;
 
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
@@ -19,28 +23,16 @@ class RegisterScreen extends StatefulWidget {
 class _RegisterScreenState extends State<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
   final _usernameController = TextEditingController();
-  final _passwordController = TextEditingController();
   final _emailController = TextEditingController();
-  final _mobileController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _phoneController = TextEditingController();
   final _authService = AuthService();
-  final _profileService = ProfileService();
 
-  bool _isPasswordVisible = false;
-  bool _isLoading = false;
-  bool _isCitiesLoading = true;
-  List<ProfileCityOption> _cities = const [];
-  int? _selectedCityId;
-
-  static const double _maxContentWidth = 400;
-
-  @override
-  void dispose() {
-    _usernameController.dispose();
-    _passwordController.dispose();
-    _emailController.dispose();
-    _mobileController.dispose();
-    super.dispose();
-  }
+  List<CityOption> _cities = const [];
+  CityOption? _city;
+  bool _loadingCities = true;
+  bool _submitting = false;
+  bool _showPassword = false;
 
   @override
   void initState() {
@@ -48,316 +40,177 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _loadCities();
   }
 
-  String? _validateUsername(String? value) {
-    if (value == null || value.trim().isEmpty) return 'Informe o nome de usuário';
-    if (value.trim().length < 3) return 'Use pelo menos 3 caracteres';
-    if (value.trim().length > 48) return 'Use no máximo 48 caracteres';
-    if (!RegExp(r'^[a-zA-Z0-9._]+$').hasMatch(value.trim())) {
-      return 'Use apenas letras, números, pontos e _';
-    }
-    return null;
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    _phoneController.dispose();
+    super.dispose();
   }
-
-  String? _validatePassword(String? value) {
-    if (value == null || value.isEmpty) return 'Informe uma senha';
-    if (value.length < 8) return 'Mínimo de 8 caracteres';
-    return null;
-  }
-
-  String? _validateEmail(String? value) {
-    if (value == null || value.trim().isEmpty) return 'Informe o e-mail';
-    final regex = RegExp(r'^[\w.-]+@[\w.-]+\.\w{2,}$');
-    if (!regex.hasMatch(value.trim())) return 'E-mail inválido';
-    return null;
-  }
-
-  String? _validateMobile(String? value) => null;
 
   Future<void> _loadCities() async {
     try {
-      final cities = await _profileService.fetchCities();
-      if (!mounted) return;
-      setState(() {
-        _cities = cities;
-        _selectedCityId = cities.isNotEmpty ? cities.first.id : null;
-        _isCitiesLoading = false;
-      });
+      final cities = await OccurrenceService().fetchCities();
+      if (mounted) setState(() => _cities = cities);
     } catch (error) {
-      if (!mounted) return;
-      setState(() => _isCitiesLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(friendlyError(error)),
-          backgroundColor: AppColors.error,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          margin: const EdgeInsets.all(16),
-        ),
-      );
+      if (mounted) showUrbToast(context, friendlyError(error));
+    } finally {
+      if (mounted) setState(() => _loadingCities = false);
     }
   }
 
-  Future<void> _createAccount() async {
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_selectedCityId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Selecione uma cidade para continuar.'),
-          backgroundColor: AppColors.error,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          margin: const EdgeInsets.all(16),
-        ),
-      );
+    if (_city == null) {
+      showUrbToast(context, 'Selecione a sua cidade para continuar.');
       return;
     }
-
     FocusScope.of(context).unfocus();
-    setState(() => _isLoading = true);
-
+    setState(() => _submitting = true);
     try {
       final response = await _authService.signUp(
         email: _emailController.text,
         password: _passwordController.text,
         username: _usernameController.text,
-        cityId: _selectedCityId!,
-        phone: _mobileController.text,
+        cityId: _city!.id,
+        phone: _phoneController.text,
+        institutionalIntent: widget.institutionalKind?.code,
       );
-
       if (!mounted) return;
-
-      if (response.session == null) {
-        Navigator.of(context).pop('Conta criada. Confirme seu e-mail para entrar.');
-        return;
-      }
-
-      Navigator.of(context).pop('Conta criada com sucesso!');
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(friendlyError(error)),
-          backgroundColor: AppColors.error,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          margin: const EdgeInsets.all(16),
+      final messenger = ScaffoldMessenger.of(context);
+      Navigator.of(context).pop(true);
+      final institutional = widget.institutionalKind != null;
+      messenger.showSnackBar(SnackBar(
+        content: Text(
+          response.session == null
+              ? (institutional
+                  ? 'Conta criada. Confirme seu e-mail e entre para enviar a comprovação institucional.'
+                  : 'Conta criada. Confirme seu e-mail para entrar.')
+              : 'Conta criada com sucesso!',
         ),
-      );
+        margin: const EdgeInsets.fromLTRB(20, 0, 20, 96),
+      ));
+    } catch (error) {
+      if (mounted) showUrbToast(context, friendlyError(error));
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _submitting = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
-    final padding = MediaQuery.paddingOf(context);
-    final availableHeight = size.height - padding.top - padding.bottom;
-    final isCompact = availableHeight < 750;
-
+    final institutional = widget.institutionalKind != null;
     return Scaffold(
-      backgroundColor: Colors.white,
-      resizeToAvoidBottomInset: true,
+      backgroundColor: UrbColors.canvas,
+      appBar: UrbSubscreenHeader(title: institutional ? 'Conta institucional' : 'Criar conta'),
       body: SafeArea(
-        child: SingleChildScrollView(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: availableHeight),
-            child: IntrinsicHeight(
-              child: Column(
-                children: [
-                  _buildDecorativeShapes(isCompact: isCompact),
-                  Expanded(
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: _maxContentWidth),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 24),
-                          child: _buildContent(isCompact: isCompact),
+        top: false,
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 430),
+              child: AutofillGroup(
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      UrbEyebrow(
+                        institutional ? 'Conta institucional · ${widget.institutionalKind!.label}' : 'Participe da sua cidade',
+                      ),
+                      const SizedBox(height: 10),
+                      Text('Crie sua conta', style: UrbText.h1),
+                      const SizedBox(height: 8),
+                      Text(
+                        institutional
+                            ? 'Use de preferência seu e-mail institucional. Depois de entrar, você envia a comprovação '
+                                'do vínculo para a equipe do UrbApp.'
+                            : 'Relate problemas, apoie demandas e ajude a confirmar o que foi resolvido.',
+                        style: UrbText.body,
+                      ),
+                      const SizedBox(height: 26),
+                      UrbTextField(
+                        label: 'Nome de usuário',
+                        controller: _usernameController,
+                        hint: 'ex.: maria.silva',
+                        textInputAction: TextInputAction.next,
+                        autofillHints: const [AutofillHints.newUsername],
+                        validator: (value) {
+                          final text = value?.trim() ?? '';
+                          if (text.length < 3) return 'Use pelo menos 3 caracteres';
+                          if (text.length > 48) return 'Use no máximo 48 caracteres';
+                          if (!RegExp(r'^[a-zA-Z0-9._]+$').hasMatch(text)) {
+                            return 'Use apenas letras, números, pontos e _';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 18),
+                      UrbTextField(
+                        label: institutional ? 'E-mail institucional' : 'E-mail',
+                        controller: _emailController,
+                        hint: 'seuemail@exemplo.com',
+                        keyboardType: TextInputType.emailAddress,
+                        textInputAction: TextInputAction.next,
+                        autofillHints: const [AutofillHints.email],
+                        validator: (value) => RegExp(r'^[\w.+-]+@[\w.-]+\.\w{2,}$').hasMatch(value?.trim() ?? '')
+                            ? null
+                            : 'Informe um e-mail válido',
+                      ),
+                      const SizedBox(height: 18),
+                      UrbTextField(
+                        label: 'Senha',
+                        controller: _passwordController,
+                        hint: 'Mínimo de 8 caracteres',
+                        obscure: !_showPassword,
+                        textInputAction: TextInputAction.next,
+                        autofillHints: const [AutofillHints.newPassword],
+                        validator: (value) => (value?.length ?? 0) < 8 ? 'Mínimo de 8 caracteres' : null,
+                        suffix: IconButton(
+                          tooltip: _showPassword ? 'Ocultar senha' : 'Mostrar senha',
+                          onPressed: () => setState(() => _showPassword = !_showPassword),
+                          icon: UrbIcon(_showPassword ? UrbIcons.eye : UrbIcons.eyeOff, size: 19, color: UrbColors.muted),
                         ),
                       ),
-                    ),
+                      const SizedBox(height: 18),
+                      UrbTextField(
+                        label: 'Celular (opcional)',
+                        controller: _phoneController,
+                        hint: '(00) 00000-0000',
+                        keyboardType: TextInputType.phone,
+                        autofillHints: const [AutofillHints.telephoneNumber],
+                      ),
+                      const SizedBox(height: 18),
+                      Text('Cidade', style: UrbText.label),
+                      const SizedBox(height: 8),
+                      CitySelectorButton(
+                        city: _city,
+                        label: _loadingCities
+                            ? 'Carregando cidades…'
+                            : (institutional ? 'Cidade onde você atua' : 'Onde você mora'),
+                        onTap: () async {
+                          if (_cities.isEmpty) return;
+                          final picked = await showCityPicker(context, cities: _cities, selected: _city);
+                          if (picked != null) setState(() => _city = picked);
+                        },
+                      ),
+                      const SizedBox(height: 26),
+                      UrbPrimaryButton(label: 'Criar conta', loading: _submitting, onPressed: _submit),
+                      const SizedBox(height: 14),
+                      Text(
+                        'Ao criar sua conta você concorda com os Termos de uso e a Política de privacidade do UrbApp.',
+                        textAlign: TextAlign.center,
+                        style: UrbText.caption,
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 32),
-                ],
+                ),
               ),
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildDecorativeShapes({required bool isCompact}) {
-    final headerHeight = isCompact ? 80.0 : 110.0;
-    return SizedBox(
-      height: headerHeight,
-      width: double.infinity,
-      child: Stack(
-        children: [
-          Positioned(
-            top: -30,
-            right: -40,
-            child: Container(
-              width: 160,
-              height: 160,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    AppColors.gradientViolet.withValues(alpha: 0.5),
-                    AppColors.gradientBlue.withValues(alpha: 0.4),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: -20,
-            left: -30,
-            child: Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  begin: Alignment.topRight,
-                  end: Alignment.bottomLeft,
-                  colors: [
-                    AppColors.gradientViolet.withValues(alpha: 0.4),
-                    AppColors.accentPurple.withValues(alpha: 0.35),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildContent({required bool isCompact}) {
-    final logoHeight = isCompact ? 70.0 : 100.0;
-    final spacingLogoTitle = isCompact ? 10.0 : 16.0;
-    final spacingTitleForm = isCompact ? 14.0 : 24.0;
-    final spacingFields = isCompact ? 10.0 : 16.0;
-    final spacingFormButton = isCompact ? 16.0 : 24.0;
-
-    return Form(
-      key: _formKey,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          AppLogo(height: logoHeight),
-          SizedBox(height: spacingLogoTitle),
-          const Text(
-            'Criar conta',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 26,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.5,
-            ),
-          ),
-          SizedBox(height: spacingTitleForm),
-          AuthTextField(
-            controller: _usernameController,
-            validator: _validateUsername,
-            hintText: 'Nome de usuário',
-            prefixIcon: const Icon(Icons.person_outline_rounded, color: AppColors.textSecondary, size: 22),
-            textInputAction: TextInputAction.next,
-          ),
-          SizedBox(height: spacingFields),
-          AuthTextField(
-            controller: _passwordController,
-            validator: _validatePassword,
-            hintText: 'Senha',
-            obscureText: !_isPasswordVisible,
-            prefixIcon: const Icon(Icons.lock_outline_rounded, color: AppColors.textSecondary, size: 22),
-            suffixIcon: IconButton(
-              onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
-              icon: Icon(
-                _isPasswordVisible ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                color: AppColors.textSecondary,
-                size: 22,
-              ),
-            ),
-            textInputAction: TextInputAction.next,
-          ),
-          SizedBox(height: spacingFields),
-          AuthTextField(
-            controller: _emailController,
-            validator: _validateEmail,
-            hintText: 'E-mail',
-            keyboardType: TextInputType.emailAddress,
-            prefixIcon: const Icon(Icons.email_outlined, color: AppColors.textSecondary, size: 22),
-            textInputAction: TextInputAction.next,
-          ),
-          SizedBox(height: spacingFields),
-          AuthTextField(
-            controller: _mobileController,
-            validator: _validateMobile,
-            hintText: 'Celular',
-            keyboardType: TextInputType.phone,
-            prefixIcon: const Icon(Icons.phone_android_rounded, color: AppColors.textSecondary, size: 22),
-            textInputAction: TextInputAction.done,
-          ),
-          SizedBox(height: spacingFields),
-          DropdownButtonFormField<int>(
-            initialValue: _selectedCityId,
-            items: _cities
-                .map(
-                  (city) => DropdownMenuItem<int>(
-                    value: city.id,
-                    child: Text(city.name),
-                  ),
-                )
-                .toList(),
-            onChanged: _isCitiesLoading
-                ? null
-                : (value) => setState(() => _selectedCityId = value),
-            validator: (value) => value == null ? 'Selecione a sua cidade' : null,
-            decoration: InputDecoration(
-              labelText: 'Cidade',
-              hintText: _isCitiesLoading ? 'Carregando cidades...' : 'Selecione a sua cidade',
-              prefixIcon: const Icon(
-                Icons.location_city_outlined,
-                color: AppColors.textSecondary,
-                size: 22,
-              ),
-            ),
-          ),
-          SizedBox(height: spacingFormButton),
-          GradientButton(
-            label: 'Criar conta',
-            loading: _isLoading || _isCitiesLoading,
-            onPressed: (_isCitiesLoading || _cities.isEmpty) ? null : _createAccount,
-          ),
-          const SizedBox(height: 28),
-          Center(
-            child: RichText(
-              text: TextSpan(
-                style: const TextStyle(color: AppColors.textSecondary, fontSize: 14),
-                children: [
-                  const TextSpan(text: 'Já tem uma conta? '),
-                  TextSpan(
-                    text: 'Entrar',
-                    style: const TextStyle(
-                      color: AppColors.primary,
-                      fontWeight: FontWeight.w700,
-                      decoration: TextDecoration.underline,
-                    ),
-                    recognizer: TapGestureRecognizer()..onTap = () => Navigator.of(context).pop(),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

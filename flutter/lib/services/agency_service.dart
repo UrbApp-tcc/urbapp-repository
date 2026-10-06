@@ -86,7 +86,7 @@ class AgencyService {
       final response = await _supabase
           .from('cities')
           .select('id, name')
-          .order('name');
+          .order('name', ascending: true);
 
       return (response as List<dynamic>)
           .map(
@@ -111,7 +111,7 @@ class AgencyService {
           .from('public_agencies')
           .select('id, city_id, name, type, contact_email')
           .eq('city_id', cityId)
-          .order('name');
+          .order('name', ascending: true);
 
       return (response as List<dynamic>)
           .map(
@@ -150,7 +150,7 @@ class AgencyService {
             )
           ''')
           .eq('user_id', userId)
-          .order('agency_id');
+          .order('agency_id', ascending: true);
 
       return (response as List<dynamic>)
           .map((item) {

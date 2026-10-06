@@ -30,7 +30,9 @@ flutter pub get
 flutter run -d web-server --web-port 7357 --dart-define-from-file=dart_defines/dev.json
 ```
 
-Abra `http://127.0.0.1:7357/`. O arquivo `flutter/dart_defines/dev.json` é local e não deve ser versionado. Use o projeto remoto para desenvolvimento integrado ou preencha um arquivo próprio com os valores retornados por `npx supabase status -o env` para testar contra o Supabase local.
+Abra `http://127.0.0.1:7357/`. O arquivo `flutter/dart_defines/dev.json` é local e não deve ser versionado. Use o projeto remoto para desenvolvimento integrado ou preencha um arquivo próprio (por exemplo `dart_defines/local.json`) com os valores retornados por `npx supabase status -o env` para testar contra o Supabase local.
+
+No ambiente local, `npx supabase db reset` também aplica `supabase/seed.sql`: a cidade de Sorocaba com gestão, órgãos, vereadora e ocorrências em vários estados. As contas de teste estão listadas em [docs/UrbApp_Aderencia_Regras_de_Negocio.md](docs/UrbApp_Aderencia_Regras_de_Negocio.md#6-dados-locais-de-demonstração).
 
 ## Validar
 

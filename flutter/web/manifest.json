@@ -1,11 +1,11 @@
 {
-    "name": "meu_app",
-    "short_name": "meu_app",
+    "name": "UrbApp",
+    "short_name": "UrbApp",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#F9FAF5",
+    "theme_color": "#4657EF",
+    "description": "Registre, acompanhe e valide problemas urbanos.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

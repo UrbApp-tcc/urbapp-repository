@@ -202,68 +202,6 @@ void main() {
   });
 
   // ──────────────────────────────────────────────────────────
-  // Regras de negócio
-  // ──────────────────────────────────────────────────────────
-  group('isFinalStatus', () {
-    test('completed é status final', () {
-      expect(isFinalStatus('completed'), isTrue);
-    });
-
-    test('closed é status final', () {
-      expect(isFinalStatus('closed'), isTrue);
-    });
-
-    test('expired é status final', () {
-      expect(isFinalStatus('expired'), isTrue);
-    });
-
-    test('open não é status final', () {
-      expect(isFinalStatus('open'), isFalse);
-    });
-
-    test('in_progress não é status final', () {
-      expect(isFinalStatus('in_progress'), isFalse);
-    });
-
-    test('string vazia não é status final', () {
-      expect(isFinalStatus(''), isFalse);
-    });
-  });
-
-  group('canStartResolutionValidation', () {
-    test('permite estados operacionais e reaberto', () {
-      for (final status in ['open', 'in_analysis', 'in_progress', 'reopened']) {
-        expect(canStartResolutionValidation(status), isTrue, reason: status);
-      }
-    });
-
-    test('bloqueia validacao pendente e estados finais', () {
-      for (final status in [
-        'awaiting_validation',
-        'completed',
-        'closed',
-        'expired',
-      ]) {
-        expect(canStartResolutionValidation(status), isFalse, reason: status);
-      }
-    });
-  });
-
-  group('isSelfSupport', () {
-    test('usuário não pode apoiar o próprio post', () {
-      expect(isSelfSupport('user-abc', 'user-abc'), isTrue);
-    });
-
-    test('usuários diferentes podem apoiar normalmente', () {
-      expect(isSelfSupport('user-abc', 'user-xyz'), isFalse);
-    });
-
-    test('IDs distintos com prefixo comum não são considerados o mesmo', () {
-      expect(isSelfSupport('user-1', 'user-10'), isFalse);
-    });
-  });
-
-  // ──────────────────────────────────────────────────────────
   // Níveis de XP
   // ──────────────────────────────────────────────────────────
   group('calculateLevelProgress', () {

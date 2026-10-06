@@ -3,7 +3,22 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
 
-select plan(77);
+-- Foto já enviada ao Storage (pasta de pendentes), como o app faz antes de publicar.
+create or replace function pg_temp.test_photo(photo_owner uuid)
+returns text[]
+language plpgsql
+security definer
+as $$
+declare
+  photo_path text := 'reports/pending/' || gen_random_uuid()::text || '/1.jpg';
+begin
+  insert into storage.objects (bucket_id, name, owner, owner_id)
+  values ('post-images', photo_path, photo_owner, photo_owner::text);
+  return array[photo_path];
+end;
+$$;
+
+select plan(84);
 
 create temporary table test_refs (
   key text primary key,
@@ -36,6 +51,19 @@ with created as (
   returning id
 )
 insert into test_refs select 'agency', id from created;
+
+-- Cidades e categorias novas recebem vínculo institucional provisório; o teste
+-- encerra esse vínculo antes de cadastrar a gestão e o órgão reais.
+update public.municipal_administrations
+set ends_on = current_date - 31
+where city_id = (select bigint_value from test_refs where key = 'city')
+  and is_placeholder;
+
+update public.agency_responsibilities
+set ends_on = current_date - 31
+where city_id = (select bigint_value from test_refs where key = 'city')
+  and category_id = (select bigint_value from test_refs where key = 'category')
+  and ends_on is null;
 
 with created as (
   insert into public.municipal_administrations (
@@ -168,6 +196,15 @@ with created as (
 )
 insert into test_refs select 'expiration_occurrence', id from created;
 
+-- Evidências referenciadas precisam existir no Storage.
+insert into storage.objects (bucket_id, name, owner)
+values (
+  'post-images',
+  format('occurrences/%s/resolution/resolution-evidence.jpg',
+         (select bigint_value from test_refs where key = 'expiration_occurrence')),
+  '00000000-0000-0000-0000-000000000003'
+);
+
 set local "request.jwt.claim.role" = 'authenticated';
 set local "request.jwt.claim.sub" = '00000000-0000-0000-0000-000000000003';
 select throws_ok(
@@ -178,7 +215,7 @@ select throws_ok(
     'outro-usuario/imagem.jpg'
   )$$,
   'P0001',
-  'Caminho de evidencia invalido para esta ocorrencia.',
+  'Caminho de evidência inválido para esta ocorrência.',
   'a API rejeita evidência arbitrária ou de outra ocorrência'
 );
 with created as (
@@ -243,7 +280,7 @@ set local "request.jwt.claim.sub" = '00000000-0000-0000-0000-000000000001';
 
 with created as (
   select *
-  from public.create_occurrence_report(
+  from public.publish_occurrence_report(
     (select bigint_value from test_refs where key = 'city'),
     (select bigint_value from test_refs where key = 'category'),
     'Buraco perigoso na via',
@@ -252,13 +289,57 @@ with created as (
     -43.9386,
     'Rua do Teste, 100',
     'Centro',
-    false
+    false,
+    pg_temp.test_photo('00000000-0000-0000-0000-000000000001')
   )
 )
 insert into test_refs
 select 'occurrence', occurrence_id from created
 union all
 select 'first_post', post_id from created;
+
+-- Nova ocorrência exige foto e descrição de verdade (publicação com foto).
+select is(
+  (select count(*) from public.post_images
+   where post_id = (select bigint_value from test_refs where key = 'first_post')),
+  1::bigint,
+  'a foto enviada fica vinculada ao primeiro relato'
+);
+select throws_ok(
+  format($$select public.publish_occurrence_report(%s, %s, 'Sem foto', 'Descrição com tamanho suficiente.', -19.9, -43.9, null, null, false, array[]::text[])$$,
+    (select bigint_value from test_refs where key = 'city'), (select bigint_value from test_refs where key = 'category')),
+  'P0001', 'Adicione pelo menos uma foto do problema.',
+  'publicar sem foto é recusado'
+);
+select throws_ok(
+  format($$select public.publish_occurrence_report(%s, %s, 'Descrição curta', 'curta', -19.9, -43.9, null, null, false, pg_temp.test_photo('00000000-0000-0000-0000-000000000001'))$$,
+    (select bigint_value from test_refs where key = 'city'), (select bigint_value from test_refs where key = 'category')),
+  'P0001', 'A descrição deve ter pelo menos 10 caracteres.',
+  'descrição curta demais é recusada'
+);
+select throws_ok(
+  format($$select public.publish_occurrence_report(%s, %s, 'Foto falsa', 'Descrição com tamanho suficiente.', -19.9, -43.9, null, null, false, array['reports/pending/nao-existe/1.jpg'])$$,
+    (select bigint_value from test_refs where key = 'city'), (select bigint_value from test_refs where key = 'category')),
+  'P0001', 'Não encontramos a foto enviada. Adicione-a novamente.',
+  'caminho de foto que não foi enviado é recusado'
+);
+select throws_ok(
+  format($$select public.publish_occurrence_report(%s, %s, 'Caminho fora da pasta', 'Descrição com tamanho suficiente.', -19.9, -43.9, null, null, false, array['reports/1/evidencia-1.jpg'])$$,
+    (select bigint_value from test_refs where key = 'city'), (select bigint_value from test_refs where key = 'category')),
+  'P0001', 'Caminho de foto inválido.',
+  'foto fora da pasta de pendentes é recusada'
+);
+select throws_ok(
+  format($$select public.publish_occurrence_report(%s, %s, 'Foto de outra pessoa', 'Descrição com tamanho suficiente.', -19.9, -43.9, null, null, false, pg_temp.test_photo('00000000-0000-0000-0000-000000000099'))$$,
+    (select bigint_value from test_refs where key = 'city'), (select bigint_value from test_refs where key = 'category')),
+  'P0001', 'Não encontramos a foto enviada. Adicione-a novamente.',
+  'a foto precisa ter sido enviada pelo próprio autor'
+);
+select is(
+  (select count(*) from public.occurrences where title in ('Sem foto', 'Descrição curta', 'Foto falsa', 'Caminho fora da pasta', 'Foto de outra pessoa')),
+  0::bigint,
+  'publicações recusadas não deixam ocorrência criada'
+);
 
 select ok(
   (select bigint_value > 0 from test_refs where key = 'occurrence'),
@@ -443,7 +524,7 @@ set local "request.jwt.claim.sub" = '00000000-0000-0000-0000-000000000005';
 select throws_ok(
   $$select public.open_resolution_cycle((select bigint_value from test_refs where key = 'occurrence'), 'Conclusão falsa', 'agency')$$,
   '42501',
-  'Usuario nao esta autorizado a atuar com esse papel.',
+  'Usuário não está autorizado a atuar com esse papel.',
   'um usuário comum não pode se apresentar como órgão público'
 );
 
@@ -490,7 +571,7 @@ select is(
 select throws_ok(
   $$select public.vote_resolution_cycle((select bigint_value from test_refs where key = 'first_cycle'), 'confirm', -19.9191, -43.9386)$$,
   'P0001',
-  'Quem iniciou o ciclo nao pode votar nele.',
+  'Quem iniciou o ciclo não pode votar nele.',
   'quem abriu a validação não pode votar'
 );
 
@@ -498,7 +579,7 @@ set local "request.jwt.claim.sub" = '00000000-0000-0000-0000-000000000003';
 select throws_ok(
   $$select public.vote_resolution_cycle((select bigint_value from test_refs where key = 'first_cycle'), 'confirm', -20.50, -44.50)$$,
   'P0001',
-  'Usuario fora do raio permitido para validacao.',
+  'Usuário fora do raio permitido para validação.',
   'um voto fora do raio é rejeitado'
 );
 select is(
@@ -552,10 +633,18 @@ set local "request.jwt.claim.sub" = '00000000-0000-0000-0000-000000000006';
 select throws_ok(
   $$select public.start_councilor_following((select bigint_value from test_refs where key = 'occurrence'))$$,
   'P0001',
-  'Nao e possivel iniciar acompanhamento em ocorrencia finalizada.',
+  'Não é possível iniciar acompanhamento em ocorrência finalizada.',
   'não se inicia novo acompanhamento em ocorrência finalizada'
 );
 
+reset role;
+insert into storage.objects (bucket_id, name, owner)
+values (
+  'post-images',
+  format('occurrences/%s/reopening/teste.jpg', (select bigint_value from test_refs where key = 'occurrence')),
+  '00000000-0000-0000-0000-000000000002'
+);
+set local "request.jwt.claim.role" = 'authenticated';
 set local "request.jwt.claim.sub" = '00000000-0000-0000-0000-000000000002';
 select public.reopen_occurrence(
   (select bigint_value from test_refs where key = 'occurrence'),
@@ -719,7 +808,7 @@ select is(
 select throws_ok(
   $$select public.start_moderation_review((select bigint_value from test_refs where key = 'moderation_report'))$$,
   '42501',
-  'Apenas a moderacao pode analisar denuncias.',
+  'Apenas a moderação pode analisar denúncias.',
   'um cidadão não pode assumir uma análise de moderação'
 );
 
