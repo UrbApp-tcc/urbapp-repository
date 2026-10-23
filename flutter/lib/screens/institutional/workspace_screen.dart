@@ -15,6 +15,7 @@ import '../../widgets/urb/urb_icon.dart';
 import '../occurrence/occurrence_sheets.dart';
 import '../transparency/activity_list.dart';
 import '../transparency/transparency_widgets.dart';
+import 'administration_workspace.dart';
 
 /// "Sua atuação": capacidades adicionais por papel dentro do mesmo app
 /// (spec §44.7). Composição derivada da Home, Transparência e perfis públicos.
@@ -58,7 +59,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
           in access?.administrations ?? const <InstitutionalMembership>[])
         (
           'Gestão municipal',
-          _AdministrationWorkspace(membership: administration),
+          AdministrationWorkspace(membership: administration),
         ),
     ];
     return Scaffold(
@@ -912,182 +913,6 @@ class _AgencyWorkspaceState extends State<_AgencyWorkspace> {
                         ),
                     ],
                   ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Coordenação da Gestão Municipal (spec §44.7 "Prefeitura/Gestão").
-class _AdministrationWorkspace extends StatefulWidget {
-  const _AdministrationWorkspace({required this.membership});
-
-  final InstitutionalMembership membership;
-
-  @override
-  State<_AdministrationWorkspace> createState() =>
-      _AdministrationWorkspaceState();
-}
-
-class _AdministrationWorkspaceState extends State<_AdministrationWorkspace> {
-  List<Occurrence> _queue = const [];
-  AdministrationProfile? _metrics;
-  bool _loading = true;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    setState(() => _error = null);
-    try {
-      final results = await Future.wait<dynamic>([
-        OccurrenceService().fetchByAdministration(widget.membership.id),
-        TransparencyService().fetchAdministration(widget.membership.id),
-      ]);
-      if (!mounted) return;
-      setState(() {
-        _queue = results[0] as List<Occurrence>;
-        _metrics = results[1] as AdministrationProfile?;
-      });
-    } catch (error) {
-      if (mounted) setState(() => _error = friendlyError(error));
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_loading) return const UrbLoadingView();
-    if (_error != null) return UrbErrorState(message: _error!, onRetry: _load);
-    final metrics = _metrics;
-    final prioritized = _queue
-        .where((item) => item.administrativePriority)
-        .toList();
-    final unanswered = _queue
-        .where(
-          (item) =>
-              !item.administrativePriority && item.latestOfficialAction == null,
-        )
-        .toList();
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: ListView(
-        padding: const EdgeInsets.only(bottom: 40),
-        children: [
-          TransSection(
-            white: true,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            metrics?.title ?? widget.membership.name,
-                            style: UrbText.h3,
-                          ),
-                          Text(
-                            metrics?.periodLabel ?? '',
-                            style: UrbText.label.copyWith(
-                              color: UrbColors.blue,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    UrbTextButton(
-                      'Perfil público',
-                      onPressed: () => openAdministration(
-                        context,
-                        administrationId: widget.membership.id,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                if (metrics != null)
-                  UrbStatRow(
-                    items: [
-                      UrbStatItem(
-                        '${metrics.active}',
-                        pluralWord(metrics.active, 'pendente', 'pendentes'),
-                      ),
-                      UrbStatItem(
-                        '${metrics.prioritized}',
-                        pluralWord(
-                          metrics.prioritized,
-                          'priorizada',
-                          'priorizadas',
-                        ),
-                      ),
-                      UrbStatItem(
-                        '${metrics.conclusionsInformed}',
-                        pluralWord(
-                          metrics.conclusionsInformed,
-                          'conclusão informada',
-                          'conclusões informadas',
-                        ),
-                      ),
-                    ],
-                  ),
-              ],
-            ),
-          ),
-          TransSection(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const TransEyebrow('Priorizadas pela gestão'),
-                if (prioritized.isEmpty)
-                  Text('Nenhuma ocorrência priorizada.', style: UrbText.caption)
-                else
-                  for (var index = 0; index < prioritized.length; index++)
-                    RelatedOccurrenceRow(
-                      occurrence: prioritized[index],
-                      note: prioritized[index].agencyName,
-                      last: index == prioritized.length - 1,
-                    ),
-              ],
-            ),
-          ),
-          TransSection(
-            last: true,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TransEyebrow(
-                  'Sem manifestação oficial',
-                  subtitle:
-                      '${plural(unanswered.length, 'ocorrência', 'ocorrências')} aguardando posicionamento',
-                ),
-                if (unanswered.isEmpty)
-                  Text(
-                    'Todas as ocorrências pendentes têm alguma manifestação oficial.',
-                    style: UrbText.caption,
-                  )
-                else
-                  for (
-                    var index = 0;
-                    index < unanswered.length.clamp(0, 30);
-                    index++
-                  )
-                    RelatedOccurrenceRow(
-                      occurrence: unanswered[index],
-                      note:
-                          '${unanswered[index].agencyName ?? 'Órgão responsável'} · ${plural(unanswered[index].supportsCount, 'apoio', 'apoios')}',
-                      last: index == unanswered.length.clamp(0, 30) - 1,
-                    ),
-              ],
-            ),
           ),
         ],
       ),

@@ -148,6 +148,68 @@ class AgencyChoice {
   final InstitutionalProfileStatus status;
 }
 
+class InstitutionalActionRecord {
+  const InstitutionalActionRecord({
+    required this.occurrenceId,
+    required this.actorKind,
+    required this.actionType,
+    required this.description,
+    required this.createdAt,
+    this.forecastAt,
+    this.targetAgencyId,
+  });
+
+  final int occurrenceId;
+  final String actorKind;
+  final String actionType;
+  final String description;
+  final DateTime createdAt;
+  final DateTime? forecastAt;
+  final int? targetAgencyId;
+}
+
+class AgencyAssignmentRecord {
+  const AgencyAssignmentRecord({
+    required this.occurrenceId,
+    required this.agencyId,
+    required this.startsAt,
+    this.endsAt,
+    this.reason,
+  });
+
+  final int occurrenceId;
+  final int agencyId;
+  final DateTime startsAt;
+  final DateTime? endsAt;
+  final String? reason;
+}
+
+class AdministrationOccurrenceContext {
+  const AdministrationOccurrenceContext({
+    this.actions = const [],
+    this.currentAssignment,
+  });
+
+  final List<InstitutionalActionRecord> actions;
+  final AgencyAssignmentRecord? currentAssignment;
+
+  InstitutionalActionRecord? get latestAdministrationAction => actions
+      .where((action) => action.actorKind == 'administration')
+      .firstOrNull;
+
+  InstitutionalActionRecord? get latestAgencyAction =>
+      actions.where((action) => action.actorKind == 'agency').firstOrNull;
+
+  InstitutionalActionRecord? get latestForecast => actions
+      .where(
+        (action) =>
+            action.actionType == 'forecast' && action.forecastAt != null,
+      )
+      .firstOrNull;
+
+  DateTime? get lastOfficialActivityAt => actions.firstOrNull?.createdAt;
+}
+
 class ValidationSettingsInfo {
   const ValidationSettingsInfo({
     required this.confirmations,
@@ -359,6 +421,75 @@ class InstitutionalService {
       councilorProfileId: eligibleCouncilor ? councilor.id : null,
       councilorFollowingStartedAt: followingStartedAt,
     );
+  }
+
+  Future<Map<int, AdministrationOccurrenceContext>>
+  fetchAdministrationOccurrenceContexts(
+    int administrationId,
+    Iterable<int> occurrenceIds,
+  ) {
+    final ids = occurrenceIds.toSet().toList();
+    if (ids.isEmpty) return Future.value(const {});
+    return _guard(() async {
+      final responses = await Future.wait<dynamic>([
+        _supabase
+            .from('institutional_actions')
+            .select(
+              'occurrence_id, actor_kind, action_type, description, created_at, forecast_at, target_agency_id',
+            )
+            .eq('administration_id', administrationId)
+            .inFilter('occurrence_id', ids)
+            .order('created_at', ascending: false),
+        _supabase
+            .from('occurrence_agency_assignments')
+            .select('occurrence_id, agency_id, reason, starts_at, ends_at')
+            .eq('administration_id', administrationId)
+            .inFilter('occurrence_id', ids)
+            .isFilter('ends_at', null),
+      ]);
+
+      final actionsByOccurrence = <int, List<InstitutionalActionRecord>>{};
+      for (final raw in responses[0] as List) {
+        final occurrenceId = (raw['occurrence_id'] as num).toInt();
+        actionsByOccurrence
+            .putIfAbsent(occurrenceId, () => [])
+            .add(
+              InstitutionalActionRecord(
+                occurrenceId: occurrenceId,
+                actorKind: raw['actor_kind'] as String? ?? 'agency',
+                actionType: raw['action_type'] as String? ?? '',
+                description: raw['description'] as String? ?? '',
+                createdAt: DateTime.parse(
+                  raw['created_at'] as String,
+                ).toLocal(),
+                forecastAt: DateTime.tryParse(
+                  raw['forecast_at'] as String? ?? '',
+                )?.toLocal(),
+                targetAgencyId: (raw['target_agency_id'] as num?)?.toInt(),
+              ),
+            );
+      }
+
+      final assignmentByOccurrence = <int, AgencyAssignmentRecord>{};
+      for (final raw in responses[1] as List) {
+        final occurrenceId = (raw['occurrence_id'] as num).toInt();
+        assignmentByOccurrence[occurrenceId] = AgencyAssignmentRecord(
+          occurrenceId: occurrenceId,
+          agencyId: (raw['agency_id'] as num).toInt(),
+          startsAt: DateTime.parse(raw['starts_at'] as String).toLocal(),
+          endsAt: DateTime.tryParse(raw['ends_at'] as String? ?? '')?.toLocal(),
+          reason: raw['reason'] as String?,
+        );
+      }
+
+      return {
+        for (final id in ids)
+          id: AdministrationOccurrenceContext(
+            actions: actionsByOccurrence[id] ?? const [],
+            currentAssignment: assignmentByOccurrence[id],
+          ),
+      };
+    }, 'Não foi possível carregar o contexto operacional da gestão.');
   }
 
   /// Vereadores que acompanham a ocorrência (vários podem acompanhar, spec §35).
