@@ -141,11 +141,13 @@ class AgencyChoice {
     required this.id,
     required this.name,
     required this.status,
+    this.recommended = false,
   });
 
   final int id;
   final String name;
   final InstitutionalProfileStatus status;
+  final bool recommended;
 }
 
 class InstitutionalActionRecord {
@@ -175,6 +177,7 @@ class AgencyAssignmentRecord {
     required this.startsAt,
     this.endsAt,
     this.reason,
+    this.agencyName,
   });
 
   final int occurrenceId;
@@ -182,6 +185,7 @@ class AgencyAssignmentRecord {
   final DateTime startsAt;
   final DateTime? endsAt;
   final String? reason;
+  final String? agencyName;
 }
 
 class AdministrationOccurrenceContext {
@@ -596,6 +600,17 @@ class InstitutionalService {
     String? evidenceStoragePath,
   }) {
     return _guard(() async {
+      if (actionType == 'priority' || actionType == 'priority_removed') {
+        await _supabase.rpc(
+          'set_administration_occurrence_priority',
+          params: {
+            'target_occurrence_id': occurrenceId,
+            'priority_enabled': actionType == 'priority',
+            'action_description': description.trim(),
+          },
+        );
+        return;
+      }
       await _supabase.rpc(
         'register_institutional_action',
         params: {
@@ -610,14 +625,31 @@ class InstitutionalService {
     }, 'Não foi possível registrar a ação oficial.');
   }
 
-  Future<List<AgencyChoice>> fetchAgenciesForCity(int cityId) {
+  Future<List<AgencyChoice>> fetchAgenciesForCity(
+    int cityId, {
+    int? categoryId,
+  }) {
     return _guard(() async {
-      final rows = await _supabase
-          .from('public_agencies')
-          .select('id, name, profile_status')
-          .eq('city_id', cityId)
-          .order('name', ascending: true);
-      return (rows as List)
+      final responses = await Future.wait<dynamic>([
+        _supabase
+            .from('public_agencies')
+            .select('id, name, profile_status')
+            .eq('city_id', cityId)
+            .order('name', ascending: true),
+        if (categoryId != null)
+          _supabase
+              .from('agency_responsibilities')
+              .select('agency_id')
+              .eq('city_id', cityId)
+              .eq('category_id', categoryId)
+              .isFilter('ends_on', null),
+      ]);
+      final recommendedIds = categoryId == null
+          ? <int>{}
+          : (responses[1] as List)
+                .map((row) => (row['agency_id'] as num).toInt())
+                .toSet();
+      final agencies = (responses[0] as List)
           .map(
             (row) => AgencyChoice(
               id: (row['id'] as num).toInt(),
@@ -625,10 +657,44 @@ class InstitutionalService {
               status: InstitutionalProfileStatus.fromCode(
                 row['profile_status'] as String?,
               ),
+              recommended: recommendedIds.contains((row['id'] as num).toInt()),
             ),
           )
           .toList();
+      agencies.sort((a, b) {
+        if (a.recommended != b.recommended) return a.recommended ? -1 : 1;
+        return a.name.compareTo(b.name);
+      });
+      return agencies;
     }, 'Não foi possível carregar os órgãos.');
+  }
+
+  Future<List<AgencyAssignmentRecord>> fetchAgencyAssignmentHistory(
+    int occurrenceId,
+  ) {
+    return _guard(() async {
+      final rows = await _supabase
+          .from('occurrence_agency_assignments')
+          .select(
+            'occurrence_id, agency_id, reason, starts_at, ends_at, public_agencies(name)',
+          )
+          .eq('occurrence_id', occurrenceId)
+          .order('starts_at', ascending: false);
+      return (rows as List)
+          .map(
+            (raw) => AgencyAssignmentRecord(
+              occurrenceId: (raw['occurrence_id'] as num).toInt(),
+              agencyId: (raw['agency_id'] as num).toInt(),
+              agencyName: asJsonMap(raw['public_agencies'])?['name'] as String?,
+              reason: raw['reason'] as String?,
+              startsAt: DateTime.parse(raw['starts_at'] as String).toLocal(),
+              endsAt: DateTime.tryParse(
+                raw['ends_at'] as String? ?? '',
+              )?.toLocal(),
+            ),
+          )
+          .toList();
+    }, 'Não foi possível carregar o histórico de encaminhamentos.');
   }
 
   Future<int> startCouncilorFollowing(int occurrenceId) {

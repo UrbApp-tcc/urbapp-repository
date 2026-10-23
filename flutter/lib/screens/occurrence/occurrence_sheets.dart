@@ -342,6 +342,7 @@ class _ActionOption {
 
 const _administrationActions = [
   _ActionOption('priority', 'Priorizar', 'Reconhecer oficialmente a prioridade desta ocorrência.'),
+  _ActionOption('priority_removed', 'Retirar prioridade', 'Retirar a prioridade administrativa e registrar a justificativa.'),
   _ActionOption('forwarding', 'Encaminhar ao órgão competente', 'Reencaminhar mantendo o histórico do órgão anterior.', needsAgency: true),
   _ActionOption('request', 'Solicitar providências', 'Solicitar providências ao órgão responsável.'),
   _ActionOption('official_position', 'Manifestação oficial', 'Publicar posicionamento oficial da gestão.'),
@@ -379,13 +380,24 @@ Future<bool> showInstitutionalActionSheet(
   BuildContext context, {
   required Occurrence occurrence,
   required String actor,
+  String? initialActionType,
 }) async {
-  final options = actor == 'administration' ? _administrationActions : _agencyActions;
-  final option = await _pickAction(
-    context,
-    title: actor == 'administration' ? 'Ação da gestão municipal' : 'Atualização oficial do órgão',
-    options: options,
-  );
+  final options = actor == 'administration'
+      ? _administrationActions
+          .where((option) => occurrence.administrativePriority
+              ? option.type != 'priority'
+              : option.type != 'priority_removed')
+          .toList()
+      : _agencyActions;
+  final initialOption = initialActionType == null
+      ? null
+      : options.where((option) => option.type == initialActionType).firstOrNull;
+  final option = initialOption ??
+      await _pickAction(
+        context,
+        title: actor == 'administration' ? 'Ação da gestão municipal' : 'Atualização oficial do órgão',
+        options: options,
+      );
   if (option == null || !context.mounted) return false;
   final result = await showUrbSheet<bool>(
     context: context,
@@ -451,6 +463,7 @@ class _ActionFormState extends State<_ActionForm> {
   final _occurrences = OccurrenceService();
   final _description = TextEditingController();
   List<AgencyChoice> _agencies = const [];
+  List<AgencyAssignmentRecord> _assignmentHistory = const [];
   int? _targetAgencyId;
   DateTime? _forecast;
   XFile? _evidence;
@@ -460,10 +473,20 @@ class _ActionFormState extends State<_ActionForm> {
   void initState() {
     super.initState();
     if (widget.option.needsAgency) {
-      _institutional.fetchAgenciesForCity(widget.occurrence.cityId).then((value) {
-        if (mounted) {
-          setState(() => _agencies = value.where((agency) => agency.id != widget.occurrence.agencyId).toList());
-        }
+      Future.wait<dynamic>([
+        _institutional.fetchAgenciesForCity(
+          widget.occurrence.cityId,
+          categoryId: widget.occurrence.categoryId,
+        ),
+        _institutional.fetchAgencyAssignmentHistory(widget.occurrence.id),
+      ]).then((values) {
+        if (!mounted) return;
+        setState(() {
+          _agencies = (values[0] as List<AgencyChoice>)
+              .where((agency) => agency.id != widget.occurrence.agencyId)
+              .toList();
+          _assignmentHistory = values[1] as List<AgencyAssignmentRecord>;
+        });
       });
     }
   }
@@ -525,6 +548,31 @@ class _ActionFormState extends State<_ActionForm> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (widget.option.needsAgency) ...[
+          if (widget.occurrence.agencyName != null) ...[
+            Text(
+              'Responsável atual: ${widget.occurrence.agencyName}',
+              style: UrbText.caption.copyWith(fontSize: 12),
+            ),
+            if (_assignmentHistory.isNotEmpty)
+              Text(
+                'Desde ${formatDate(_assignmentHistory.first.startsAt)} · ${_assignmentHistory.length} ${_assignmentHistory.length == 1 ? 'encaminhamento registrado' : 'encaminhamentos registrados'}',
+                style: UrbText.caption,
+              ),
+            if (_assignmentHistory.length > 1) ...[
+              const SizedBox(height: 8),
+              Text('Histórico recente', style: UrbText.label),
+              const SizedBox(height: 4),
+              for (final assignment in _assignmentHistory.skip(1).take(3))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 3),
+                  child: Text(
+                    '${assignment.agencyName ?? 'Órgão'} · ${formatDate(assignment.startsAt)} a ${assignment.endsAt == null ? 'atual' : formatDate(assignment.endsAt!)}',
+                    style: UrbText.caption,
+                  ),
+                ),
+            ],
+            const SizedBox(height: 12),
+          ],
           Text('Órgão competente', style: UrbText.label),
           const SizedBox(height: 8),
           DropdownButtonFormField<int>(
@@ -532,7 +580,15 @@ class _ActionFormState extends State<_ActionForm> {
             isExpanded: true,
             hint: const Text('Selecione o órgão'),
             items: [
-              for (final agency in _agencies) DropdownMenuItem(value: agency.id, child: Text(agency.name)),
+              for (final agency in _agencies)
+                DropdownMenuItem(
+                  value: agency.id,
+                  child: Text(
+                    agency.recommended
+                        ? '${agency.name} · recomendado para a categoria'
+                        : agency.name,
+                  ),
+                ),
             ],
             onChanged: (value) => setState(() => _targetAgencyId = value),
           ),

@@ -6,6 +6,7 @@ import '../theme/app_theme.dart';
 const institutionalActionLabels = <String, String>{
   'received': 'Recebimento confirmado',
   'priority': 'Prioridade reconhecida pela gestão municipal',
+  'priority_removed': 'Prioridade retirada pela gestão municipal',
   'forwarding': 'Encaminhada ao órgão competente',
   'request': 'Providência solicitada ao órgão',
   'official_position': 'Posicionamento oficial publicado',
@@ -44,6 +45,7 @@ const councilorFollowingStatusLabels = <String, String>{
 Color actionDotColor(String actionType) => switch (actionType) {
       'charge' => UrbColors.orange,
       'official_letter' || 'forwarding' || 'request' || 'priority' => UrbColors.blue,
+      'priority_removed' => UrbColors.muted,
       'response_received' || 'agency_contact' || 'conclusion' || 'executed' => UrbColors.green,
       'visit' || 'verification' => UrbColors.violet,
       'public_update' || 'forecast' || 'scheduled' => UrbColors.gold,

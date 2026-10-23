@@ -19,6 +19,39 @@ class AdministrationAttentionSignal {
   final String label;
 }
 
+class AdministrationAgencySummary {
+  const AdministrationAgencySummary({
+    required this.agencyId,
+    required this.agencyName,
+    required this.active,
+    required this.withoutUpdate,
+    required this.inProgress,
+    required this.overdue,
+    required this.awaitingValidation,
+    this.lastUpdateAt,
+  });
+
+  final int? agencyId;
+  final String agencyName;
+  final int active;
+  final int withoutUpdate;
+  final int inProgress;
+  final int overdue;
+  final int awaitingValidation;
+  final DateTime? lastUpdateAt;
+}
+
+enum AdministrationForecastGroup {
+  overdue('Vencidas'),
+  today('Para hoje'),
+  nextSevenDays('Próximos 7 dias'),
+  future('Futuras');
+
+  const AdministrationForecastGroup(this.label);
+
+  final String label;
+}
+
 enum AdministrationQueueFilter {
   all('Todas'),
   needsAttention('Precisam de atenção'),
@@ -232,4 +265,95 @@ List<AdministrationDemandItem> filterAdministrationDemands(
     },
   });
   return items;
+}
+
+List<AdministrationAgencySummary> buildAdministrationAgencySummaries(
+  Iterable<AdministrationDemandItem> source, {
+  DateTime? now,
+}) {
+  final reference = now ?? DateTime.now();
+  final groups = <int?, List<AdministrationDemandItem>>{};
+  for (final item in source) {
+    groups.putIfAbsent(item.occurrence.agencyId, () => []).add(item);
+  }
+
+  final summaries = groups.entries.map((entry) {
+    final items = entry.value;
+    final updates =
+        items
+            .map((item) => item.context.latestAgencyAction?.createdAt)
+            .whereType<DateTime>()
+            .toList()
+          ..sort((a, b) => b.compareTo(a));
+    return AdministrationAgencySummary(
+      agencyId: entry.key,
+      agencyName: items.first.occurrence.agencyName ?? 'Sem órgão definido',
+      active: items.length,
+      withoutUpdate: items
+          .where((item) => item.context.latestAgencyAction == null)
+          .length,
+      inProgress: items
+          .where(
+            (item) => item.occurrence.status == OccurrenceStatus.inProgress,
+          )
+          .length,
+      overdue: items
+          .where(
+            (item) => administrationForecastIsOverdue(item.context, reference),
+          )
+          .length,
+      awaitingValidation: items
+          .where(
+            (item) =>
+                item.occurrence.status == OccurrenceStatus.awaitingValidation,
+          )
+          .length,
+      lastUpdateAt: updates.firstOrNull,
+    );
+  }).toList();
+  summaries.sort((a, b) {
+    final attentionA = a.withoutUpdate + a.overdue;
+    final attentionB = b.withoutUpdate + b.overdue;
+    final byAttention = attentionB.compareTo(attentionA);
+    return byAttention != 0
+        ? byAttention
+        : a.agencyName.compareTo(b.agencyName);
+  });
+  return summaries;
+}
+
+Map<AdministrationForecastGroup, List<AdministrationDemandItem>>
+groupAdministrationForecasts(
+  Iterable<AdministrationDemandItem> source, {
+  DateTime? now,
+}) {
+  final reference = now ?? DateTime.now();
+  final today = DateTime(reference.year, reference.month, reference.day);
+  final tomorrow = today.add(const Duration(days: 1));
+  final nextWeek = tomorrow.add(const Duration(days: 7));
+  final result = {
+    for (final group in AdministrationForecastGroup.values)
+      group: <AdministrationDemandItem>[],
+  };
+  for (final item in source) {
+    final forecast = item.context.latestForecast?.forecastAt;
+    if (forecast == null) continue;
+    final day = DateTime(forecast.year, forecast.month, forecast.day);
+    final group = day.isBefore(today)
+        ? AdministrationForecastGroup.overdue
+        : day.isBefore(tomorrow)
+        ? AdministrationForecastGroup.today
+        : day.isBefore(nextWeek)
+        ? AdministrationForecastGroup.nextSevenDays
+        : AdministrationForecastGroup.future;
+    result[group]!.add(item);
+  }
+  for (final items in result.values) {
+    items.sort(
+      (a, b) => a.context.latestForecast!.forecastAt!.compareTo(
+        b.context.latestForecast!.forecastAt!,
+      ),
+    );
+  }
+  return result;
 }

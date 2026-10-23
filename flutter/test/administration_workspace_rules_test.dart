@@ -158,4 +158,66 @@ void main() {
       'Acompanhar a validação comunitária',
     );
   });
+
+  test('consolida a carga e os alertas por órgão', () {
+    final updated = _item(
+      _occurrence(id: 7, agencyId: 20, status: OccurrenceStatus.inProgress),
+      actions: [
+        _action(
+          occurrenceId: 7,
+          actor: 'agency',
+          createdAt: DateTime(2026, 10, 22),
+        ),
+      ],
+    );
+    final withoutUpdate = _item(
+      _occurrence(id: 8, agencyId: 20),
+      actions: [_action(occurrenceId: 8, actor: 'administration')],
+    );
+
+    final summary = buildAdministrationAgencySummaries([
+      updated,
+      withoutUpdate,
+    ], now: now).single;
+
+    expect(summary.active, 2);
+    expect(summary.inProgress, 1);
+    expect(summary.withoutUpdate, 1);
+    expect(summary.lastUpdateAt, DateTime(2026, 10, 22));
+  });
+
+  test('agrupa previsões por vencimento e próximos sete dias', () {
+    AdministrationDemandItem withForecast(int id, DateTime forecast) => _item(
+      _occurrence(id: id),
+      actions: [
+        _action(
+          occurrenceId: id,
+          actor: 'administration',
+          type: 'forecast',
+          forecastAt: forecast,
+        ),
+      ],
+    );
+
+    final groups = groupAdministrationForecasts([
+      withForecast(9, DateTime(2026, 10, 22)),
+      withForecast(10, DateTime(2026, 10, 23)),
+      withForecast(11, DateTime(2026, 10, 27)),
+      withForecast(12, DateTime(2026, 12, 1)),
+    ], now: now);
+
+    expect(
+      groups[AdministrationForecastGroup.overdue]!.single.occurrence.id,
+      9,
+    );
+    expect(groups[AdministrationForecastGroup.today]!.single.occurrence.id, 10);
+    expect(
+      groups[AdministrationForecastGroup.nextSevenDays]!.single.occurrence.id,
+      11,
+    );
+    expect(
+      groups[AdministrationForecastGroup.future]!.single.occurrence.id,
+      12,
+    );
+  });
 }

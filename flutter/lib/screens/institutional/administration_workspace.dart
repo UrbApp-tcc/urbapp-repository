@@ -12,6 +12,7 @@ import '../../utils/error_formatter.dart';
 import '../../widgets/urb/occurrence_widgets.dart';
 import '../../widgets/urb/urb_components.dart';
 import '../../widgets/urb/urb_icon.dart';
+import '../occurrence/occurrence_sheets.dart';
 import '../transparency/transparency_widgets.dart';
 
 /// Área operacional da Prefeitura. A visão pública da gestão permanece na
@@ -117,6 +118,22 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
       initial: item.occurrence,
     );
     if (mounted) await _load();
+  }
+
+  Future<void> _registerQuickAction(
+    AdministrationDemandItem item,
+    String actionType,
+  ) async {
+    final registered = await showInstitutionalActionSheet(
+      context,
+      occurrence: item.occurrence,
+      actor: 'administration',
+      initialActionType: actionType,
+    );
+    if (registered && mounted) {
+      showUrbToast(context, 'Ação da gestão registrada com sucesso.');
+      await _load();
+    }
   }
 
   void _clearFilters() {
@@ -245,27 +262,46 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
         Container(
           color: Colors.white,
           padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
-          child: SegmentedButton<int>(
-            segments: const [
-              ButtonSegment(value: 0, label: Text('Visão geral')),
-              ButtonSegment(value: 1, label: Text('Demandas')),
-            ],
-            selected: {_section},
-            showSelectedIcon: false,
-            onSelectionChanged: (value) =>
-                setState(() => _section = value.first),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                for (final section in const [
+                  (0, 'Visão geral'),
+                  (1, 'Demandas'),
+                  (2, 'Órgãos'),
+                  (3, 'Previsões'),
+                ]) ...[
+                  UrbChip(
+                    label: section.$2,
+                    selected: _section == section.$1,
+                    onTap: () => setState(() => _section = section.$1),
+                  ),
+                  const SizedBox(width: 7),
+                ],
+              ],
+            ),
           ),
         ),
-        Expanded(child: _section == 0 ? _buildOverview() : _buildQueue()),
+        const SizedBox(height: 8),
+        Expanded(
+          child: switch (_section) {
+            0 => _buildOverview(),
+            1 => _buildQueue(),
+            2 => _buildAgencies(),
+            _ => _buildForecasts(),
+          },
+        ),
       ],
     );
   }
 
   Widget _buildOverview() {
     final metrics = _metrics;
-    final attention = _items
-        .where((item) => administrationAttentionSignals(item).isNotEmpty)
-        .toList();
+    final attention = filterAdministrationDemands(
+      _items,
+      filter: AdministrationQueueFilter.needsAttention,
+    );
     final withoutManagement = _items
         .where((item) => item.context.latestAdministrationAction == null)
         .length;
@@ -406,6 +442,8 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
                     _DemandRow(
                       item: attention[index],
                       onTap: () => _openDemand(attention[index]),
+                      onQuickAction: (action) =>
+                          _registerQuickAction(attention[index], action),
                       last: index == attention.take(5).length - 1,
                     ),
               ],
@@ -488,8 +526,109 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
               _DemandRow(
                 item: visible[index],
                 onTap: () => _openDemand(visible[index]),
+                onQuickAction: (action) =>
+                    _registerQuickAction(visible[index], action),
                 last: index == visible.length - 1,
               ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAgencies() {
+    final summaries = buildAdministrationAgencySummaries(_items);
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 40),
+        children: [
+          Text('Coordenação dos órgãos', style: UrbText.h3),
+          const SizedBox(height: 4),
+          Text(
+            'Acompanhe a distribuição das demandas e identifique onde é preciso cobrar atualização.',
+            style: UrbText.bodySmall,
+          ),
+          const SizedBox(height: 18),
+          if (summaries.isEmpty)
+            const UrbEmptyState(
+              icon: UrbIcons.building,
+              title: 'Nenhum órgão na fila',
+              message: 'As demandas encaminhadas aparecerão aqui.',
+            )
+          else
+            for (var index = 0; index < summaries.length; index++)
+              _AgencySummaryRow(
+                summary: summaries[index],
+                last: index == summaries.length - 1,
+                onTap: () {
+                  setState(() {
+                    _agencyId = summaries[index].agencyId;
+                    _section = 1;
+                  });
+                },
+              ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildForecasts() {
+    final groups = groupAdministrationForecasts(_items);
+    final total = groups.values.fold<int>(
+      0,
+      (sum, items) => sum + items.length,
+    );
+    final overdue = groups[AdministrationForecastGroup.overdue]!.length;
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 40),
+        children: [
+          Text('Controle de previsões', style: UrbText.h3),
+          const SizedBox(height: 4),
+          Text(
+            'Consulte os prazos informados e atualize previsões vencidas ou próximas.',
+            style: UrbText.bodySmall,
+          ),
+          const SizedBox(height: 16),
+          UrbStatRow(
+            items: [
+              UrbStatItem('$total', 'com previsão'),
+              UrbStatItem('$overdue', 'vencidas'),
+              UrbStatItem(
+                '${groups[AdministrationForecastGroup.nextSevenDays]!.length}',
+                'próximos 7 dias',
+              ),
+            ],
+          ),
+          const SizedBox(height: 22),
+          if (total == 0)
+            const UrbEmptyState(
+              icon: UrbIcons.clock,
+              title: 'Nenhuma previsão informada',
+              message:
+                  'Registre uma previsão nas ações rápidas de uma demanda.',
+            )
+          else
+            for (final group in AdministrationForecastGroup.values)
+              if (groups[group]!.isNotEmpty) ...[
+                TransEyebrow(
+                  group.label,
+                  subtitle:
+                      '${groups[group]!.length} ${groups[group]!.length == 1 ? 'demanda' : 'demandas'}',
+                ),
+                for (var index = 0; index < groups[group]!.length; index++)
+                  _DemandRow(
+                    item: groups[group]![index],
+                    contextNote:
+                        'Previsão: ${formatDate(groups[group]![index].context.latestForecast!.forecastAt!)}',
+                    onTap: () => _openDemand(groups[group]![index]),
+                    onQuickAction: (action) =>
+                        _registerQuickAction(groups[group]![index], action),
+                    last: index == groups[group]!.length - 1,
+                  ),
+                const SizedBox(height: 22),
+              ],
         ],
       ),
     );
@@ -500,12 +639,16 @@ class _DemandRow extends StatelessWidget {
   const _DemandRow({
     required this.item,
     required this.onTap,
+    required this.onQuickAction,
     this.last = false,
+    this.contextNote,
   });
 
   final AdministrationDemandItem item;
   final VoidCallback onTap;
+  final ValueChanged<String> onQuickAction;
   final bool last;
+  final String? contextNote;
 
   @override
   Widget build(BuildContext context) {
@@ -537,7 +680,54 @@ class _DemandRow extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                StatusPill(occurrence.status, compact: true),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    StatusPill(occurrence.status, compact: true),
+                    SizedBox(
+                      width: 32,
+                      height: 32,
+                      child: PopupMenuButton<String>(
+                        tooltip: 'Ações rápidas',
+                        padding: EdgeInsets.zero,
+                        icon: const UrbIcon(
+                          UrbIcons.more,
+                          size: 18,
+                          color: UrbColors.muted,
+                        ),
+                        onSelected: onQuickAction,
+                        itemBuilder: (_) => [
+                          PopupMenuItem(
+                            value: occurrence.administrativePriority
+                                ? 'priority_removed'
+                                : 'priority',
+                            child: Text(
+                              occurrence.administrativePriority
+                                  ? 'Retirar prioridade'
+                                  : 'Priorizar',
+                            ),
+                          ),
+                          const PopupMenuItem(
+                            value: 'forwarding',
+                            child: Text('Encaminhar a outro órgão'),
+                          ),
+                          const PopupMenuItem(
+                            value: 'request',
+                            child: Text('Solicitar providências'),
+                          ),
+                          const PopupMenuItem(
+                            value: 'official_position',
+                            child: Text('Registrar manifestação'),
+                          ),
+                          const PopupMenuItem(
+                            value: 'forecast',
+                            child: Text('Informar previsão'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
             const SizedBox(height: 5),
@@ -550,6 +740,16 @@ class _DemandRow extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: UrbText.caption,
             ),
+            if (contextNote != null) ...[
+              const SizedBox(height: 5),
+              Text(
+                contextNote!,
+                style: UrbText.caption.copyWith(
+                  color: UrbColors.warning,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
             const SizedBox(height: 5),
             Text(
               '${occurrence.supportsCount} ${occurrence.supportsCount == 1 ? 'apoio' : 'apoios'} · criada ${formatRelativeTime(occurrence.createdAt).toLowerCase()}',
@@ -587,6 +787,72 @@ class _DemandRow extends StatelessWidget {
       ),
     );
   }
+}
+
+class _AgencySummaryRow extends StatelessWidget {
+  const _AgencySummaryRow({
+    required this.summary,
+    required this.onTap,
+    this.last = false,
+  });
+
+  final AdministrationAgencySummary summary;
+  final VoidCallback onTap;
+  final bool last;
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.symmetric(vertical: 15),
+      decoration: BoxDecoration(
+        border: last
+            ? null
+            : const Border(bottom: BorderSide(color: UrbColors.divider)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(summary.agencyName, style: UrbText.titleSmall),
+              ),
+              const UrbIcon(UrbIcons.chevron, size: 15, color: UrbColors.muted),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '${summary.active} ativas · ${summary.inProgress} em andamento · ${summary.awaitingValidation} em validação',
+            style: UrbText.caption,
+          ),
+          const SizedBox(height: 7),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              if (summary.withoutUpdate > 0)
+                UrbChip(
+                  label: '${summary.withoutUpdate} sem atualização',
+                  dotColor: UrbColors.warning,
+                ),
+              if (summary.overdue > 0)
+                UrbChip(
+                  label: '${summary.overdue} com previsão vencida',
+                  dotColor: UrbColors.danger,
+                ),
+              if (summary.lastUpdateAt != null)
+                UrbChip(
+                  label:
+                      'Última atualização ${formatRelativeTime(summary.lastUpdateAt!).toLowerCase()}',
+                  dotColor: UrbColors.success,
+                ),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class _AttentionSummaryRow extends StatelessWidget {
