@@ -10,7 +10,10 @@ import '../../app/routes.dart';
 import '../../services/institutional_service.dart';
 import '../../services/notifications_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/error_formatter.dart';
+import '../../widgets/urb/city_picker.dart';
 import '../../widgets/urb/urb_bottom_nav.dart';
+import '../../widgets/urb/urb_components.dart';
 import '../home/home_screen.dart';
 import '../institutional/access_request_screen.dart';
 import '../profile/profile_screen.dart';
@@ -38,8 +41,9 @@ class AppShellState extends State<AppShell> {
   @override
   void initState() {
     super.initState();
-    AppSession.instance.init().then((_) {
+    AppSession.instance.init().then((_) async {
       if (mounted) setState(() {});
+      await _askProfileCity();
       _resumeInstitutionalIntent();
     });
     _notifications.refreshUnreadCount();
@@ -52,6 +56,20 @@ class AppShellState extends State<AppShell> {
     _deepLinks?.cancel();
     _notifications.dispose();
     super.dispose();
+  }
+
+  /// Contas criadas pelo Google chegam sem cidade (o cadastro por e-mail já a
+  /// exige); a escolha é salva no perfil em vez de assumir a primeira da lista.
+  Future<void> _askProfileCity() async {
+    final session = AppSession.instance;
+    if (!session.needsProfileCity || session.cities.isEmpty || !mounted) return;
+    final picked = await showCityPicker(context, cities: session.cities, selected: session.city.value);
+    if (picked == null || !mounted) return;
+    try {
+      await session.saveProfileCity(picked);
+    } catch (error) {
+      if (mounted) showUrbToast(context, friendlyError(error));
+    }
   }
 
   /// Quem escolheu "Acesso institucional" antes de entrar segue direto para a
