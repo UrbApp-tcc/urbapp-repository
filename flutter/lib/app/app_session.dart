@@ -24,6 +24,10 @@ class AppSession {
   final ValueNotifier<int> contentRevision = ValueNotifier<int>(0);
   List<CityOption> cities = const [];
 
+  /// Perfil ainda sem cidade (ex.: primeiro acesso pelo Google): a cidade
+  /// exibida é provisória até o usuário escolher a dele.
+  bool needsProfileCity = false;
+
   final _occurrenceChanges = StreamController<Occurrence>.broadcast();
   Stream<Occurrence> get occurrenceChanges => _occurrenceChanges.stream;
 
@@ -42,6 +46,7 @@ class AppSession {
         final row = await Supabase.instance.client.from('profiles').select('city_id').eq('id', userId).maybeSingle();
         profileCityId = (row?['city_id'] as num?)?.toInt();
       }
+      needsProfileCity = userId != null && profileCityId == null;
       city.value = cities.where((item) => item.id == profileCityId).firstOrNull ?? cities.firstOrNull;
     } catch (_) {
       _initialized = false;
@@ -53,9 +58,20 @@ class AppSession {
 
   void reset() {
     _initialized = false;
+    needsProfileCity = false;
     city.value = null;
     position.value = null;
     cities = const [];
+  }
+
+  /// Grava a cidade escolhida no perfil e passa a usá-la na sessão.
+  Future<void> saveProfileCity(CityOption option) async {
+    final client = Supabase.instance.client;
+    final userId = client.auth.currentUser?.id;
+    if (userId == null) return;
+    await client.from('profiles').update({'city_id': option.id}).eq('id', userId);
+    needsProfileCity = false;
+    city.value = option;
   }
 
   Future<GeoPoint?> requestPosition() async {
