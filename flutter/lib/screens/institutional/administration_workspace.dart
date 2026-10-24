@@ -30,9 +30,12 @@ class AdministrationWorkspace extends StatefulWidget {
 class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
   final _searchController = TextEditingController();
   List<AdministrationDemandItem> _items = const [];
+  Map<int, String> _citizenNames = const {};
+  Map<int, List<AgencyTeamMember>> _agencyTeams = const {};
   AdministrationProfile? _metrics;
   AdministrationQueueFilter _filter = AdministrationQueueFilter.all;
   AdministrationDemandOrder _order = AdministrationDemandOrder.attention;
+  AdministrationAgencyOrder _agencyOrder = AdministrationAgencyOrder.attention;
   int? _agencyId;
   int? _categoryId;
   String? _neighborhood;
@@ -60,11 +63,16 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
         TransparencyService().fetchAdministration(widget.membership.id),
       ]);
       final occurrences = results[0] as List<Occurrence>;
-      final contexts = await InstitutionalService()
-          .fetchAdministrationOccurrenceContexts(
-            widget.membership.id,
-            occurrences.map((item) => item.id),
-          );
+      final service = InstitutionalService();
+      final details = await Future.wait<dynamic>([
+        service.fetchAdministrationOccurrenceContexts(
+          widget.membership.id,
+          occurrences.map((item) => item.id),
+        ),
+        service.fetchOccurrenceCitizenNames(occurrences.map((item) => item.id)),
+        service.fetchAdministrationAgencyTeams(widget.membership.id),
+      ]);
+      final contexts = details[0] as Map<int, AdministrationOccurrenceContext>;
       if (!mounted) return;
       setState(() {
         _items = [
@@ -77,6 +85,8 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
             ),
         ];
         _metrics = results[1] as AdministrationProfile?;
+        _citizenNames = details[1] as Map<int, String>;
+        _agencyTeams = details[2] as Map<int, List<AgencyTeamMember>>;
       });
     } catch (error) {
       if (mounted) setState(() => _error = friendlyError(error));
@@ -439,12 +449,18 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
                   )
                 else
                   for (var index = 0; index < attention.take(5).length; index++)
-                    _DemandRow(
-                      item: attention[index],
-                      onTap: () => _openDemand(attention[index]),
-                      onQuickAction: (action) =>
-                          _registerQuickAction(attention[index], action),
-                      last: index == attention.take(5).length - 1,
+                    FullBleed(
+                      bleed: 20,
+                      child: _DemandRow(
+                        item: attention[index],
+                        citizenName:
+                            _citizenNames[attention[index].occurrence.id],
+                        horizontalInset: 20,
+                        onTap: () => _openDemand(attention[index]),
+                        onQuickAction: (action) =>
+                            _registerQuickAction(attention[index], action),
+                        last: index == attention.take(5).length - 1,
+                      ),
                     ),
               ],
             ),
@@ -471,19 +487,28 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
             onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: 12),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                for (final value in AdministrationQueueFilter.values) ...[
-                  UrbChip(
+          SizedBox(
+            height: 78,
+            child: GridView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: AdministrationQueueFilter.values.length,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                mainAxisExtent: 126,
+                mainAxisSpacing: 7,
+                crossAxisSpacing: 7,
+              ),
+              itemBuilder: (context, index) {
+                final value = AdministrationQueueFilter.values[index];
+                return Align(
+                  alignment: Alignment.centerLeft,
+                  child: UrbChip(
                     label: value.label,
                     selected: _filter == value,
                     onTap: () => setState(() => _filter = value),
                   ),
-                  const SizedBox(width: 7),
-                ],
-              ],
+                );
+              },
             ),
           ),
           const SizedBox(height: 12),
@@ -523,12 +548,17 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
             )
           else
             for (var index = 0; index < visible.length; index++)
-              _DemandRow(
-                item: visible[index],
-                onTap: () => _openDemand(visible[index]),
-                onQuickAction: (action) =>
-                    _registerQuickAction(visible[index], action),
-                last: index == visible.length - 1,
+              FullBleed(
+                bleed: 20,
+                child: _DemandRow(
+                  item: visible[index],
+                  citizenName: _citizenNames[visible[index].occurrence.id],
+                  horizontalInset: 20,
+                  onTap: () => _openDemand(visible[index]),
+                  onQuickAction: (action) =>
+                      _registerQuickAction(visible[index], action),
+                  last: index == visible.length - 1,
+                ),
               ),
         ],
       ),
@@ -536,7 +566,10 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
   }
 
   Widget _buildAgencies() {
-    final summaries = buildAdministrationAgencySummaries(_items);
+    final summaries = buildAdministrationAgencySummaries(
+      _items,
+      order: _agencyOrder,
+    );
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
@@ -547,6 +580,29 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
           Text(
             'Acompanhe a distribuição das demandas e identifique onde é preciso cobrar atualização.',
             style: UrbText.bodySmall,
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              const UrbIcon(UrbIcons.filter, size: 15, color: UrbColors.muted),
+              const SizedBox(width: 7),
+              Text('Ordenar por', style: UrbText.caption),
+              const SizedBox(width: 10),
+              Expanded(
+                child: DropdownButtonFormField<AdministrationAgencyOrder>(
+                  initialValue: _agencyOrder,
+                  isDense: true,
+                  decoration: const InputDecoration(),
+                  items: [
+                    for (final value in AdministrationAgencyOrder.values)
+                      DropdownMenuItem(value: value, child: Text(value.label)),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) setState(() => _agencyOrder = value);
+                  },
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 18),
           if (summaries.isEmpty)
@@ -559,6 +615,9 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
             for (var index = 0; index < summaries.length; index++)
               _AgencySummaryRow(
                 summary: summaries[index],
+                members: summaries[index].agencyId == null
+                    ? const []
+                    : _agencyTeams[summaries[index].agencyId] ?? const [],
                 last: index == summaries.length - 1,
                 onTap: () {
                   setState(() {
@@ -618,14 +677,21 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
                       '${groups[group]!.length} ${groups[group]!.length == 1 ? 'demanda' : 'demandas'}',
                 ),
                 for (var index = 0; index < groups[group]!.length; index++)
-                  _DemandRow(
-                    item: groups[group]![index],
-                    contextNote:
-                        'Previsão: ${formatDate(groups[group]![index].context.latestForecast!.forecastAt!)}',
-                    onTap: () => _openDemand(groups[group]![index]),
-                    onQuickAction: (action) =>
-                        _registerQuickAction(groups[group]![index], action),
-                    last: index == groups[group]!.length - 1,
+                  FullBleed(
+                    bleed: 20,
+                    child: _DemandRow(
+                      item: groups[group]![index],
+                      citizenName:
+                          _citizenNames[groups[group]![index].occurrence.id],
+                      horizontalInset: 20,
+                      contextNote:
+                          'Previsão: ${formatDate(groups[group]![index].context.latestForecast!.forecastAt!)}',
+                      emphasizeContext: true,
+                      onTap: () => _openDemand(groups[group]![index]),
+                      onQuickAction: (action) =>
+                          _registerQuickAction(groups[group]![index], action),
+                      last: index == groups[group]!.length - 1,
+                    ),
                   ),
                 const SizedBox(height: 22),
               ],
@@ -642,6 +708,9 @@ class _DemandRow extends StatelessWidget {
     required this.onQuickAction,
     this.last = false,
     this.contextNote,
+    this.citizenName,
+    this.horizontalInset = 0,
+    this.emphasizeContext = false,
   });
 
   final AdministrationDemandItem item;
@@ -649,140 +718,209 @@ class _DemandRow extends StatelessWidget {
   final ValueChanged<String> onQuickAction;
   final bool last;
   final String? contextNote;
+  final String? citizenName;
+  final double horizontalInset;
+  final bool emphasizeContext;
 
   @override
   Widget build(BuildContext context) {
     final occurrence = item.occurrence;
     final signals = administrationAttentionSignals(item);
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        decoration: BoxDecoration(
-          border: last
-              ? null
-              : const Border(bottom: BorderSide(color: UrbColors.divider)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Text(
-                    occurrence.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: UrbText.titleSmall.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+    return Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        onTap: onTap,
+        hoverColor: const Color(0xFFF1F3F1),
+        child: Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: horizontalInset,
+            vertical: 14,
+          ),
+          decoration: BoxDecoration(
+            border: last
+                ? null
+                : const Border(bottom: BorderSide(color: UrbColors.divider)),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              OccurrenceImage(
+                url: occurrence.primaryImageUrl,
+                categoryName: occurrence.categoryName,
+                categorySlug: occurrence.categorySlug,
+                width: 82,
+                height: 108,
+                radius: 12,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    StatusPill(occurrence.status, compact: true),
-                    SizedBox(
-                      width: 32,
-                      height: 32,
-                      child: PopupMenuButton<String>(
-                        tooltip: 'Ações rápidas',
-                        padding: EdgeInsets.zero,
-                        icon: const UrbIcon(
-                          UrbIcons.more,
-                          size: 18,
-                          color: UrbColors.muted,
-                        ),
-                        onSelected: onQuickAction,
-                        itemBuilder: (_) => [
-                          PopupMenuItem(
-                            value: occurrence.administrativePriority
-                                ? 'priority_removed'
-                                : 'priority',
-                            child: Text(
-                              occurrence.administrativePriority
-                                  ? 'Retirar prioridade'
-                                  : 'Priorizar',
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            occurrence.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: UrbText.titleSmall.copyWith(
+                              fontWeight: FontWeight.w800,
+                              height: 1.2,
                             ),
                           ),
-                          const PopupMenuItem(
-                            value: 'forwarding',
-                            child: Text('Encaminhar a outro órgão'),
+                        ),
+                        const SizedBox(width: 7),
+                        StatusPill(occurrence.status, compact: true),
+                        SizedBox(
+                          width: 30,
+                          height: 28,
+                          child: PopupMenuButton<String>(
+                            tooltip: 'A??es r?pidas',
+                            padding: EdgeInsets.zero,
+                            icon: const UrbIcon(
+                              UrbIcons.more,
+                              size: 18,
+                              color: UrbColors.muted,
+                            ),
+                            onSelected: onQuickAction,
+                            itemBuilder: (_) => [
+                              PopupMenuItem(
+                                value: occurrence.administrativePriority
+                                    ? 'priority_removed'
+                                    : 'priority',
+                                child: Text(
+                                  occurrence.administrativePriority
+                                      ? 'Retirar prioridade'
+                                      : 'Priorizar',
+                                ),
+                              ),
+                              const PopupMenuItem(
+                                value: 'forwarding',
+                                child: Text('Encaminhar a outro ?rg?o'),
+                              ),
+                              const PopupMenuItem(
+                                value: 'request',
+                                child: Text('Solicitar provid?ncias'),
+                              ),
+                              const PopupMenuItem(
+                                value: 'official_position',
+                                child: Text('Registrar manifesta??o'),
+                              ),
+                              const PopupMenuItem(
+                                value: 'forecast',
+                                child: Text('Informar previs?o'),
+                              ),
+                            ],
                           ),
-                          const PopupMenuItem(
-                            value: 'request',
-                            child: Text('Solicitar providências'),
-                          ),
-                          const PopupMenuItem(
-                            value: 'official_position',
-                            child: Text('Registrar manifestação'),
-                          ),
-                          const PopupMenuItem(
-                            value: 'forecast',
-                            child: Text('Informar previsão'),
-                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      [
+                        occurrence.locationLabel,
+                        occurrence.agencyName ?? 'Sem ?rg?o definido',
+                      ].join(' ? '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: UrbText.caption,
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'Relato de ${citizenName ?? 'Cidad?o'} ? ${occurrence.supportsCount} ${occurrence.supportsCount == 1 ? 'apoio' : 'apoios'}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: UrbText.caption.copyWith(
+                        color: const Color(0xFF59697D),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    if (contextNote != null) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        width: double.infinity,
+                        padding: EdgeInsets.symmetric(
+                          horizontal: emphasizeContext ? 10 : 0,
+                          vertical: emphasizeContext ? 8 : 0,
+                        ),
+                        decoration: emphasizeContext
+                            ? BoxDecoration(
+                                color: const Color(0xFFFFF4DF),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: UrbColors.warning.withValues(
+                                    alpha: 0.35,
+                                  ),
+                                ),
+                              )
+                            : null,
+                        child: Row(
+                          children: [
+                            const UrbIcon(
+                              UrbIcons.clock,
+                              size: 14,
+                              color: UrbColors.warning,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                contextNote!,
+                                style: UrbText.caption.copyWith(
+                                  color: UrbColors.warning,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 4),
+                    Text(
+                      'Criada ${formatRelativeTime(occurrence.createdAt).toLowerCase()}',
+                      style: UrbText.caption,
+                    ),
+                    if (signals.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          for (final signal in signals.take(3))
+                            UrbChip(
+                              label: signal.label,
+                              dotColor: UrbColors.warning,
+                            ),
                         ],
                       ),
+                    ],
+                    const SizedBox(height: 9),
+                    Row(
+                      children: [
+                        const UrbIcon(
+                          UrbIcons.arrow,
+                          size: 14,
+                          color: UrbColors.blue,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Pr?xima a??o: ${administrationNextAction(item)}',
+                            style: UrbText.caption.copyWith(
+                              color: UrbColors.blue,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
-            ),
-            const SizedBox(height: 5),
-            Text(
-              [
-                occurrence.locationLabel,
-                occurrence.agencyName ?? 'Sem órgão definido',
-              ].join(' · '),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: UrbText.caption,
-            ),
-            if (contextNote != null) ...[
-              const SizedBox(height: 5),
-              Text(
-                contextNote!,
-                style: UrbText.caption.copyWith(
-                  color: UrbColors.warning,
-                  fontWeight: FontWeight.w800,
-                ),
               ),
             ],
-            const SizedBox(height: 5),
-            Text(
-              '${occurrence.supportsCount} ${occurrence.supportsCount == 1 ? 'apoio' : 'apoios'} · criada ${formatRelativeTime(occurrence.createdAt).toLowerCase()}',
-              style: UrbText.caption,
-            ),
-            if (signals.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  for (final signal in signals.take(3))
-                    UrbChip(label: signal.label, dotColor: UrbColors.warning),
-                ],
-              ),
-            ],
-            const SizedBox(height: 9),
-            Row(
-              children: [
-                const UrbIcon(UrbIcons.arrow, size: 14, color: UrbColors.blue),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    'Próxima ação: ${administrationNextAction(item)}',
-                    style: UrbText.caption.copyWith(
-                      color: UrbColors.blue,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -792,11 +930,13 @@ class _DemandRow extends StatelessWidget {
 class _AgencySummaryRow extends StatelessWidget {
   const _AgencySummaryRow({
     required this.summary,
+    required this.members,
     required this.onTap,
     this.last = false,
   });
 
   final AdministrationAgencySummary summary;
+  final List<AgencyTeamMember> members;
   final VoidCallback onTap;
   final bool last;
 
@@ -821,6 +961,36 @@ class _AgencySummaryRow extends StatelessWidget {
               const UrbIcon(UrbIcons.chevron, size: 15, color: UrbColors.muted),
             ],
           ),
+          if (members.isNotEmpty) ...[
+            const SizedBox(height: 9),
+            Row(
+              children: [
+                for (final member in members.take(3)) ...[
+                  UrbAvatar(
+                    name: member.name,
+                    imageUrl: member.avatarUrl,
+                    size: 30,
+                    rounded: false,
+                    gradientSeed: member.agencyId + members.indexOf(member),
+                  ),
+                  const SizedBox(width: 5),
+                ],
+                const SizedBox(width: 3),
+                Expanded(
+                  child: Text(
+                    members.length == 1
+                        ? members.first.name
+                        : '${members.length} integrantes vinculados',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: UrbText.caption.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 6),
           Text(
             '${summary.active} ativas · ${summary.inProgress} em andamento · ${summary.awaitingValidation} em validação',

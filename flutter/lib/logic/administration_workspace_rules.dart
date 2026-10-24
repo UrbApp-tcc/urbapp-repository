@@ -80,6 +80,19 @@ enum AdministrationDemandOrder {
   final String label;
 }
 
+enum AdministrationAgencyOrder {
+  attention('Mais atrasos'),
+  alphabetical('Ordem alfabética'),
+  overdueServices('Mais serviços atrasados'),
+  inProgress('Mais em andamento'),
+  awaitingValidation('Mais em validação'),
+  active('Mais demandas ativas');
+
+  const AdministrationAgencyOrder(this.label);
+
+  final String label;
+}
+
 bool administrationForecastIsOverdue(
   AdministrationOccurrenceContext context,
   DateTime now,
@@ -270,6 +283,7 @@ List<AdministrationDemandItem> filterAdministrationDemands(
 List<AdministrationAgencySummary> buildAdministrationAgencySummaries(
   Iterable<AdministrationDemandItem> source, {
   DateTime? now,
+  AdministrationAgencyOrder order = AdministrationAgencyOrder.attention,
 }) {
   final reference = now ?? DateTime.now();
   final groups = <int?, List<AdministrationDemandItem>>{};
@@ -311,13 +325,44 @@ List<AdministrationAgencySummary> buildAdministrationAgencySummaries(
       lastUpdateAt: updates.firstOrNull,
     );
   }).toList();
-  summaries.sort((a, b) {
-    final attentionA = a.withoutUpdate + a.overdue;
-    final attentionB = b.withoutUpdate + b.overdue;
-    final byAttention = attentionB.compareTo(attentionA);
-    return byAttention != 0
-        ? byAttention
-        : a.agencyName.compareTo(b.agencyName);
+  int byName(AdministrationAgencySummary a, AdministrationAgencySummary b) =>
+      a.agencyName.toLowerCase().compareTo(b.agencyName.toLowerCase());
+  int descending(
+    AdministrationAgencySummary a,
+    AdministrationAgencySummary b,
+    int Function(AdministrationAgencySummary item) value,
+  ) {
+    final compared = value(b).compareTo(value(a));
+    return compared == 0 ? byName(a, b) : compared;
+  }
+
+  summaries.sort(switch (order) {
+    AdministrationAgencyOrder.attention => (a, b) => descending(
+      a,
+      b,
+      (item) => item.withoutUpdate + item.overdue,
+    ),
+    AdministrationAgencyOrder.alphabetical => byName,
+    AdministrationAgencyOrder.overdueServices => (a, b) => descending(
+      a,
+      b,
+      (item) => item.overdue,
+    ),
+    AdministrationAgencyOrder.inProgress => (a, b) => descending(
+      a,
+      b,
+      (item) => item.inProgress,
+    ),
+    AdministrationAgencyOrder.awaitingValidation => (a, b) => descending(
+      a,
+      b,
+      (item) => item.awaitingValidation,
+    ),
+    AdministrationAgencyOrder.active => (a, b) => descending(
+      a,
+      b,
+      (item) => item.active,
+    ),
   });
   return summaries;
 }

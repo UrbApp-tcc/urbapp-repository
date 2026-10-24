@@ -17,6 +17,15 @@ class InstitutionalMembership {
   final int cityId;
   final String? cityName;
   final String role;
+
+  bool get canRegisterActions => role == 'manager' || role == 'agent';
+
+  String get roleLabel => switch (role) {
+    'manager' => 'Gestor',
+    'agent' => 'Operador',
+    'analyst' => 'Consulta',
+    _ => 'Equipe institucional',
+  };
 }
 
 class CouncilorIdentity {
@@ -148,6 +157,20 @@ class AgencyChoice {
   final String name;
   final InstitutionalProfileStatus status;
   final bool recommended;
+}
+
+class AgencyTeamMember {
+  const AgencyTeamMember({
+    required this.agencyId,
+    required this.name,
+    required this.role,
+    this.avatarUrl,
+  });
+
+  final int agencyId;
+  final String name;
+  final String role;
+  final String? avatarUrl;
 }
 
 class InstitutionalActionRecord {
@@ -494,6 +517,58 @@ class InstitutionalService {
           ),
       };
     }, 'Não foi possível carregar o contexto operacional da gestão.');
+  }
+
+  Future<Map<int, String>> fetchOccurrenceCitizenNames(
+    Iterable<int> occurrenceIds,
+  ) {
+    final ids = occurrenceIds.toSet().toList();
+    if (ids.isEmpty) return Future.value(const {});
+    return _guard(() async {
+      final rows = await _supabase
+          .from('post_feed_rows')
+          .select('occurrence_id, author_display_name, created_at')
+          .inFilter('occurrence_id', ids)
+          .order('created_at', ascending: true);
+      final result = <int, String>{};
+      for (final raw in rows as List) {
+        final occurrenceId = (raw['occurrence_id'] as num).toInt();
+        result.putIfAbsent(
+          occurrenceId,
+          () =>
+              (raw['author_display_name'] as String?)?.trim().isNotEmpty == true
+              ? (raw['author_display_name'] as String).trim()
+              : 'Cidadão',
+        );
+      }
+      return result;
+    }, 'Não foi possível carregar os autores das demandas.');
+  }
+
+  Future<Map<int, List<AgencyTeamMember>>> fetchAdministrationAgencyTeams(
+    int administrationId,
+  ) {
+    return _guard(() async {
+      final rows = await _supabase.rpc(
+        'get_administration_agency_team',
+        params: {'target_administration_id': administrationId},
+      );
+      final result = <int, List<AgencyTeamMember>>{};
+      for (final raw in rows as List) {
+        final agencyId = (raw['agency_id'] as num).toInt();
+        result
+            .putIfAbsent(agencyId, () => [])
+            .add(
+              AgencyTeamMember(
+                agencyId: agencyId,
+                name: raw['display_name'] as String? ?? 'Equipe do órgão',
+                role: raw['member_role'] as String? ?? 'member',
+                avatarUrl: raw['avatar_url'] as String?,
+              ),
+            );
+      }
+      return result;
+    }, 'Não foi possível carregar as equipes dos órgãos.');
   }
 
   /// Vereadores que acompanham a ocorrência (vários podem acompanhar, spec §35).
