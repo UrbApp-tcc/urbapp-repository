@@ -8,7 +8,8 @@ import '../utils/error_formatter.dart';
 
 /// Alertas gerados pelo backend (spec §23). O cliente apenas lê e marca como lido.
 class NotificationsService {
-  NotificationsService({SupabaseClient? supabase}) : _supabase = supabase ?? Supabase.instance.client;
+  NotificationsService({SupabaseClient? supabase})
+    : _supabase = supabase ?? Supabase.instance.client;
 
   final SupabaseClient _supabase;
 
@@ -23,6 +24,7 @@ class NotificationsService {
     'points_awarded',
     'level_up',
     'badge_awarded',
+    'institutional_alert',
   ];
 
   RealtimeChannel? _channel;
@@ -39,12 +41,20 @@ class NotificationsService {
           .order('created_at', ascending: false)
           .limit(limit);
       final items = (rows as List)
-          .map((row) => AppNotification.fromJson(Map<String, dynamic>.from(row as Map)))
+          .map(
+            (row) =>
+                AppNotification.fromJson(Map<String, dynamic>.from(row as Map)),
+          )
           .toList();
       unreadCount.value = items.where((item) => !item.read).length;
       return items;
     } on PostgrestException catch (error) {
-      throw Exception(friendlyBackendMessage(error.message, 'Não foi possível carregar os alertas.'));
+      throw Exception(
+        friendlyBackendMessage(
+          error.message,
+          'Não foi possível carregar os alertas.',
+        ),
+      );
     }
   }
 
@@ -90,7 +100,12 @@ class NotificationsService {
           .isFilter('read_at', null);
       unreadCount.value = 0;
     } on PostgrestException catch (error) {
-      throw Exception(friendlyBackendMessage(error.message, 'Não foi possível marcar os alertas como lidos.'));
+      throw Exception(
+        friendlyBackendMessage(
+          error.message,
+          'Não foi possível marcar os alertas como lidos.',
+        ),
+      );
     }
   }
 
@@ -104,9 +119,15 @@ class NotificationsService {
           event: PostgresChangeEvent.insert,
           schema: 'public',
           table: 'notifications',
-          filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'user_id', value: userId),
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: userId,
+          ),
           callback: (payload) {
-            if (_visibleTypes.contains(payload.newRecord['type'])) unreadCount.value += 1;
+            if (_visibleTypes.contains(payload.newRecord['type'])) {
+              unreadCount.value += 1;
+            }
           },
         )
         .subscribe();

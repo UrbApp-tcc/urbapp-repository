@@ -193,6 +193,46 @@ class InstitutionalActionRecord {
   final int? targetAgencyId;
 }
 
+class AdministrationValidationProgress {
+  const AdministrationValidationProgress({
+    required this.status,
+    required this.openedAt,
+    required this.expiresAt,
+    required this.confirmations,
+    required this.rejections,
+    required this.confirmationsRequired,
+    required this.rejectionsRequired,
+  });
+
+  final String status;
+  final DateTime openedAt;
+  final DateTime expiresAt;
+  final int confirmations;
+  final int rejections;
+  final int confirmationsRequired;
+  final int rejectionsRequired;
+
+  bool get pending => status == 'pending';
+}
+
+class AdministrationActionHistoryItem {
+  const AdministrationActionHistoryItem({
+    required this.occurrenceId,
+    required this.occurrenceTitle,
+    required this.actorKind,
+    required this.actionType,
+    required this.description,
+    required this.createdAt,
+  });
+
+  final int occurrenceId;
+  final String occurrenceTitle;
+  final String actorKind;
+  final String actionType;
+  final String description;
+  final DateTime createdAt;
+}
+
 class AgencyAssignmentRecord {
   const AgencyAssignmentRecord({
     required this.occurrenceId,
@@ -215,10 +255,12 @@ class AdministrationOccurrenceContext {
   const AdministrationOccurrenceContext({
     this.actions = const [],
     this.currentAssignment,
+    this.validation,
   });
 
   final List<InstitutionalActionRecord> actions;
   final AgencyAssignmentRecord? currentAssignment;
+  final AdministrationValidationProgress? validation;
 
   InstitutionalActionRecord? get latestAdministrationAction => actions
       .where((action) => action.actorKind == 'administration')
@@ -473,6 +515,13 @@ class InstitutionalService {
             .eq('administration_id', administrationId)
             .inFilter('occurrence_id', ids)
             .isFilter('ends_at', null),
+        _supabase.rpc(
+          'get_administration_validation_overview',
+          params: {
+            'target_administration_id': administrationId,
+            'target_occurrence_ids': ids,
+          },
+        ),
       ]);
 
       final actionsByOccurrence = <int, List<InstitutionalActionRecord>>{};
@@ -509,14 +558,59 @@ class InstitutionalService {
         );
       }
 
+      final validationByOccurrence = <int, AdministrationValidationProgress>{};
+      for (final raw in responses[2] as List) {
+        final occurrenceId = (raw['occurrence_id'] as num).toInt();
+        validationByOccurrence[occurrenceId] = AdministrationValidationProgress(
+          status: raw['cycle_status'] as String? ?? 'pending',
+          openedAt: DateTime.parse(raw['opened_at'] as String).toLocal(),
+          expiresAt: DateTime.parse(raw['expires_at'] as String).toLocal(),
+          confirmations: (raw['confirmations'] as num?)?.toInt() ?? 0,
+          rejections: (raw['rejections'] as num?)?.toInt() ?? 0,
+          confirmationsRequired:
+              (raw['confirmations_required'] as num?)?.toInt() ?? 0,
+          rejectionsRequired:
+              (raw['rejections_required'] as num?)?.toInt() ?? 0,
+        );
+      }
+
       return {
         for (final id in ids)
           id: AdministrationOccurrenceContext(
             actions: actionsByOccurrence[id] ?? const [],
             currentAssignment: assignmentByOccurrence[id],
+            validation: validationByOccurrence[id],
           ),
       };
     }, 'Não foi possível carregar o contexto operacional da gestão.');
+  }
+
+  Future<List<AdministrationActionHistoryItem>>
+  fetchAdministrationActionHistory(int administrationId, {int limit = 120}) {
+    return _guard(() async {
+      final rows = await _supabase
+          .from('institutional_actions')
+          .select(
+            'occurrence_id, actor_kind, action_type, description, created_at, occurrences(title)',
+          )
+          .eq('administration_id', administrationId)
+          .order('created_at', ascending: false)
+          .limit(limit);
+      return (rows as List)
+          .map(
+            (raw) => AdministrationActionHistoryItem(
+              occurrenceId: (raw['occurrence_id'] as num).toInt(),
+              occurrenceTitle:
+                  asJsonMap(raw['occurrences'])?['title'] as String? ??
+                  'Ocorrência urbana',
+              actorKind: raw['actor_kind'] as String? ?? 'administration',
+              actionType: raw['action_type'] as String? ?? '',
+              description: raw['description'] as String? ?? '',
+              createdAt: DateTime.parse(raw['created_at'] as String).toLocal(),
+            ),
+          )
+          .toList();
+    }, 'Não foi possível carregar o histórico da gestão.');
   }
 
   Future<Map<int, String>> fetchOccurrenceCitizenNames(

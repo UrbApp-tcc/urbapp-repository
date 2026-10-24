@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../app/routes.dart';
+import '../../domain/labels.dart';
 import '../../domain/models.dart';
 import '../../logic/administration_workspace_rules.dart';
 import '../../services/institutional_service.dart';
@@ -10,6 +12,7 @@ import '../../theme/app_theme.dart';
 import '../../utils/date_formatter.dart';
 import '../../utils/error_formatter.dart';
 import '../../widgets/urb/occurrence_widgets.dart';
+import '../../widgets/urb/occurrence_map.dart';
 import '../../widgets/urb/urb_components.dart';
 import '../../widgets/urb/urb_icon.dart';
 import '../occurrence/occurrence_sheets.dart';
@@ -32,6 +35,7 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
   List<AdministrationDemandItem> _items = const [];
   Map<int, String> _citizenNames = const {};
   Map<int, List<AgencyTeamMember>> _agencyTeams = const {};
+  List<AdministrationActionHistoryItem> _history = const [];
   AdministrationProfile? _metrics;
   AdministrationQueueFilter _filter = AdministrationQueueFilter.all;
   AdministrationDemandOrder _order = AdministrationDemandOrder.attention;
@@ -39,6 +43,7 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
   int? _agencyId;
   int? _categoryId;
   String? _neighborhood;
+  int? _selectedMapOccurrenceId;
   int _section = 0;
   bool _loading = true;
   String? _error;
@@ -58,12 +63,13 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
   Future<void> _load() async {
     if (mounted) setState(() => _error = null);
     try {
+      final service = InstitutionalService();
       final results = await Future.wait<dynamic>([
         OccurrenceService().fetchByAdministration(widget.membership.id),
         TransparencyService().fetchAdministration(widget.membership.id),
+        service.fetchAdministrationActionHistory(widget.membership.id),
       ]);
       final occurrences = results[0] as List<Occurrence>;
-      final service = InstitutionalService();
       final details = await Future.wait<dynamic>([
         service.fetchAdministrationOccurrenceContexts(
           widget.membership.id,
@@ -87,6 +93,7 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
         _metrics = results[1] as AdministrationProfile?;
         _citizenNames = details[1] as Map<int, String>;
         _agencyTeams = details[2] as Map<int, List<AgencyTeamMember>>;
+        _history = results[2] as List<AdministrationActionHistoryItem>;
       });
     } catch (error) {
       if (mounted) setState(() => _error = friendlyError(error));
@@ -281,6 +288,8 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
                   (1, 'Demandas'),
                   (2, 'Órgãos'),
                   (3, 'Previsões'),
+                  (4, 'Mapa'),
+                  (5, 'Histórico'),
                 ]) ...[
                   UrbChip(
                     label: section.$2,
@@ -299,7 +308,9 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
             0 => _buildOverview(),
             1 => _buildQueue(),
             2 => _buildAgencies(),
-            _ => _buildForecasts(),
+            3 => _buildForecasts(),
+            4 => _buildOperationalMap(),
+            _ => _buildHistory(),
           },
         ),
       ],
@@ -699,6 +710,229 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
       ),
     );
   }
+
+  Widget _buildOperationalMap() {
+    final visible = _visibleItems;
+    final occurrences = visible.map((item) => item.occurrence).toList();
+    final selected = visible
+        .where((item) => item.occurrence.id == _selectedMapOccurrenceId)
+        .firstOrNull;
+    final center = occurrences.isEmpty
+        ? const LatLng(-23.5015, -47.4526)
+        : LatLng(
+            occurrences
+                    .map((occurrence) => occurrence.latitude)
+                    .reduce((a, b) => a + b) /
+                occurrences.length,
+            occurrences
+                    .map((occurrence) => occurrence.longitude)
+                    .reduce((a, b) => a + b) /
+                occurrences.length,
+          );
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 40),
+        children: [
+          Text('Mapa operacional', style: UrbText.h3),
+          const SizedBox(height: 4),
+          Text(
+            'Visualize a distribuição das demandas e identifique concentrações por região.',
+            style: UrbText.bodySmall,
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '${occurrences.length} ${occurrences.length == 1 ? 'demanda visível' : 'demandas visíveis'}',
+                  style: UrbText.caption.copyWith(fontWeight: FontWeight.w700),
+                ),
+              ),
+              UrbButton(
+                label: _advancedFilterCount == 0
+                    ? 'Filtros'
+                    : 'Filtros · $_advancedFilterCount',
+                icon: UrbIcons.filter,
+                tone: UrbButtonTone.outline,
+                height: 38,
+                onPressed: _showAdvancedFilters,
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                for (final value in const [
+                  AdministrationQueueFilter.all,
+                  AdministrationQueueFilter.needsAttention,
+                  AdministrationQueueFilter.prioritized,
+                  AdministrationQueueFilter.withoutManagementResponse,
+                  AdministrationQueueFilter.withoutAgencyResponse,
+                  AdministrationQueueFilter.overdueForecast,
+                ]) ...[
+                  UrbChip(
+                    label: value.label,
+                    selected: _filter == value,
+                    onTap: () => setState(() => _filter = value),
+                  ),
+                  const SizedBox(width: 7),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          if (occurrences.isEmpty)
+            const UrbEmptyState(
+              icon: UrbIcons.map,
+              title: 'Nenhuma demanda no mapa',
+              message: 'Ajuste os filtros para visualizar outras regiões.',
+            )
+          else ...[
+            SizedBox(
+              height: 430,
+              child: OccurrenceMap(
+                occurrences: occurrences,
+                center: center,
+                selectedId: _selectedMapOccurrenceId,
+                label: widget.membership.cityName ?? 'Área municipal',
+                onSelect: (occurrence) =>
+                    setState(() => _selectedMapOccurrenceId = occurrence?.id),
+              ),
+            ),
+            if (selected != null) ...[
+              const SizedBox(height: 12),
+              FullBleed(
+                bleed: 20,
+                child: _DemandRow(
+                  item: selected,
+                  citizenName: _citizenNames[selected.occurrence.id],
+                  horizontalInset: 20,
+                  onTap: () => _openDemand(selected),
+                  onQuickAction: (action) =>
+                      _registerQuickAction(selected, action),
+                  last: true,
+                ),
+              ),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHistory() => RefreshIndicator(
+    onRefresh: _load,
+    child: ListView(
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 40),
+      children: [
+        Text('Histórico da Prefeitura', style: UrbText.h3),
+        const SizedBox(height: 4),
+        Text(
+          'Registro cronológico das ações oficiais realizadas pela gestão e pelos órgãos.',
+          style: UrbText.bodySmall,
+        ),
+        const SizedBox(height: 18),
+        if (_history.isEmpty)
+          const UrbEmptyState(
+            icon: UrbIcons.list,
+            title: 'Nenhuma ação registrada',
+            message: 'As ações institucionais aparecerão aqui.',
+          )
+        else
+          for (var index = 0; index < _history.length; index++)
+            FullBleed(
+              bleed: 20,
+              child: Material(
+                type: MaterialType.transparency,
+                child: InkWell(
+                  onTap: () => openOccurrence(
+                    context,
+                    occurrenceId: _history[index].occurrenceId,
+                  ),
+                  hoverColor: const Color(0xFFF1F3F1),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 14,
+                    ),
+                    decoration: BoxDecoration(
+                      border: index == _history.length - 1
+                          ? null
+                          : const Border(
+                              bottom: BorderSide(color: UrbColors.divider),
+                            ),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 34,
+                          height: 34,
+                          decoration: const BoxDecoration(
+                            color: UrbColors.blueSoft,
+                            shape: BoxShape.circle,
+                          ),
+                          alignment: Alignment.center,
+                          child: const UrbIcon(
+                            UrbIcons.building,
+                            size: 16,
+                            color: UrbColors.blue,
+                          ),
+                        ),
+                        const SizedBox(width: 11),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                institutionalActionLabels[_history[index]
+                                        .actionType] ??
+                                    'Ação institucional',
+                                style: UrbText.titleSmall,
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                _history[index].occurrenceTitle,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: UrbText.caption.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                _history[index].description,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: UrbText.caption,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${_history[index].actorKind == 'agency' ? 'Órgão municipal' : 'Prefeitura'} · ${formatRelativeTime(_history[index].createdAt)}',
+                                style: UrbText.caption.copyWith(
+                                  color: UrbColors.muted,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const UrbIcon(
+                          UrbIcons.chevron,
+                          size: 15,
+                          color: UrbColors.muted,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+      ],
+    ),
+  );
 }
 
 class _DemandRow extends StatelessWidget {
@@ -726,6 +960,8 @@ class _DemandRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final occurrence = item.occurrence;
     final signals = administrationAttentionSignals(item);
+    final waitLabel = administrationResponseWaitLabel(item);
+    final validation = item.context.validation;
     return Material(
       type: MaterialType.transparency,
       child: InkWell(
@@ -882,6 +1118,20 @@ class _DemandRow extends StatelessWidget {
                       'Criada ${formatRelativeTime(occurrence.createdAt).toLowerCase()}',
                       style: UrbText.caption,
                     ),
+                    if (waitLabel != null) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        waitLabel,
+                        style: UrbText.caption.copyWith(
+                          color: UrbColors.warning,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                    if (validation != null) ...[
+                      const SizedBox(height: 9),
+                      _ValidationProgressCard(progress: validation),
+                    ],
                     if (signals.isNotEmpty) ...[
                       const SizedBox(height: 8),
                       Wrap(
@@ -925,6 +1175,52 @@ class _DemandRow extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ValidationProgressCard extends StatelessWidget {
+  const _ValidationProgressCard({required this.progress});
+
+  final AdministrationValidationProgress progress;
+
+  String get _deadlineLabel {
+    if (!progress.pending) {
+      return administrationValidationStatusLabel(progress.status);
+    }
+    final remaining = progress.expiresAt.difference(DateTime.now());
+    if (remaining.isNegative) return 'Prazo encerrado';
+    if (remaining.inHours < 24) {
+      return '${remaining.inHours} ${remaining.inHours == 1 ? 'hora restante' : 'horas restantes'}';
+    }
+    return '${remaining.inDays} ${remaining.inDays == 1 ? 'dia restante' : 'dias restantes'}';
+  }
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(10),
+    decoration: BoxDecoration(
+      color: UrbColors.blueSoft.withValues(alpha: 0.55),
+      borderRadius: BorderRadius.circular(9),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          _deadlineLabel,
+          style: UrbText.caption.copyWith(
+            color: UrbColors.blue,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '${progress.confirmations}/${progress.confirmationsRequired} confirmações · '
+          '${progress.rejections}/${progress.rejectionsRequired} rejeições',
+          style: UrbText.caption,
+        ),
+      ],
+    ),
+  );
 }
 
 class _AgencySummaryRow extends StatelessWidget {

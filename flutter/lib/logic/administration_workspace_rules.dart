@@ -56,6 +56,8 @@ enum AdministrationQueueFilter {
   all('Todas'),
   needsAttention('Precisam de atenção'),
   withoutManagementResponse('Sem manifestação'),
+  withoutAgencyResponse('Órgão sem retorno'),
+  overdueForecast('Previsão vencida'),
   prioritized('Priorizadas'),
   open('Abertas'),
   inAnalysis('Em análise'),
@@ -195,6 +197,37 @@ String administrationNextAction(
   };
 }
 
+String? administrationResponseWaitLabel(
+  AdministrationDemandItem item, {
+  DateTime? now,
+}) {
+  final reference = now ?? DateTime.now();
+  final context = item.context;
+  if (context.latestAdministrationAction == null) {
+    final days = reference.difference(item.occurrence.createdAt).inDays;
+    return days < 1
+        ? 'Aguardando a primeira resposta da gestão'
+        : 'Sem resposta da gestão há $days ${days == 1 ? 'dia' : 'dias'}';
+  }
+  if (context.latestAgencyAction == null) {
+    final since =
+        context.currentAssignment?.startsAt ??
+        context.latestAdministrationAction!.createdAt;
+    final days = reference.difference(since).inDays;
+    return days < 1
+        ? 'Aguardando retorno do órgão'
+        : 'Órgão sem resposta há $days ${days == 1 ? 'dia' : 'dias'}';
+  }
+  return null;
+}
+
+String administrationValidationStatusLabel(String status) => switch (status) {
+  'confirmed' => 'Confirmada pela comunidade',
+  'rejected' => 'Rejeitada pela comunidade',
+  'expired' => 'Expirada sem quórum',
+  _ => 'Validação em andamento',
+};
+
 List<AdministrationDemandItem> filterAdministrationDemands(
   Iterable<AdministrationDemandItem> source, {
   String query = '',
@@ -230,6 +263,10 @@ List<AdministrationDemandItem> filterAdministrationDemands(
         administrationAttentionSignals(item, now: reference).isNotEmpty,
       AdministrationQueueFilter.withoutManagementResponse =>
         item.context.latestAdministrationAction == null,
+      AdministrationQueueFilter.withoutAgencyResponse =>
+        item.context.latestAgencyAction == null,
+      AdministrationQueueFilter.overdueForecast =>
+        administrationForecastIsOverdue(item.context, reference),
       AdministrationQueueFilter.prioritized =>
         occurrence.administrativePriority,
       AdministrationQueueFilter.open =>

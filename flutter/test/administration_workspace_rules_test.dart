@@ -220,4 +220,31 @@ void main() {
       12,
     );
   });
+
+  test('informa há quanto tempo a gestão ainda não respondeu', () {
+    final item = _item(
+      _occurrence(id: 13, createdAt: DateTime(2026, 10, 17)),
+      actions: [_action(occurrenceId: 13, actor: 'agency')],
+    );
+
+    expect(
+      administrationResponseWaitLabel(item, now: now),
+      'Sem resposta da gestão há 6 dias',
+    );
+  });
+
+  test('mantém atualização do órgão na fila sem manifestação da gestão', () {
+    final item = _item(
+      _occurrence(id: 14),
+      actions: [_action(occurrenceId: 14, actor: 'agency')],
+    );
+
+    final filtered = filterAdministrationDemands(
+      [item],
+      filter: AdministrationQueueFilter.withoutManagementResponse,
+      now: now,
+    );
+
+    expect(filtered.single.occurrence.id, 14);
+  });
 }
