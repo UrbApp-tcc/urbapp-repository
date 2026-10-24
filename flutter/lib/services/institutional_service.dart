@@ -447,7 +447,8 @@ class InstitutionalService {
   ) async {
     final access = await fetchMyAccess();
     final canAdministration = access.administrations.any(
-      (item) => item.id == occurrence.administrationId,
+      (item) =>
+          item.id == occurrence.administrationId && item.canRegisterActions,
     );
     final canAgency =
         occurrence.agencyId != null &&
@@ -762,6 +763,7 @@ class InstitutionalService {
 
   Future<void> registerInstitutionalAction({
     required int occurrenceId,
+    required String actorKind,
     required String actionType,
     required String description,
     int? targetAgencyId,
@@ -770,6 +772,9 @@ class InstitutionalService {
   }) {
     return _guard(() async {
       if (actionType == 'priority' || actionType == 'priority_removed') {
+        if (actorKind != 'administration') {
+          throw Exception('A prioridade é uma decisão da gestão municipal.');
+        }
         await _supabase.rpc(
           'set_administration_occurrence_priority',
           params: {
@@ -781,9 +786,10 @@ class InstitutionalService {
         return;
       }
       await _supabase.rpc(
-        'register_institutional_action',
+        'register_institutional_action_as',
         params: {
           'target_occurrence_id': occurrenceId,
+          'requested_actor_kind': actorKind,
           'institutional_action_type': actionType,
           'action_description': description.trim(),
           'action_target_agency_id': targetAgencyId,

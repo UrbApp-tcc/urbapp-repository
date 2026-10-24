@@ -1,3 +1,7 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -31,6 +35,7 @@ class AdministrationWorkspace extends StatefulWidget {
 }
 
 class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
+  static const _pageSize = 30;
   final _searchController = TextEditingController();
   List<AdministrationDemandItem> _items = const [];
   Map<int, String> _citizenNames = const {};
@@ -46,6 +51,9 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
   int? _selectedMapOccurrenceId;
   int _section = 0;
   bool _loading = true;
+  bool _loadingMore = false;
+  bool _hasMore = false;
+  bool _exporting = false;
   String? _error;
 
   @override
@@ -65,7 +73,10 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
     try {
       final service = InstitutionalService();
       final results = await Future.wait<dynamic>([
-        OccurrenceService().fetchByAdministration(widget.membership.id),
+        OccurrenceService().fetchByAdministration(
+          widget.membership.id,
+          limit: _pageSize,
+        ),
         TransparencyService().fetchAdministration(widget.membership.id),
         service.fetchAdministrationActionHistory(widget.membership.id),
       ]);
@@ -94,11 +105,119 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
         _citizenNames = details[1] as Map<int, String>;
         _agencyTeams = details[2] as Map<int, List<AgencyTeamMember>>;
         _history = results[2] as List<AdministrationActionHistoryItem>;
+        _hasMore = occurrences.length == _pageSize;
       });
     } catch (error) {
       if (mounted) setState(() => _error = friendlyError(error));
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  ValueChanged<String>? _quickActionFor(AdministrationDemandItem item) =>
+      widget.membership.canRegisterActions
+      ? (action) => _registerQuickAction(item, action)
+      : null;
+
+  Future<void> _loadMore() async {
+    if (_loadingMore || !_hasMore) return;
+    setState(() => _loadingMore = true);
+    try {
+      final occurrences = await OccurrenceService().fetchByAdministration(
+        widget.membership.id,
+        limit: _pageSize,
+        offset: _items.length,
+      );
+      final service = InstitutionalService();
+      final details = await Future.wait<dynamic>([
+        service.fetchAdministrationOccurrenceContexts(
+          widget.membership.id,
+          occurrences.map((item) => item.id),
+        ),
+        service.fetchOccurrenceCitizenNames(occurrences.map((item) => item.id)),
+      ]);
+      final contexts = details[0] as Map<int, AdministrationOccurrenceContext>;
+      if (!mounted) return;
+      setState(() {
+        _items = [
+          ..._items,
+          for (final occurrence in occurrences)
+            AdministrationDemandItem(
+              occurrence: occurrence,
+              context:
+                  contexts[occurrence.id] ??
+                  const AdministrationOccurrenceContext(),
+            ),
+        ];
+        _citizenNames = {..._citizenNames, ...details[1] as Map<int, String>};
+        _hasMore = occurrences.length == _pageSize;
+      });
+    } catch (error) {
+      if (mounted) showUrbToast(context, friendlyError(error));
+    } finally {
+      if (mounted) setState(() => _loadingMore = false);
+    }
+  }
+
+  String _csvCell(Object? value) =>
+      '"${(value ?? '').toString().replaceAll('"', '""')}"';
+
+  Future<void> _exportVisibleDemands() async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
+    try {
+      while (_hasMore) {
+        final previousLength = _items.length;
+        await _loadMore();
+        if (!mounted) return;
+        if (_items.length == previousLength) break;
+      }
+      final rows = _visibleItems;
+      if (rows.isEmpty) {
+        showUrbToast(context, 'Não há demandas para exportar.');
+        return;
+      }
+      final csv = <String>[
+        [
+          'ID',
+          'Título',
+          'Bairro',
+          'Categoria',
+          'Órgão',
+          'Status',
+          'Prioridade',
+          'Apoios',
+          'Tempo sem resposta',
+          'Previsão',
+        ].map(_csvCell).join(','),
+        for (final item in rows)
+          [
+            item.occurrence.id,
+            item.occurrence.title,
+            item.occurrence.neighborhood,
+            item.occurrence.categoryName,
+            item.occurrence.agencyName,
+            item.occurrence.status.label,
+            item.occurrence.administrativePriority ? 'Sim' : 'Não',
+            item.occurrence.supportsCount,
+            administrationResponseWaitLabel(item),
+            item.context.latestForecast?.forecastAt == null
+                ? ''
+                : formatDate(item.context.latestForecast!.forecastAt!),
+          ].map(_csvCell).join(','),
+      ].join('\r\n');
+      final path = await FilePicker.platform.saveFile(
+        dialogTitle: 'Salvar fila de demandas',
+        fileName: 'demandas_${widget.membership.cityName ?? 'municipio'}.csv',
+        bytes: Uint8List.fromList(utf8.encode('\uFEFF$csv')),
+      );
+      if (mounted && path != null) {
+        showUrbToast(context, 'Arquivo CSV gerado com sucesso.');
+      }
+    } catch (error) {
+      if (mounted) showUrbToast(context, friendlyError(error));
+    } finally {
+      if (mounted) setState(() => _exporting = false);
     }
   }
 
@@ -141,6 +260,10 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
     AdministrationDemandItem item,
     String actionType,
   ) async {
+    if (!widget.membership.canRegisterActions) {
+      showUrbToast(context, 'Seu acesso permite apenas consultar a gestão.');
+      return;
+    }
     final registered = await showInstitutionalActionSheet(
       context,
       occurrence: item.occurrence,
@@ -394,6 +517,39 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 14),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: UrbColors.blueSoft.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    children: [
+                      const UrbIcon(
+                        UrbIcons.profile,
+                        size: 16,
+                        color: UrbColors.blue,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          widget.membership.canRegisterActions
+                              ? 'Atuando como ${widget.membership.roleLabel} da Prefeitura'
+                              : 'Acesso de consulta: ações oficiais estão desativadas',
+                          style: UrbText.caption.copyWith(
+                            color: UrbColors.blue,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
@@ -468,8 +624,7 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
                             _citizenNames[attention[index].occurrence.id],
                         horizontalInset: 20,
                         onTap: () => _openDemand(attention[index]),
-                        onQuickAction: (action) =>
-                            _registerQuickAction(attention[index], action),
+                        onQuickAction: _quickActionFor(attention[index]),
                         last: index == attention.take(5).length - 1,
                       ),
                     ),
@@ -549,6 +704,13 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
               alignment: Alignment.centerRight,
               child: UrbTextButton('Limpar filtros', onPressed: _clearFilters),
             ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: UrbTextButton(
+              _exporting ? 'Preparando CSV...' : 'Exportar fila em CSV',
+              onPressed: _exporting ? null : _exportVisibleDemands,
+            ),
+          ),
           const SizedBox(height: 8),
           if (visible.isEmpty)
             const UrbEmptyState(
@@ -566,11 +728,19 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
                   citizenName: _citizenNames[visible[index].occurrence.id],
                   horizontalInset: 20,
                   onTap: () => _openDemand(visible[index]),
-                  onQuickAction: (action) =>
-                      _registerQuickAction(visible[index], action),
+                  onQuickAction: _quickActionFor(visible[index]),
                   last: index == visible.length - 1,
                 ),
               ),
+          if (_hasMore || _loadingMore) ...[
+            const SizedBox(height: 18),
+            UrbButton(
+              label: _loadingMore ? 'Carregando...' : 'Carregar mais demandas',
+              tone: UrbButtonTone.outline,
+              expand: true,
+              onPressed: _loadingMore ? null : _loadMore,
+            ),
+          ],
         ],
       ),
     );
@@ -699,8 +869,7 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
                           'Previsão: ${formatDate(groups[group]![index].context.latestForecast!.forecastAt!)}',
                       emphasizeContext: true,
                       onTap: () => _openDemand(groups[group]![index]),
-                      onQuickAction: (action) =>
-                          _registerQuickAction(groups[group]![index], action),
+                      onQuickAction: _quickActionFor(groups[group]![index]),
                       last: index == groups[group]!.length - 1,
                     ),
                   ),
@@ -811,8 +980,7 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
                   citizenName: _citizenNames[selected.occurrence.id],
                   horizontalInset: 20,
                   onTap: () => _openDemand(selected),
-                  onQuickAction: (action) =>
-                      _registerQuickAction(selected, action),
+                  onQuickAction: _quickActionFor(selected),
                   last: true,
                 ),
               ),
@@ -949,7 +1117,7 @@ class _DemandRow extends StatelessWidget {
 
   final AdministrationDemandItem item;
   final VoidCallback onTap;
-  final ValueChanged<String> onQuickAction;
+  final ValueChanged<String>? onQuickAction;
   final bool last;
   final String? contextNote;
   final String? citizenName;
@@ -1009,48 +1177,49 @@ class _DemandRow extends StatelessWidget {
                         ),
                         const SizedBox(width: 7),
                         StatusPill(occurrence.status, compact: true),
-                        SizedBox(
-                          width: 30,
-                          height: 28,
-                          child: PopupMenuButton<String>(
-                            tooltip: 'A??es r?pidas',
-                            padding: EdgeInsets.zero,
-                            icon: const UrbIcon(
-                              UrbIcons.more,
-                              size: 18,
-                              color: UrbColors.muted,
-                            ),
-                            onSelected: onQuickAction,
-                            itemBuilder: (_) => [
-                              PopupMenuItem(
-                                value: occurrence.administrativePriority
-                                    ? 'priority_removed'
-                                    : 'priority',
-                                child: Text(
-                                  occurrence.administrativePriority
-                                      ? 'Retirar prioridade'
-                                      : 'Priorizar',
+                        if (onQuickAction != null)
+                          SizedBox(
+                            width: 30,
+                            height: 28,
+                            child: PopupMenuButton<String>(
+                              tooltip: 'A??es r?pidas',
+                              padding: EdgeInsets.zero,
+                              icon: const UrbIcon(
+                                UrbIcons.more,
+                                size: 18,
+                                color: UrbColors.muted,
+                              ),
+                              onSelected: onQuickAction,
+                              itemBuilder: (_) => [
+                                PopupMenuItem(
+                                  value: occurrence.administrativePriority
+                                      ? 'priority_removed'
+                                      : 'priority',
+                                  child: Text(
+                                    occurrence.administrativePriority
+                                        ? 'Retirar prioridade'
+                                        : 'Priorizar',
+                                  ),
                                 ),
-                              ),
-                              const PopupMenuItem(
-                                value: 'forwarding',
-                                child: Text('Encaminhar a outro ?rg?o'),
-                              ),
-                              const PopupMenuItem(
-                                value: 'request',
-                                child: Text('Solicitar provid?ncias'),
-                              ),
-                              const PopupMenuItem(
-                                value: 'official_position',
-                                child: Text('Registrar manifesta??o'),
-                              ),
-                              const PopupMenuItem(
-                                value: 'forecast',
-                                child: Text('Informar previs?o'),
-                              ),
-                            ],
+                                const PopupMenuItem(
+                                  value: 'forwarding',
+                                  child: Text('Encaminhar a outro ?rg?o'),
+                                ),
+                                const PopupMenuItem(
+                                  value: 'request',
+                                  child: Text('Solicitar provid?ncias'),
+                                ),
+                                const PopupMenuItem(
+                                  value: 'official_position',
+                                  child: Text('Registrar manifesta??o'),
+                                ),
+                                const PopupMenuItem(
+                                  value: 'forecast',
+                                  child: Text('Informar previs?o'),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
                       ],
                     ),
                     const SizedBox(height: 5),

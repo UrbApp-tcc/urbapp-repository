@@ -55,7 +55,7 @@ void main() {
     // e os modos podem ser verificados.
     await Supabase.initialize(
       url: 'http://127.0.0.1:9',
-      anonKey: 'chave-de-teste',
+      publishableKey: 'chave-de-teste',
       authOptions: FlutterAuthClientOptions(
         localStorage: const EmptyLocalStorage(),
         pkceAsyncStorage: _MemoryStorage(),

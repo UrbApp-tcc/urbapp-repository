@@ -247,4 +247,42 @@ void main() {
 
     expect(filtered.single.occurrence.id, 14);
   });
+
+  test('ordena órgãos pelo indicador escolhido', () {
+    final works = _item(
+      _occurrence(id: 15, agencyId: 10),
+      actions: [_action(occurrenceId: 15, actor: 'agency')],
+    );
+    final lighting = _item(
+      _occurrence(id: 16, agencyId: 20, status: OccurrenceStatus.inProgress),
+    );
+
+    final summaries = buildAdministrationAgencySummaries(
+      [works, lighting],
+      now: now,
+      order: AdministrationAgencyOrder.inProgress,
+    );
+
+    expect(summaries.first.agencyId, 20);
+  });
+
+  test('restringe ações oficiais no papel de consulta', () {
+    const manager = InstitutionalMembership(
+      id: 1,
+      name: 'Prefeitura',
+      cityId: 1,
+      role: 'manager',
+    );
+    const analyst = InstitutionalMembership(
+      id: 1,
+      name: 'Prefeitura',
+      cityId: 1,
+      role: 'analyst',
+    );
+
+    expect(manager.canRegisterActions, isTrue);
+    expect(manager.roleLabel, 'Gestor');
+    expect(analyst.canRegisterActions, isFalse);
+    expect(analyst.roleLabel, 'Consulta');
+  });
 }

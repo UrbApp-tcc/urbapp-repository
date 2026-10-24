@@ -311,11 +311,17 @@ Future<void> showReportContentSheet(BuildContext context, {required String targe
                       try {
                         final reason = details.text.trim().isEmpty ? selected! : '${selected!}: ${details.text.trim()}';
                         await OccurrenceService().reportContent(targetType: targetType, targetId: targetId, reason: reason);
-                        if (sheetContext.mounted) Navigator.of(sheetContext).pop();
-                        if (context.mounted) showUrbToast(context, 'Denúncia enviada para análise.');
+                        if (sheetContext.mounted) {
+                          Navigator.of(sheetContext).pop();
+                        }
+                        if (context.mounted) {
+                          showUrbToast(context, 'Denúncia enviada para análise.');
+                        }
                       } catch (error) {
                         setSheetState(() => sending = false);
-                        if (context.mounted) showUrbToast(context, friendlyError(error));
+                        if (context.mounted) {
+                          showUrbToast(context, friendlyError(error));
+                        }
                       }
                     },
             ),
@@ -404,7 +410,12 @@ Future<bool> showInstitutionalActionSheet(
     eyebrow: actor == 'administration' ? 'Gestão municipal' : (occurrence.agencyName ?? 'Órgão responsável'),
     title: option.label,
     intro: '${option.description} A ação fica registrada publicamente na linha do tempo.',
-    builder: (_) => _ActionForm(occurrence: occurrence, option: option, councilorFollowingId: null),
+    builder: (_) => _ActionForm(
+      occurrence: occurrence,
+      option: option,
+      actorKind: actor,
+      councilorFollowingId: null,
+    ),
   );
   return result ?? false;
 }
@@ -422,7 +433,11 @@ Future<bool> showCouncilorActionSheet(
     eyebrow: 'Acompanhamento parlamentar',
     title: option.label,
     intro: '${option.description} A ação aparece no histórico público da ocorrência.',
-    builder: (_) => _ActionForm(occurrence: occurrence, option: option, councilorFollowingId: followingId),
+    builder: (_) => _ActionForm(
+      occurrence: occurrence,
+      option: option,
+      councilorFollowingId: followingId,
+    ),
   );
   return result ?? false;
 }
@@ -448,11 +463,17 @@ Future<_ActionOption?> _pickAction(BuildContext context, {required String title,
 }
 
 class _ActionForm extends StatefulWidget {
-  const _ActionForm({required this.occurrence, required this.option, required this.councilorFollowingId});
+  const _ActionForm({
+    required this.occurrence,
+    required this.option,
+    required this.councilorFollowingId,
+    this.actorKind,
+  });
 
   final Occurrence occurrence;
   final _ActionOption option;
   final int? councilorFollowingId;
+  final String? actorKind;
 
   @override
   State<_ActionForm> createState() => _ActionFormState();
@@ -526,6 +547,7 @@ class _ActionFormState extends State<_ActionForm> {
       } else {
         await _institutional.registerInstitutionalAction(
           occurrenceId: widget.occurrence.id,
+          actorKind: widget.actorKind!,
           actionType: widget.option.type,
           description: _description.text,
           targetAgencyId: _targetAgencyId,

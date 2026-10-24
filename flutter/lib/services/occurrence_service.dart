@@ -165,7 +165,8 @@ class OccurrenceService {
   Future<List<Occurrence>> fetchByAdministration(
     int administrationId, {
     bool activeOnly = true,
-    int limit = 60,
+    int limit = 30,
+    int offset = 0,
   }) {
     return _guard(() async {
       var query = _supabase
@@ -184,7 +185,8 @@ class OccurrenceService {
       final rows = await query
           .order('administrative_priority', ascending: false)
           .order('created_at', ascending: false)
-          .limit(limit);
+          .order('id', ascending: false)
+          .range(offset, offset + limit - 1);
       return _occurrences(rows);
     }, 'Não foi possível carregar a demanda municipal.');
   }
