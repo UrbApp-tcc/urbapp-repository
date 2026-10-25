@@ -39,6 +39,7 @@ class _HomeScreenState extends State<HomeScreen> with OccurrenceListSync {
   List<OccurrenceReport> _featuredReporters = const [];
   int? _reportersFor;
   final Set<int> _startingCouncilorFollowing = {};
+  int _loadRequest = 0;
 
   @override
   void initState() {
@@ -69,41 +70,61 @@ class _HomeScreenState extends State<HomeScreen> with OccurrenceListSync {
   }
 
   Future<void> _load() async {
-    final city = _session.city.value;
-    if (city == null) return;
+    final request = ++_loadRequest;
+    var city = _session.city.value;
     setState(() {
       _loading = _items.isEmpty;
       _error = null;
     });
     try {
+      if (city == null) {
+        await _session.init();
+        city = _session.city.value;
+      }
+      if (city == null) {
+        throw Exception(
+          _session.initializationError ??
+              'Não foi possível carregar as cidades. Tente novamente.',
+        );
+      }
       final position = _session.position.value;
       List<Occurrence> items;
       if (_trending) {
-        items = await _service.fetchTrending(cityId: city.id, limit: 20);
+        items = await _service
+            .fetchTrending(cityId: city.id, limit: 20)
+            .timeout(const Duration(seconds: 15));
         if (_nearby && position != null) {
           items = items
               .where((item) => (_session.distanceTo(item) ?? 0) <= 10)
               .toList();
         }
       } else if (_nearby && position != null) {
-        items = await _service.search(
-          cityId: city.id,
-          latitude: position.latitude,
-          longitude: position.longitude,
-          maxDistanceKm: 10,
-          limit: 20,
-        );
+        items = await _service
+            .search(
+              cityId: city.id,
+              latitude: position.latitude,
+              longitude: position.longitude,
+              maxDistanceKm: 10,
+              limit: 20,
+            )
+            .timeout(const Duration(seconds: 15));
       } else {
-        items = await _service.fetchRecent(cityId: city.id, limit: 20);
+        items = await _service
+            .fetchRecent(cityId: city.id, limit: 20)
+            .timeout(const Duration(seconds: 15));
       }
-      if (!mounted) return;
+      if (!mounted || request != _loadRequest) return;
       setState(() => _items = items);
       _loadFeaturedReporters(items.firstOrNull);
       _loadPendingValidation();
     } catch (error) {
-      if (mounted) setState(() => _error = friendlyError(error));
+      if (mounted && request == _loadRequest) {
+        setState(() => _error = friendlyError(error));
+      }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && request == _loadRequest) {
+        setState(() => _loading = false);
+      }
     }
   }
 

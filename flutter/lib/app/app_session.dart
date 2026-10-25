@@ -34,10 +34,19 @@ class AppSession {
   final _service = OccurrenceService();
   final _location = const LocationService();
   bool _initialized = false;
+  Future<void>? _initialization;
+  String? initializationError;
 
   Future<void> init() async {
     if (_initialized) return;
-    _initialized = true;
+    final current = _initialization;
+    if (current != null) return current;
+    final initialization = _initialize();
+    _initialization = initialization;
+    return initialization;
+  }
+
+  Future<void> _initialize() async {
     try {
       cities = await _service.fetchCities();
       final userId = Supabase.instance.client.auth.currentUser?.id;
@@ -48,8 +57,13 @@ class AppSession {
       }
       needsProfileCity = userId != null && profileCityId == null;
       city.value = cities.where((item) => item.id == profileCityId).firstOrNull ?? cities.firstOrNull;
-    } catch (_) {
+      initializationError = null;
+      _initialized = true;
+    } catch (error) {
+      initializationError = friendlyError(error);
       _initialized = false;
+    } finally {
+      _initialization = null;
     }
     unawaited(_location.lastKnownPosition().then((value) {
       if (value != null) position.value = value;
@@ -58,6 +72,8 @@ class AppSession {
 
   void reset() {
     _initialized = false;
+    _initialization = null;
+    initializationError = null;
     needsProfileCity = false;
     city.value = null;
     position.value = null;

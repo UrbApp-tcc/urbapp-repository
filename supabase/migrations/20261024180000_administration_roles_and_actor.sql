@@ -1,4 +1,4 @@
--- Pap?is internos e autoria expl?cita das a??es institucionais.
+-- Papéis internos e autoria explícita das ações institucionais.
 -- Gestores e operadores podem agir; analistas possuem acesso de consulta.
 
 create or replace function public.register_institutional_action_as(
@@ -24,7 +24,7 @@ declare
   clean_evidence text := nullif(trim(coalesce(evidence_storage_path, '')), '');
 begin
   if current_user_id is null then
-    raise exception 'Usu?rio autenticado ? obrigat?rio.' using errcode = '42501';
+    raise exception 'Usuário autenticado é obrigatório.' using errcode = '42501';
   end if;
 
   if institutional_action_type not in (
@@ -32,11 +32,11 @@ begin
     'analysis', 'scheduled', 'in_progress', 'progress_update', 'executed',
     'observation', 'conclusion'
   ) then
-    raise exception 'Tipo de a??o institucional inv?lido.';
+    raise exception 'Tipo de ação institucional inválido.';
   end if;
 
   if char_length(trim(coalesce(action_description, ''))) < 3 then
-    raise exception 'Descreva a a??o institucional.';
+    raise exception 'Descreva a ação institucional.';
   end if;
 
   if institutional_action_type = 'forecast' and action_forecast_at is null then
@@ -50,15 +50,15 @@ begin
   for update;
 
   if not found then
-    raise exception 'Ocorr?ncia n?o encontrada.';
+    raise exception 'Ocorrência não encontrada.';
   end if;
 
   if target_occurrence.status in ('closed') then
-    raise exception 'Ocorr?ncia encerrada n?o recebe novas a??es.';
+    raise exception 'Ocorrência encerrada não recebe novas ações.';
   end if;
 
   if requested_actor_kind not in ('administration', 'agency') then
-    raise exception 'Informe se a a??o ser? realizada pela Prefeitura ou pelo ?rg?o.';
+    raise exception 'Informe se a ação será realizada pela Prefeitura ou pelo órgão.';
   end if;
 
   if requested_actor_kind = 'administration' and exists (
@@ -79,21 +79,21 @@ begin
   ) then
     resolved_actor_kind := 'agency';
   else
-    raise exception 'Seu papel atual n?o permite registrar esta a??o.' using errcode = '42501';
+    raise exception 'Seu papel atual não permite registrar esta ação.' using errcode = '42501';
   end if;
 
   if institutional_action_type in ('priority', 'forwarding', 'request')
      and resolved_actor_kind <> 'administration' then
-    raise exception 'Esta a??o ? exclusiva da gest?o municipal.' using errcode = '42501';
+    raise exception 'Esta ação é exclusiva da gestão municipal.' using errcode = '42501';
   end if;
 
   if institutional_action_type = 'received' and resolved_actor_kind <> 'agency' then
-    raise exception 'Confirmar recebimento ? uma a??o do ?rg?o respons?vel.' using errcode = '42501';
+    raise exception 'Confirmar recebimento é uma ação do órgão responsável.' using errcode = '42501';
   end if;
 
   if target_occurrence.status = 'completed'
      and institutional_action_type not in ('observation', 'official_position') then
-    raise exception 'Ocorr?ncia resolvida aceita apenas observa??es oficiais.';
+    raise exception 'Ocorrência resolvida aceita apenas observações oficiais.';
   end if;
 
   if institutional_action_type = 'forwarding' then
@@ -102,11 +102,11 @@ begin
       where agency.id = action_target_agency_id
         and agency.city_id = target_occurrence.city_id
     ) then
-      raise exception 'Selecione um ?rg?o v?lido da mesma cidade.';
+      raise exception 'Selecione um órgão válido da mesma cidade.';
     end if;
 
     if action_target_agency_id = target_occurrence.agency_id then
-      raise exception 'A ocorr?ncia j? est? com este ?rg?o.';
+      raise exception 'A ocorrência já está com este órgão.';
     end if;
 
     update public.occurrence_agency_assignments

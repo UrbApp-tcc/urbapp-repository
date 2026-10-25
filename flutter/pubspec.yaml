@@ -1,5 +1,5 @@
 ﻿name: meu_app
-description: "UrbApp - plataforma cÃ­vica para registro, acompanhamento e validaÃ§Ã£o de problemas urbanos."
+description: "UrbApp - plataforma cívica para registro, acompanhamento e validação de problemas urbanos."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -47,6 +47,7 @@ dependencies:
   app_links: ^6.3.2
   google_fonts: ^9.0.0
   path_drawing: ^1.0.1
+  web: ^1.1.1
 
 dev_dependencies:
   flutter_test:

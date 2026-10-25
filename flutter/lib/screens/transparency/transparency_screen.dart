@@ -47,6 +47,7 @@ class _TransparencyScreenState extends State<TransparencyScreen> {
   bool _detailsOpen = false;
   bool _loadingDetails = false;
   CityPanorama? _details;
+  int _loadRequest = 0;
 
   bool get _isTab => widget.cityId == null;
   int? get _cityId => widget.cityId ?? _session.city.value?.id;
@@ -106,20 +107,27 @@ class _TransparencyScreenState extends State<TransparencyScreen> {
   }
 
   Future<void> _load() async {
-    final cityId = _cityId;
-    if (cityId == null) return;
+    final request = ++_loadRequest;
+    var cityId = _cityId;
     setState(() {
       _loading = _panorama == null;
       _error = null;
     });
     try {
+      if (cityId == null) {
+        await _session.init();
+        cityId = _cityId;
+      }
+      if (cityId == null) {
+        throw Exception(_session.initializationError ?? 'Não foi possível carregar as cidades. Tente novamente.');
+      }
       final results = await Future.wait<dynamic>([
         _service.fetchCityPanorama(cityId),
         _service.fetchCurrentAdministration(cityId),
         _service.fetchAgencies(cityId),
         _service.fetchCouncilors(cityId),
-      ]);
-      if (!mounted) return;
+      ]).timeout(const Duration(seconds: 15));
+      if (!mounted || request != _loadRequest) return;
       setState(() {
         _panorama = results[0] as CityPanorama;
         _administration = results[1] as AdministrationProfile?;
@@ -128,9 +136,9 @@ class _TransparencyScreenState extends State<TransparencyScreen> {
       });
       _loadRankings(cityId);
     } catch (error) {
-      if (mounted) setState(() => _error = friendlyError(error));
+      if (mounted && request == _loadRequest) setState(() => _error = friendlyError(error));
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && request == _loadRequest) setState(() => _loading = false);
     }
   }
 

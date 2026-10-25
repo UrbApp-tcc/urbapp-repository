@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -14,6 +13,7 @@ import '../../services/occurrence_service.dart';
 import '../../services/transparency_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/date_formatter.dart';
+import '../../utils/file_download.dart';
 import '../../utils/error_formatter.dart';
 import '../../widgets/urb/occurrence_widgets.dart';
 import '../../widgets/urb/occurrence_map.dart';
@@ -206,12 +206,12 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
                 : formatDate(item.context.latestForecast!.forecastAt!),
           ].map(_csvCell).join(','),
       ].join('\r\n');
-      final path = await FilePicker.platform.saveFile(
-        dialogTitle: 'Salvar fila de demandas',
+      final downloaded = await downloadFile(
         fileName: 'demandas_${widget.membership.cityName ?? 'municipio'}.csv',
         bytes: Uint8List.fromList(utf8.encode('\uFEFF$csv')),
+        mimeType: 'text/csv;charset=utf-8',
       );
-      if (mounted && path != null) {
+      if (mounted && downloaded) {
         showUrbToast(context, 'Arquivo CSV gerado com sucesso.');
       }
     } catch (error) {
@@ -402,27 +402,24 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
         Container(
           color: Colors.white,
           padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                for (final section in const [
-                  (0, 'Visão geral'),
-                  (1, 'Demandas'),
-                  (2, 'Órgãos'),
-                  (3, 'Previsões'),
-                  (4, 'Mapa'),
-                  (5, 'Histórico'),
-                ]) ...[
-                  UrbChip(
-                    label: section.$2,
-                    selected: _section == section.$1,
-                    onTap: () => setState(() => _section = section.$1),
-                  ),
-                  const SizedBox(width: 7),
-                ],
-              ],
-            ),
+          child: Wrap(
+            spacing: 7,
+            runSpacing: 7,
+            children: [
+              for (final section in const [
+                (0, 'Visão geral'),
+                (1, 'Demandas'),
+                (2, 'Órgãos'),
+                (3, 'Previsões'),
+                (4, 'Mapa'),
+                (5, 'Histórico'),
+              ])
+                UrbChip(
+                  label: section.$2,
+                  selected: _section == section.$1,
+                  onTap: () => setState(() => _section = section.$1),
+                ),
+            ],
           ),
         ),
         const SizedBox(height: 8),
@@ -653,29 +650,11 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
             onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: 12),
-          SizedBox(
-            height: 78,
-            child: GridView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: AdministrationQueueFilter.values.length,
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                mainAxisExtent: 126,
-                mainAxisSpacing: 7,
-                crossAxisSpacing: 7,
-              ),
-              itemBuilder: (context, index) {
-                final value = AdministrationQueueFilter.values[index];
-                return Align(
-                  alignment: Alignment.centerLeft,
-                  child: UrbChip(
-                    label: value.label,
-                    selected: _filter == value,
-                    onTap: () => setState(() => _filter = value),
-                  ),
-                );
-              },
-            ),
+          _TwoRowChipScroller(
+            values: AdministrationQueueFilter.values,
+            labelFor: (value) => value.label,
+            selected: _filter,
+            onSelected: (value) => setState(() => _filter = value),
           ),
           const SizedBox(height: 12),
           Row(
@@ -930,27 +909,18 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
             ],
           ),
           const SizedBox(height: 10),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                for (final value in const [
-                  AdministrationQueueFilter.all,
-                  AdministrationQueueFilter.needsAttention,
-                  AdministrationQueueFilter.prioritized,
-                  AdministrationQueueFilter.withoutManagementResponse,
-                  AdministrationQueueFilter.withoutAgencyResponse,
-                  AdministrationQueueFilter.overdueForecast,
-                ]) ...[
-                  UrbChip(
-                    label: value.label,
-                    selected: _filter == value,
-                    onTap: () => setState(() => _filter = value),
-                  ),
-                  const SizedBox(width: 7),
-                ],
-              ],
-            ),
+          _TwoRowChipScroller(
+            values: const [
+              AdministrationQueueFilter.all,
+              AdministrationQueueFilter.needsAttention,
+              AdministrationQueueFilter.prioritized,
+              AdministrationQueueFilter.withoutManagementResponse,
+              AdministrationQueueFilter.withoutAgencyResponse,
+              AdministrationQueueFilter.overdueForecast,
+            ],
+            labelFor: (value) => value.label,
+            selected: _filter,
+            onSelected: (value) => setState(() => _filter = value),
           ),
           const SizedBox(height: 14),
           if (occurrences.isEmpty)
@@ -1182,7 +1152,7 @@ class _DemandRow extends StatelessWidget {
                             width: 30,
                             height: 28,
                             child: PopupMenuButton<String>(
-                              tooltip: 'A??es r?pidas',
+                              tooltip: 'Ações rápidas',
                               padding: EdgeInsets.zero,
                               icon: const UrbIcon(
                                 UrbIcons.more,
@@ -1203,19 +1173,19 @@ class _DemandRow extends StatelessWidget {
                                 ),
                                 const PopupMenuItem(
                                   value: 'forwarding',
-                                  child: Text('Encaminhar a outro ?rg?o'),
+                                  child: Text('Encaminhar a outro órgão'),
                                 ),
                                 const PopupMenuItem(
                                   value: 'request',
-                                  child: Text('Solicitar provid?ncias'),
+                                  child: Text('Solicitar providências'),
                                 ),
                                 const PopupMenuItem(
                                   value: 'official_position',
-                                  child: Text('Registrar manifesta??o'),
+                                  child: Text('Registrar manifestação'),
                                 ),
                                 const PopupMenuItem(
                                   value: 'forecast',
-                                  child: Text('Informar previs?o'),
+                                  child: Text('Informar previsão'),
                                 ),
                               ],
                             ),
@@ -1226,15 +1196,15 @@ class _DemandRow extends StatelessWidget {
                     Text(
                       [
                         occurrence.locationLabel,
-                        occurrence.agencyName ?? 'Sem ?rg?o definido',
-                      ].join(' ? '),
+                        occurrence.agencyName ?? 'Sem órgão definido',
+                      ].join(' · '),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: UrbText.caption,
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      'Relato de ${citizenName ?? 'Cidad?o'} ? ${occurrence.supportsCount} ${occurrence.supportsCount == 1 ? 'apoio' : 'apoios'}',
+                      'Relato de ${citizenName ?? 'Cidadão'} · ${occurrence.supportsCount} ${occurrence.supportsCount == 1 ? 'apoio' : 'apoios'}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: UrbText.caption.copyWith(
@@ -1326,7 +1296,7 @@ class _DemandRow extends StatelessWidget {
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
-                            'Pr?xima a??o: ${administrationNextAction(item)}',
+                            'Próxima ação: ${administrationNextAction(item)}',
                             style: UrbText.caption.copyWith(
                               color: UrbColors.blue,
                               fontWeight: FontWeight.w800,
@@ -1546,4 +1516,47 @@ class _FilterDropdown<T> extends StatelessWidget {
       ),
     ],
   );
+}
+
+class _TwoRowChipScroller<T> extends StatelessWidget {
+  const _TwoRowChipScroller({
+    required this.values,
+    required this.labelFor,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final List<T> values;
+  final String Function(T value) labelFor;
+  final T selected;
+  final ValueChanged<T> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final split = (values.length / 2).ceil();
+    final rows = [values.take(split), values.skip(split)];
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var rowIndex = 0; rowIndex < rows.length; rowIndex++) ...[
+            Row(
+              children: [
+                for (final value in rows[rowIndex]) ...[
+                  UrbChip(
+                    label: labelFor(value),
+                    selected: selected == value,
+                    onTap: () => onSelected(value),
+                  ),
+                  const SizedBox(width: 7),
+                ],
+              ],
+            ),
+            if (rowIndex == 0) const SizedBox(height: 7),
+          ],
+        ],
+      ),
+    );
+  }
 }

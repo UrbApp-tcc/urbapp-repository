@@ -18,6 +18,7 @@ import '../../widgets/urb/occurrence_map.dart';
 import '../../widgets/urb/occurrence_widgets.dart';
 import '../../widgets/urb/urb_components.dart';
 import '../../widgets/urb/urb_icon.dart';
+import '../institutional/workspace_screen.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -484,6 +485,10 @@ class SearchScreenState extends State<SearchScreen> with OccurrenceListSync {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(18, 16, 18, 30),
         children: [
+          if (!_searching && _access.hasInstitutionalRole) ...[
+            _institutionalShortcut(),
+            const SizedBox(height: 16),
+          ],
           UrbSectionHeader(
             title: _searching ? 'Resultados para “$_query”' : nearbyLabel,
             subtitle: _searching
@@ -578,6 +583,64 @@ class SearchScreenState extends State<SearchScreen> with OccurrenceListSync {
               ),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _institutionalShortcut() {
+    final administration = _access.administrations.firstOrNull;
+    final agency = _access.agencies.firstOrNull;
+    final detail = administration != null
+        ? '${administration.roleLabel} da Prefeitura · ${administration.cityName ?? administration.name}'
+        : agency != null
+        ? '${agency.roleLabel} · ${agency.name}'
+        : 'Atuação parlamentar na cidade';
+    return Material(
+      color: const Color(0xFFF2F4FF),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () =>
+            Navigator.of(context).push(urbRoute(const WorkspaceScreen())),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                alignment: Alignment.center,
+                child: const UrbIcon(
+                  UrbIcons.building,
+                  size: 18,
+                  color: UrbColors.blue,
+                ),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Sua atuação institucional', style: UrbText.label),
+                    const SizedBox(height: 2),
+                    Text(
+                      detail,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: UrbText.caption,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              const UrbIcon(UrbIcons.chevron, size: 16, color: UrbColors.blue),
+            ],
+          ),
+        ),
       ),
     );
   }
