@@ -41,6 +41,31 @@ class AdministrationAgencySummary {
   final DateTime? lastUpdateAt;
 }
 
+class AdministrationQuickSummary {
+  const AdministrationQuickSummary({
+    required this.needsAttention,
+    required this.withoutManagementResponse,
+    required this.prioritized,
+    this.nearestForecastAt,
+  });
+
+  final int needsAttention;
+  final int withoutManagementResponse;
+  final int prioritized;
+  final DateTime? nearestForecastAt;
+
+  String forecastLabel(DateTime now) {
+    final forecast = nearestForecastAt;
+    if (forecast == null) return '—';
+    final today = DateTime(now.year, now.month, now.day);
+    final forecastDay = DateTime(forecast.year, forecast.month, forecast.day);
+    final days = forecastDay.difference(today).inDays;
+    if (days < 0) return 'Vencida';
+    if (days == 0) return 'Hoje';
+    return '$days d';
+  }
+}
+
 enum AdministrationForecastGroup {
   overdue('Vencidas'),
   today('Para hoje'),
@@ -101,6 +126,35 @@ bool administrationForecastIsOverdue(
 ) {
   final forecast = context.latestForecast?.forecastAt;
   return forecast != null && forecast.isBefore(now);
+}
+
+AdministrationQuickSummary buildAdministrationQuickSummary(
+  Iterable<AdministrationDemandItem> source, {
+  DateTime? now,
+}) {
+  final reference = now ?? DateTime.now();
+  final items = source.toList();
+  final forecasts =
+      items
+          .map((item) => item.context.latestForecast?.forecastAt)
+          .whereType<DateTime>()
+          .toList()
+        ..sort();
+  return AdministrationQuickSummary(
+    needsAttention: items
+        .where(
+          (item) =>
+              administrationAttentionSignals(item, now: reference).isNotEmpty,
+        )
+        .length,
+    withoutManagementResponse: items
+        .where((item) => item.context.latestAdministrationAction == null)
+        .length,
+    prioritized: items
+        .where((item) => item.occurrence.administrativePriority)
+        .length,
+    nearestForecastAt: forecasts.firstOrNull,
+  );
 }
 
 List<AdministrationAttentionSignal> administrationAttentionSignals(

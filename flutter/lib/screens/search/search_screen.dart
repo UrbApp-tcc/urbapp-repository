@@ -625,13 +625,23 @@ class SearchScreenState extends State<SearchScreen> with OccurrenceListSync {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Sua atuação institucional', style: UrbText.label),
+                    Text('Central de atuação', style: UrbText.label),
                     const SizedBox(height: 2),
                     Text(
                       detail,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: UrbText.caption,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Demandas, órgãos, equipe, previsões e histórico',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: UrbText.caption.copyWith(
+                        color: UrbColors.blue,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ],
                 ),

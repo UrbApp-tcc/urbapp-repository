@@ -248,6 +248,32 @@ void main() {
     expect(filtered.single.occurrence.id, 14);
   });
 
+  test('resume os indicadores institucionais da tela inicial', () {
+    final pending = _item(_occurrence(id: 17, prioritized: true));
+    final forecast = _item(
+      _occurrence(id: 18),
+      actions: [
+        _action(
+          occurrenceId: 18,
+          actor: 'administration',
+          type: 'forecast',
+          forecastAt: DateTime(2026, 10, 25),
+        ),
+        _action(occurrenceId: 18, actor: 'agency'),
+      ],
+    );
+
+    final summary = buildAdministrationQuickSummary([
+      pending,
+      forecast,
+    ], now: now);
+
+    expect(summary.needsAttention, 1);
+    expect(summary.withoutManagementResponse, 1);
+    expect(summary.prioritized, 1);
+    expect(summary.forecastLabel(now), '2 d');
+  });
+
   test('ordena órgãos pelo indicador escolhido', () {
     final works = _item(
       _occurrence(id: 15, agencyId: 10),

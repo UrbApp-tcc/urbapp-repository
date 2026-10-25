@@ -173,6 +173,38 @@ class AgencyTeamMember {
   final String? avatarUrl;
 }
 
+class AdministrationCollaborator {
+  const AdministrationCollaborator({
+    required this.userId,
+    required this.name,
+    required this.role,
+    required this.organizationName,
+    required this.organizationKind,
+    required this.actionsCount,
+    required this.demandsCount,
+    this.avatarUrl,
+    this.lastActionAt,
+  });
+
+  final String userId;
+  final String name;
+  final String role;
+  final String organizationName;
+  final String organizationKind;
+  final int actionsCount;
+  final int demandsCount;
+  final String? avatarUrl;
+  final DateTime? lastActionAt;
+
+  String get roleLabel => switch (role) {
+    'manager' => 'Gestor',
+    'agent' => 'Operador',
+    'analyst' => 'Consulta',
+    'member' => 'Integrante',
+    _ => 'Colaborador',
+  };
+}
+
 class InstitutionalActionRecord {
   const InstitutionalActionRecord({
     required this.occurrenceId,
@@ -664,6 +696,36 @@ class InstitutionalService {
       }
       return result;
     }, 'Não foi possível carregar as equipes dos órgãos.');
+  }
+
+  Future<List<AdministrationCollaborator>> fetchAdministrationCollaborators(
+    int administrationId,
+  ) {
+    return _guard(() async {
+      final rows = await _supabase.rpc(
+        'get_administration_collaborators',
+        params: {'target_administration_id': administrationId},
+      );
+      return (rows as List)
+          .map(
+            (raw) => AdministrationCollaborator(
+              userId: raw['user_id'] as String,
+              name: raw['display_name'] as String? ?? 'Colaborador',
+              role: raw['member_role'] as String? ?? 'member',
+              organizationName:
+                  raw['organization_name'] as String? ?? 'Gestão municipal',
+              organizationKind:
+                  raw['organization_kind'] as String? ?? 'administration',
+              actionsCount: (raw['actions_count'] as num?)?.toInt() ?? 0,
+              demandsCount: (raw['demands_count'] as num?)?.toInt() ?? 0,
+              avatarUrl: raw['avatar_url'] as String?,
+              lastActionAt: DateTime.tryParse(
+                raw['last_action_at'] as String? ?? '',
+              )?.toLocal(),
+            ),
+          )
+          .toList();
+    }, 'Não foi possível carregar a equipe da gestão municipal.');
   }
 
   /// Vereadores que acompanham a ocorrência (vários podem acompanhar, spec §35).

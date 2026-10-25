@@ -36,10 +36,17 @@ class AdministrationWorkspace extends StatefulWidget {
 
 class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
   static const _pageSize = 30;
+  static const _quickFilters = [
+    AdministrationQueueFilter.all,
+    AdministrationQueueFilter.needsAttention,
+    AdministrationQueueFilter.withoutManagementResponse,
+    AdministrationQueueFilter.prioritized,
+  ];
   final _searchController = TextEditingController();
   List<AdministrationDemandItem> _items = const [];
   Map<int, String> _citizenNames = const {};
   Map<int, List<AgencyTeamMember>> _agencyTeams = const {};
+  List<AdministrationCollaborator> _collaborators = const [];
   List<AdministrationActionHistoryItem> _history = const [];
   AdministrationProfile? _metrics;
   AdministrationQueueFilter _filter = AdministrationQueueFilter.all;
@@ -88,6 +95,7 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
         ),
         service.fetchOccurrenceCitizenNames(occurrences.map((item) => item.id)),
         service.fetchAdministrationAgencyTeams(widget.membership.id),
+        service.fetchAdministrationCollaborators(widget.membership.id),
       ]);
       final contexts = details[0] as Map<int, AdministrationOccurrenceContext>;
       if (!mounted) return;
@@ -104,6 +112,7 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
         _metrics = results[1] as AdministrationProfile?;
         _citizenNames = details[1] as Map<int, String>;
         _agencyTeams = details[2] as Map<int, List<AgencyTeamMember>>;
+        _collaborators = details[3] as List<AdministrationCollaborator>;
         _history = results[2] as List<AdministrationActionHistoryItem>;
         _hasMore = occurrences.length == _pageSize;
       });
@@ -238,7 +247,8 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
         _categoryId,
         _neighborhood,
       ].where((value) => value != null).length +
-      (_order == AdministrationDemandOrder.attention ? 0 : 1);
+      (_order == AdministrationDemandOrder.attention ? 0 : 1) +
+      (_quickFilters.contains(_filter) ? 0 : 1);
 
   void _showQueue({AdministrationQueueFilter? filter}) {
     setState(() {
@@ -292,6 +302,7 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
     var categoryId = _categoryId;
     var neighborhood = _neighborhood;
     var order = _order;
+    var situation = _filter;
     final agencies = <int, String>{
       for (final item in _items)
         if (item.occurrence.agencyId != null &&
@@ -329,6 +340,22 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
               children: [
                 Text('Filtrar e ordenar demandas', style: UrbText.h3),
                 const SizedBox(height: 18),
+                Text('Situação', style: UrbText.label),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<AdministrationQueueFilter>(
+                  initialValue: situation,
+                  decoration: const InputDecoration(),
+                  items: [
+                    for (final value in AdministrationQueueFilter.values)
+                      DropdownMenuItem(value: value, child: Text(value.label)),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      setSheetState(() => situation = value);
+                    }
+                  },
+                ),
+                const SizedBox(height: 14),
                 _FilterDropdown<int>(
                   label: 'Órgão responsável',
                   value: agencyId,
@@ -389,6 +416,7 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
         _categoryId = categoryId;
         _neighborhood = neighborhood;
         _order = order;
+        _filter = situation;
       });
     }
   }
@@ -410,9 +438,10 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
                 (0, 'Visão geral'),
                 (1, 'Demandas'),
                 (2, 'Órgãos'),
-                (3, 'Previsões'),
-                (4, 'Mapa'),
-                (5, 'Histórico'),
+                (3, 'Equipe'),
+                (4, 'Previsões'),
+                (5, 'Mapa'),
+                (6, 'Histórico'),
               ])
                 UrbChip(
                   label: section.$2,
@@ -428,8 +457,9 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
             0 => _buildOverview(),
             1 => _buildQueue(),
             2 => _buildAgencies(),
-            3 => _buildForecasts(),
-            4 => _buildOperationalMap(),
+            3 => _buildTeam(),
+            4 => _buildForecasts(),
+            5 => _buildOperationalMap(),
             _ => _buildHistory(),
           },
         ),
@@ -650,11 +680,17 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
             onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: 12),
-          _TwoRowChipScroller(
-            values: AdministrationQueueFilter.values,
-            labelFor: (value) => value.label,
-            selected: _filter,
-            onSelected: (value) => setState(() => _filter = value),
+          Wrap(
+            spacing: 7,
+            runSpacing: 7,
+            children: [
+              for (final value in _quickFilters)
+                UrbChip(
+                  label: value.label,
+                  selected: _filter == value,
+                  onTap: () => setState(() => _filter = value),
+                ),
+            ],
           ),
           const SizedBox(height: 12),
           Row(
@@ -791,6 +827,35 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
     );
   }
 
+  Widget _buildTeam() => RefreshIndicator(
+    onRefresh: _load,
+    child: ListView(
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 40),
+      children: [
+        Text('Equipe da gestão', style: UrbText.h3),
+        const SizedBox(height: 4),
+        Text(
+          'Pessoas vinculadas à Prefeitura e aos órgãos municipais, com a atividade registrada no UrbApp.',
+          style: UrbText.bodySmall,
+        ),
+        const SizedBox(height: 18),
+        if (_collaborators.isEmpty)
+          const UrbEmptyState(
+            icon: UrbIcons.profile,
+            title: 'Nenhum colaborador vinculado',
+            message:
+                'Os integrantes credenciados da gestão e dos órgãos aparecerão aqui.',
+          )
+        else
+          for (var index = 0; index < _collaborators.length; index++)
+            _CollaboratorRow(
+              collaborator: _collaborators[index],
+              last: index == _collaborators.length - 1,
+            ),
+      ],
+    ),
+  );
+
   Widget _buildForecasts() {
     final groups = groupAdministrationForecasts(_items);
     final total = groups.values.fold<int>(
@@ -909,18 +974,17 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
             ],
           ),
           const SizedBox(height: 10),
-          _TwoRowChipScroller(
-            values: const [
-              AdministrationQueueFilter.all,
-              AdministrationQueueFilter.needsAttention,
-              AdministrationQueueFilter.prioritized,
-              AdministrationQueueFilter.withoutManagementResponse,
-              AdministrationQueueFilter.withoutAgencyResponse,
-              AdministrationQueueFilter.overdueForecast,
+          Wrap(
+            spacing: 7,
+            runSpacing: 7,
+            children: [
+              for (final value in _quickFilters)
+                UrbChip(
+                  label: value.label,
+                  selected: _filter == value,
+                  onTap: () => setState(() => _filter = value),
+                ),
             ],
-            labelFor: (value) => value.label,
-            selected: _filter,
-            onSelected: (value) => setState(() => _filter = value),
           ),
           const SizedBox(height: 14),
           if (occurrences.isEmpty)
@@ -1460,6 +1524,64 @@ class _AgencySummaryRow extends StatelessWidget {
   );
 }
 
+class _CollaboratorRow extends StatelessWidget {
+  const _CollaboratorRow({required this.collaborator, this.last = false});
+
+  final AdministrationCollaborator collaborator;
+  final bool last;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(vertical: 14),
+    decoration: BoxDecoration(
+      border: last
+          ? null
+          : const Border(bottom: BorderSide(color: UrbColors.divider)),
+    ),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        UrbAvatar(
+          name: collaborator.name,
+          imageUrl: collaborator.avatarUrl,
+          size: 42,
+          rounded: false,
+          gradientSeed: collaborator.userId.hashCode,
+        ),
+        const SizedBox(width: 11),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(collaborator.name, style: UrbText.titleSmall),
+              const SizedBox(height: 2),
+              Text(
+                '${collaborator.organizationName} · ${collaborator.roleLabel}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: UrbText.caption,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '${collaborator.demandsCount} ${collaborator.demandsCount == 1 ? 'demanda movimentada' : 'demandas movimentadas'} · '
+                '${collaborator.actionsCount} ${collaborator.actionsCount == 1 ? 'ação registrada' : 'ações registradas'}',
+                style: UrbText.caption.copyWith(fontWeight: FontWeight.w700),
+              ),
+              if (collaborator.lastActionAt != null) ...[
+                const SizedBox(height: 3),
+                Text(
+                  'Última atuação ${formatRelativeTime(collaborator.lastActionAt!).toLowerCase()}',
+                  style: UrbText.caption.copyWith(color: UrbColors.muted),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
 class _AttentionSummaryRow extends StatelessWidget {
   const _AttentionSummaryRow({
     required this.label,
@@ -1516,47 +1638,4 @@ class _FilterDropdown<T> extends StatelessWidget {
       ),
     ],
   );
-}
-
-class _TwoRowChipScroller<T> extends StatelessWidget {
-  const _TwoRowChipScroller({
-    required this.values,
-    required this.labelFor,
-    required this.selected,
-    required this.onSelected,
-  });
-
-  final List<T> values;
-  final String Function(T value) labelFor;
-  final T selected;
-  final ValueChanged<T> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    final split = (values.length / 2).ceil();
-    final rows = [values.take(split), values.skip(split)];
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          for (var rowIndex = 0; rowIndex < rows.length; rowIndex++) ...[
-            Row(
-              children: [
-                for (final value in rows[rowIndex]) ...[
-                  UrbChip(
-                    label: labelFor(value),
-                    selected: selected == value,
-                    onTap: () => onSelected(value),
-                  ),
-                  const SizedBox(width: 7),
-                ],
-              ],
-            ),
-            if (rowIndex == 0) const SizedBox(height: 7),
-          ],
-        ],
-      ),
-    );
-  }
 }

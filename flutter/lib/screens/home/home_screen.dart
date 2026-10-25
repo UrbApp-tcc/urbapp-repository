@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../app/app_session.dart';
 import '../../app/routes.dart';
 import '../../domain/models.dart';
+import '../../logic/administration_workspace_loader.dart';
+import '../../logic/administration_workspace_rules.dart';
 import '../../services/institutional_service.dart';
 import '../../services/notifications_service.dart';
 import '../../services/occurrence_service.dart';
@@ -40,6 +42,7 @@ class _HomeScreenState extends State<HomeScreen> with OccurrenceListSync {
   int? _reportersFor;
   final Set<int> _startingCouncilorFollowing = {};
   int _loadRequest = 0;
+  AdministrationQuickSummary? _administrationSummary;
 
   @override
   void initState() {
@@ -211,8 +214,31 @@ class _HomeScreenState extends State<HomeScreen> with OccurrenceListSync {
           for (final item in followings) item.occurrenceId: item,
         };
       });
+      await _loadAdministrationSummary(access);
     } catch (_) {
       // A Home cidadã continua funcional se o contexto institucional falhar.
+    }
+  }
+
+  Future<void> _loadAdministrationSummary(InstitutionalAccess access) async {
+    final administration = access.administrations.firstOrNull;
+    if (administration == null) return;
+    try {
+      final items = await loadAdministrationDemandItems(administration.id);
+      if (mounted) {
+        setState(
+          () => _administrationSummary = buildAdministrationQuickSummary(items),
+        );
+      }
+    } catch (_) {
+      // O resumo é complementar; o acesso à área institucional permanece.
+    }
+  }
+
+  Future<void> _openAdministrationWorkspace() async {
+    await Navigator.of(context).push(urbRoute(const WorkspaceScreen()));
+    if (mounted) {
+      await _loadAdministrationSummary(_access);
     }
   }
 
@@ -335,10 +361,20 @@ class _HomeScreenState extends State<HomeScreen> with OccurrenceListSync {
                   const SizedBox(height: 12),
                 ],
                 if (_access.hasInstitutionalRole) ...[
-                  _WorkspaceEntry(
-                    access: _access,
-                    followings: _councilorFollowings.values.toList(),
-                  ),
+                  if (_access.administrations.isNotEmpty &&
+                      _administrationSummary != null)
+                    _AdministrationSummaryEntry(
+                      summary: _administrationSummary!,
+                      cityName:
+                          _access.administrations.first.cityName ??
+                          'sua cidade',
+                      onOpen: _openAdministrationWorkspace,
+                    )
+                  else
+                    _WorkspaceEntry(
+                      access: _access,
+                      followings: _councilorFollowings.values.toList(),
+                    ),
                   const SizedBox(height: 12),
                 ],
                 UrbUnderlineTabs(
@@ -493,6 +529,102 @@ class _HomeScreenState extends State<HomeScreen> with OccurrenceListSync {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _AdministrationSummaryEntry extends StatelessWidget {
+  const _AdministrationSummaryEntry({
+    required this.summary,
+    required this.cityName,
+    required this.onOpen,
+  });
+
+  final AdministrationQuickSummary summary;
+  final String cityName;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = [
+      ('${summary.needsAttention}', 'Precisam de atenção'),
+      ('${summary.withoutManagementResponse}', 'Sem manifestação'),
+      (summary.forecastLabel(DateTime.now()), 'Próxima previsão'),
+      ('${summary.prioritized}', 'Priorizadas'),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Resumo da atuação', style: UrbText.titleSmall),
+                  Text('Gestão municipal · $cityName', style: UrbText.caption),
+                ],
+              ),
+            ),
+            UrbTextButton('Abrir', onPressed: onOpen),
+          ],
+        ),
+        const SizedBox(height: 9),
+        Row(
+          children: [
+            for (var index = 0; index < items.length; index++) ...[
+              Expanded(
+                child: Material(
+                  color: index == 0
+                      ? UrbColors.blueSoft
+                      : const Color(0xFFF7F8F7),
+                  borderRadius: BorderRadius.circular(11),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(11),
+                    onTap: onOpen,
+                    child: SizedBox(
+                      height: 82,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 9,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              items[index].$1,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: UrbText.h3.copyWith(
+                                color: index == 0
+                                    ? UrbColors.blue
+                                    : UrbColors.navy,
+                              ),
+                            ),
+                            const Spacer(),
+                            Text(
+                              items[index].$2,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: UrbText.caption.copyWith(
+                                fontSize: 10,
+                                height: 1.15,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              if (index != items.length - 1) const SizedBox(width: 6),
+            ],
+          ],
+        ),
+      ],
     );
   }
 }
