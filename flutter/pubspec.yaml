@@ -45,6 +45,7 @@ dependencies:
   latlong2: ^0.9.1
   http: ^1.2.2
   app_links: ^6.3.2
+  url_launcher: ^6.3.2
   google_fonts: ^9.0.0
   path_drawing: ^1.0.1
   web: ^1.1.1

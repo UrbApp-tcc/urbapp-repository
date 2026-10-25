@@ -7,6 +7,7 @@ import 'package:latlong2/latlong.dart';
 import '../../app/routes.dart';
 import '../../domain/labels.dart';
 import '../../domain/models.dart';
+import '../../domain/occurrence_status.dart';
 import '../../logic/administration_workspace_rules.dart';
 import '../../services/institutional_service.dart';
 import '../../services/occurrence_service.dart';
@@ -45,7 +46,6 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
   final _searchController = TextEditingController();
   List<AdministrationDemandItem> _items = const [];
   Map<int, String> _citizenNames = const {};
-  Map<int, List<AgencyTeamMember>> _agencyTeams = const {};
   List<AdministrationCollaborator> _collaborators = const [];
   List<AdministrationActionHistoryItem> _history = const [];
   AdministrationProfile? _metrics;
@@ -95,7 +95,6 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
           occurrences.map((item) => item.id),
         ),
         service.fetchOccurrenceCitizenNames(occurrences.map((item) => item.id)),
-        service.fetchAdministrationAgencyTeams(widget.membership.id),
         service.fetchAdministrationCollaborators(widget.membership.id),
       ]);
       final contexts = details[0] as Map<int, AdministrationOccurrenceContext>;
@@ -112,8 +111,7 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
         ];
         _metrics = results[1] as AdministrationProfile?;
         _citizenNames = details[1] as Map<int, String>;
-        _agencyTeams = details[2] as Map<int, List<AgencyTeamMember>>;
-        _collaborators = details[3] as List<AdministrationCollaborator>;
+        _collaborators = details[2] as List<AdministrationCollaborator>;
         _history = results[2] as List<AdministrationActionHistoryItem>;
         _hasMore = occurrences.length == _pageSize;
       });
@@ -246,6 +244,10 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
   AdministrationCollaborator? get _selectedPerson => _collaborators
       .where((person) => person.identityKey == _personKey)
       .firstOrNull;
+
+  List<AdministrationCollaborator> get _people => _collaborators
+      .where((person) => person.organizationKind == 'councilor')
+      .toList();
 
   int get _advancedFilterCount =>
       [
@@ -413,7 +415,7 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
                   value: personKey,
                   allLabel: 'Todas as pessoas',
                   entries: [
-                    for (final person in _collaborators)
+                    for (final person in _people)
                       MapEntry(
                         person.identityKey,
                         '${person.name} · ${person.roleLabel}',
@@ -786,11 +788,48 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
   }
 
   Widget _buildAgencies() {
-    final summaries = buildAdministrationAgencySummaries(
-      _items,
+    final agencySummaries = buildAdministrationAgencySummaries(
+      _items.where((item) => item.occurrence.agencyId != null),
       order: _agencyOrder,
-      administrationName: widget.membership.name,
     );
+    final administrationProfile = _collaborators
+        .where((person) => person.organizationKind == 'administration')
+        .firstOrNull;
+    final administrationUpdates =
+        _items
+            .map((item) => item.context.latestAdministrationAction?.createdAt)
+            .whereType<DateTime>()
+            .toList()
+          ..sort((a, b) => b.compareTo(a));
+    final summaries = [
+      AdministrationAgencySummary(
+        agencyId: null,
+        agencyName: administrationProfile?.name ?? widget.membership.name,
+        active: _items.length,
+        withoutUpdate: _items
+            .where((item) => item.context.latestAdministrationAction == null)
+            .length,
+        inProgress: _items
+            .where(
+              (item) => item.occurrence.status == OccurrenceStatus.inProgress,
+            )
+            .length,
+        overdue: _items
+            .where(
+              (item) =>
+                  administrationForecastIsOverdue(item.context, DateTime.now()),
+            )
+            .length,
+        awaitingValidation: _items
+            .where(
+              (item) =>
+                  item.occurrence.status == OccurrenceStatus.awaitingValidation,
+            )
+            .length,
+        lastUpdateAt: administrationUpdates.firstOrNull,
+      ),
+      ...agencySummaries,
+    ];
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
@@ -836,9 +875,16 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
             for (var index = 0; index < summaries.length; index++)
               _AgencySummaryRow(
                 summary: summaries[index],
-                members: summaries[index].agencyId == null
-                    ? const []
-                    : _agencyTeams[summaries[index].agencyId] ?? const [],
+                profile: summaries[index].agencyId == null
+                    ? administrationProfile
+                    : _collaborators
+                          .where(
+                            (person) =>
+                                person.organizationKind == 'agency' &&
+                                person.organizationName ==
+                                    summaries[index].agencyName,
+                          )
+                          .firstOrNull,
                 last: index == summaries.length - 1,
                 onTap: () {
                   setState(() {
@@ -865,7 +911,7 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
           style: UrbText.bodySmall,
         ),
         const SizedBox(height: 18),
-        if (_collaborators.isEmpty)
+        if (_people.isEmpty)
           const UrbEmptyState(
             icon: UrbIcons.profile,
             title: 'Nenhuma pessoa vinculada',
@@ -873,13 +919,13 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
                 'Os perfis institucionais credenciados da cidade aparecerão aqui.',
           )
         else
-          for (var index = 0; index < _collaborators.length; index++)
+          for (var index = 0; index < _people.length; index++)
             _CollaboratorRow(
-              collaborator: _collaborators[index],
-              last: index == _collaborators.length - 1,
+              collaborator: _people[index],
+              last: index == _people.length - 1,
               onTap: () {
                 setState(() {
-                  _personKey = _collaborators[index].identityKey;
+                  _personKey = _people[index].identityKey;
                   _agencyId = null;
                   _section = 1;
                 });
@@ -1462,13 +1508,13 @@ class _ValidationProgressCard extends StatelessWidget {
 class _AgencySummaryRow extends StatelessWidget {
   const _AgencySummaryRow({
     required this.summary,
-    required this.members,
+    required this.profile,
     required this.onTap,
     this.last = false,
   });
 
   final AdministrationAgencySummary summary;
-  final List<AgencyTeamMember> members;
+  final AdministrationCollaborator? profile;
   final VoidCallback onTap;
   final bool last;
 
@@ -1488,24 +1534,16 @@ class _AgencySummaryRow extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: UrbColors.blueSoft,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: UrbColors.blue.withValues(alpha: 0.16),
-                  ),
+              if (profile != null) ...[
+                UrbAvatar(
+                  name: profile!.name,
+                  imageUrl: profile!.avatarUrl,
+                  size: 44,
+                  rounded: false,
+                  gradientSeed: profile!.userId.hashCode,
                 ),
-                alignment: Alignment.center,
-                child: const UrbIcon(
-                  UrbIcons.building,
-                  size: 21,
-                  color: UrbColors.blue,
-                ),
-              ),
-              const SizedBox(width: 11),
+                const SizedBox(width: 11),
+              ],
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1529,36 +1567,6 @@ class _AgencySummaryRow extends StatelessWidget {
               ),
             ],
           ),
-          if (members.isNotEmpty) ...[
-            const SizedBox(height: 9),
-            Row(
-              children: [
-                for (final member in members.take(3)) ...[
-                  UrbAvatar(
-                    name: member.name,
-                    imageUrl: member.avatarUrl,
-                    size: 30,
-                    rounded: false,
-                    gradientSeed: member.agencyId + members.indexOf(member),
-                  ),
-                  const SizedBox(width: 5),
-                ],
-                const SizedBox(width: 3),
-                Expanded(
-                  child: Text(
-                    members.length == 1
-                        ? members.first.name
-                        : '${members.length} integrantes vinculados',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: UrbText.caption.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
           const SizedBox(height: 7),
           Wrap(
             spacing: 6,

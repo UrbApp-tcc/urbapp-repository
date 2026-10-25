@@ -557,23 +557,23 @@ class _AdministrationSummaryEntry extends StatelessWidget {
       (
         '${summary.withoutManagementResponse}',
         'Sem manifestação',
-        const Color(0xFFFFF7E8),
-        const Color(0xFFF2D9A7),
-        const Color(0xFF9A6400),
+        const Color(0xFFF0F2FF),
+        const Color(0xFFCAD0FF),
+        UrbColors.blue,
       ),
       (
         summary.forecastLabel(DateTime.now()),
         'Próxima previsão',
-        const Color(0xFFEDF7F4),
-        const Color(0xFFBFDCD3),
-        const Color(0xFF20735E),
+        const Color(0xFFF0F2FF),
+        const Color(0xFFCAD0FF),
+        UrbColors.blue,
       ),
       (
         '${summary.prioritized}',
         'Priorizadas',
-        const Color(0xFFF7F1FA),
-        const Color(0xFFDDC6E8),
-        const Color(0xFF7D4B91),
+        const Color(0xFFF0F2FF),
+        const Color(0xFFCAD0FF),
+        UrbColors.blue,
       ),
     ];
     return Column(

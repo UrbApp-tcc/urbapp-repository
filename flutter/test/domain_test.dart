@@ -208,6 +208,8 @@ void main() {
           'requester_username': 'prefeitura.sorocaba',
           'requester_badge_name': 'Cidadão Presente',
           'requester_level': 2,
+          'request_id': 44,
+          'media_count': 2,
           'request_subject': 'Credenciar a Prefeitura',
           'request_message':
               'Precisamos concluir o credenciamento institucional.',
@@ -217,6 +219,8 @@ void main() {
       expect(notification.isAdministrationContact, isTrue);
       expect(notification.contactRequesterUsername, 'prefeitura.sorocaba');
       expect(notification.contactRequesterLevel, 2);
+      expect(notification.contactRequestId, 44);
+      expect(notification.contactMediaCount, 2);
       expect(notification.markRead().contactRequesterBadge, 'Cidadão Presente');
     });
   });

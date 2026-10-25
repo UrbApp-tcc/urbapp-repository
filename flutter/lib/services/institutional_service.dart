@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../domain/models.dart';
@@ -380,6 +381,9 @@ class InstitutionalService {
 
   final SupabaseClient _supabase;
 
+  static const _administrationContactMediaBucket =
+      'administration-contact-media';
+
   static InstitutionalAccess? _cachedAccess;
   static String? _cachedFor;
 
@@ -387,6 +391,8 @@ class InstitutionalService {
     try {
       return await run();
     } on PostgrestException catch (error) {
+      throw Exception(friendlyBackendMessage(error.message, fallback));
+    } on StorageException catch (error) {
       throw Exception(friendlyBackendMessage(error.message, fallback));
     }
   }
@@ -741,8 +747,11 @@ class InstitutionalService {
     required String kind,
     required String subject,
     required String message,
+    List<PlatformFile> attachments = const [],
   }) {
     return _guard(() async {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) throw Exception('Faça login para enviar o pedido.');
       final result = await _supabase.rpc(
         'create_administration_contact_request',
         params: {
@@ -752,9 +761,95 @@ class InstitutionalService {
           'contact_message': message.trim(),
         },
       );
-      return (result as num).toInt();
+      final requestId = (result as num).toInt();
+      final uploadedPaths = <String>[];
+      try {
+        final mediaRows = <Map<String, dynamic>>[];
+        for (var index = 0; index < attachments.length; index++) {
+          final attachment = attachments[index];
+          final bytes = attachment.bytes;
+          if (bytes == null) {
+            throw Exception('Não foi possível ler o anexo ${attachment.name}.');
+          }
+          final extension = _contactMediaExtension(attachment.name);
+          final mimeType = _contactMediaMime(extension);
+          final path =
+              '$userId/$requestId/${DateTime.now().microsecondsSinceEpoch}_$index.$extension';
+          await _supabase.storage
+              .from(_administrationContactMediaBucket)
+              .uploadBinary(
+                path,
+                bytes,
+                fileOptions: FileOptions(contentType: mimeType),
+              );
+          uploadedPaths.add(path);
+          mediaRows.add({
+            'request_id': requestId,
+            'storage_path': path,
+            'file_name': attachment.name,
+            'media_type': mimeType.startsWith('video/') ? 'video' : 'image',
+            'mime_type': mimeType,
+            'size_bytes': bytes.length,
+            'position': index + 1,
+          });
+        }
+        if (mediaRows.isNotEmpty) {
+          await _supabase
+              .from('administration_contact_request_media')
+              .insert(mediaRows);
+        }
+        await _supabase.rpc(
+          'finalize_administration_contact_request',
+          params: {'target_request_id': requestId},
+        );
+        return requestId;
+      } catch (_) {
+        if (uploadedPaths.isNotEmpty) {
+          try {
+            await _supabase.storage
+                .from(_administrationContactMediaBucket)
+                .remove(uploadedPaths);
+          } catch (_) {}
+        }
+        try {
+          await _supabase.rpc(
+            'cancel_administration_contact_request',
+            params: {'target_request_id': requestId},
+          );
+        } catch (_) {}
+        rethrow;
+      }
     }, 'Não foi possível enviar o contato aos administradores.');
   }
+
+  String _contactMediaExtension(String fileName) {
+    final dot = fileName.lastIndexOf('.');
+    final extension = dot < 0 ? '' : fileName.substring(dot + 1).toLowerCase();
+    if (const {
+      'jpg',
+      'jpeg',
+      'png',
+      'webp',
+      'gif',
+      'mp4',
+      'mov',
+      'webm',
+    }.contains(extension)) {
+      return extension;
+    }
+    throw Exception('Formato de anexo não permitido: $fileName.');
+  }
+
+  String _contactMediaMime(String extension) => switch (extension) {
+    'jpg' || 'jpeg' => 'image/jpeg',
+    'png' => 'image/png',
+    'webp' => 'image/webp',
+    'gif' => 'image/gif',
+    'mp4' => 'video/mp4',
+    'mov' => 'video/quicktime',
+    'webm' => 'video/webm',
+    _ => 'application/octet-stream',
+  };
 
   /// Vereadores que acompanham a ocorrência (vários podem acompanhar, spec §35).
   Future<List<OccurrenceFollower>> fetchCouncilorsFollowing(int occurrenceId) {

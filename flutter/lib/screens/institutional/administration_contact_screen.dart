@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 
 import '../../services/institutional_service.dart';
 import '../../theme/app_theme.dart';
@@ -29,6 +30,7 @@ class _AdministrationContactScreenState
   final _formKey = GlobalKey<FormState>();
   final _subject = TextEditingController();
   final _message = TextEditingController();
+  final List<PlatformFile> _attachments = [];
   String _kind = _kinds.first.$1;
   bool _sending = false;
 
@@ -62,6 +64,7 @@ class _AdministrationContactScreenState
         kind: _kind,
         subject: _subject.text,
         message: _message.text,
+        attachments: _attachments,
       );
       if (mounted) Navigator.of(context).pop(true);
     } catch (error) {
@@ -70,6 +73,47 @@ class _AdministrationContactScreenState
         showUrbToast(context, friendlyError(error));
       }
     }
+  }
+
+  Future<void> _pickAttachments() async {
+    final remaining = 5 - _attachments.length;
+    if (remaining <= 0) {
+      showUrbToast(context, 'Você pode adicionar até 5 mídias.');
+      return;
+    }
+    final result = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      type: FileType.custom,
+      allowedExtensions: const [
+        'jpg',
+        'jpeg',
+        'png',
+        'webp',
+        'gif',
+        'mp4',
+        'mov',
+        'webm',
+      ],
+      withData: true,
+    );
+    if (result == null || !mounted) return;
+    final accepted = result.files
+        .where((file) => file.size > 0 && file.size <= 52428800)
+        .take(remaining)
+        .toList();
+    final rejected = result.files.length - accepted.length;
+    setState(() => _attachments.addAll(accepted));
+    if (rejected > 0) {
+      showUrbToast(
+        context,
+        'Algumas mídias foram ignoradas. Use até 5 arquivos de no máximo 50 MB cada.',
+      );
+    }
+  }
+
+  String _fileSizeLabel(int bytes) {
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).ceil()} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 
   @override
@@ -180,6 +224,72 @@ class _AdministrationContactScreenState
                       textCapitalization: TextCapitalization.sentences,
                       validator: _validateMessage,
                     ),
+                    const SizedBox(height: 16),
+                    UrbButton(
+                      label: _attachments.isEmpty
+                          ? 'Adicionar prints ou vídeos'
+                          : 'Adicionar mais mídias',
+                      icon: UrbIcons.camera,
+                      tone: UrbButtonTone.outline,
+                      expand: true,
+                      onPressed: _pickAttachments,
+                    ),
+                    const SizedBox(height: 7),
+                    Text(
+                      'Opcional · até 5 imagens ou vídeos de 50 MB cada',
+                      style: UrbText.caption,
+                    ),
+                    if (_attachments.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      for (var index = 0; index < _attachments.length; index++)
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 7),
+                          padding: const EdgeInsets.fromLTRB(11, 8, 5, 8),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: UrbColors.line),
+                          ),
+                          child: Row(
+                            children: [
+                              const UrbIcon(
+                                UrbIcons.camera,
+                                size: 17,
+                                color: UrbColors.blue,
+                              ),
+                              const SizedBox(width: 9),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _attachments[index].name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: UrbText.bodySmall.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    Text(
+                                      _fileSizeLabel(_attachments[index].size),
+                                      style: UrbText.caption,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              UrbSquareButton(
+                                icon: UrbIcons.close,
+                                tooltip: 'Remover mídia',
+                                size: 30,
+                                iconSize: 15,
+                                onPressed: () => setState(
+                                  () => _attachments.removeAt(index),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
                     const SizedBox(height: 10),
                     Text(
                       'O pedido será enviado aos administradores do UrbApp com a identificação desta gestão.',

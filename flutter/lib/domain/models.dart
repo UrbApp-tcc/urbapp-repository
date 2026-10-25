@@ -570,6 +570,8 @@ class AppNotification {
   int? get contactRequesterLevel => _intOrNull(payload['requester_level']);
   String? get contactSubject => _text(payload['request_subject']);
   String? get contactMessage => _text(payload['request_message']);
+  int? get contactRequestId => _intOrNull(payload['request_id']);
+  int get contactMediaCount => _intOrNull(payload['media_count']) ?? 0;
 
   AppNotification markRead() => AppNotification(
         id: id,

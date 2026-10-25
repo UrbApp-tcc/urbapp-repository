@@ -6,12 +6,33 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../domain/models.dart';
 import '../utils/error_formatter.dart';
 
+class AdministrationContactMedia {
+  const AdministrationContactMedia({
+    required this.fileName,
+    required this.mediaType,
+    required this.mimeType,
+    required this.sizeBytes,
+    required this.url,
+  });
+
+  final String fileName;
+  final String mediaType;
+  final String mimeType;
+  final int sizeBytes;
+  final String url;
+
+  bool get isImage => mediaType == 'image';
+}
+
 /// Alertas gerados pelo backend (spec §23). O cliente apenas lê e marca como lido.
 class NotificationsService {
   NotificationsService({SupabaseClient? supabase})
     : _supabase = supabase ?? Supabase.instance.client;
 
   final SupabaseClient _supabase;
+
+  static const _administrationContactMediaBucket =
+      'administration-contact-media';
 
   /// Contador de não lidos compartilhado pelos sinos dos cabeçalhos.
   static final ValueNotifier<int> unreadCount = ValueNotifier<int>(0);
@@ -88,6 +109,48 @@ class NotificationsService {
           .isFilter('read_at', null);
       if (unreadCount.value > 0) unreadCount.value -= 1;
     } catch (_) {}
+  }
+
+  Future<List<AdministrationContactMedia>> fetchAdministrationContactMedia(
+    int requestId,
+  ) async {
+    try {
+      final rows = await _supabase
+          .from('administration_contact_request_media')
+          .select('storage_path, file_name, media_type, mime_type, size_bytes')
+          .eq('request_id', requestId)
+          .order('position');
+      return await Future.wait([
+        for (final raw in rows as List)
+          () async {
+            final path = raw['storage_path'] as String;
+            final url = await _supabase.storage
+                .from(_administrationContactMediaBucket)
+                .createSignedUrl(path, 3600);
+            return AdministrationContactMedia(
+              fileName: raw['file_name'] as String? ?? 'Mídia anexada',
+              mediaType: raw['media_type'] as String? ?? 'image',
+              mimeType: raw['mime_type'] as String? ?? '',
+              sizeBytes: (raw['size_bytes'] as num?)?.toInt() ?? 0,
+              url: url,
+            );
+          }(),
+      ]);
+    } on PostgrestException catch (error) {
+      throw Exception(
+        friendlyBackendMessage(
+          error.message,
+          'Não foi possível carregar as mídias anexadas.',
+        ),
+      );
+    } on StorageException catch (error) {
+      throw Exception(
+        friendlyBackendMessage(
+          error.message,
+          'Não foi possível abrir as mídias anexadas.',
+        ),
+      );
+    }
   }
 
   Future<void> markAllRead() async {

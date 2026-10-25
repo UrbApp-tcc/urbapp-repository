@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/routes.dart';
 import '../../domain/models.dart';
@@ -98,7 +99,17 @@ class _AlertsScreenState extends State<AlertsScreen> {
     );
   }
 
-  Future<void> _showAdministrationContact(AppNotification item) {
+  Future<void> _showAdministrationContact(AppNotification item) async {
+    var media = const <AdministrationContactMedia>[];
+    final requestId = item.contactRequestId;
+    if (requestId != null && item.contactMediaCount > 0) {
+      try {
+        media = await _notifications.fetchAdministrationContactMedia(requestId);
+      } catch (error) {
+        if (mounted) showUrbToast(context, friendlyError(error));
+      }
+    }
+    if (!mounted) return;
     final username = item.contactRequesterUsername;
     final requester = [
       item.contactRequesterName ?? 'Perfil institucional',
@@ -106,7 +117,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
     ].join(' · ');
     final level = item.contactRequesterLevel;
     final badge = item.contactRequesterBadge;
-    return showDialog<void>(
+    await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(item.contactSubject ?? item.title),
@@ -132,6 +143,22 @@ class _AlertsScreenState extends State<AlertsScreen> {
                 Text('Descrição', style: UrbText.label),
                 const SizedBox(height: 6),
                 Text(item.contactMessage ?? item.body, style: UrbText.bodySmall),
+                if (media.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  Text('Mídias anexadas', style: UrbText.label),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final attachment in media)
+                        _ContactMediaPreview(
+                          media: attachment,
+                          onTap: () => _openContactMedia(attachment),
+                        ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
@@ -141,6 +168,16 @@ class _AlertsScreenState extends State<AlertsScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _openContactMedia(AdministrationContactMedia media) async {
+    final opened = await launchUrl(
+      Uri.parse(media.url),
+      mode: LaunchMode.externalApplication,
+    );
+    if (!opened && mounted) {
+      showUrbToast(context, 'Não foi possível abrir a mídia anexada.');
+    }
   }
 
   @override
@@ -320,6 +357,11 @@ class _AlertRow extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: UrbText.caption,
                         ),
+                      if (item.contactMediaCount > 0)
+                        Text(
+                          '${item.contactMediaCount} ${item.contactMediaCount == 1 ? 'mídia anexada' : 'mídias anexadas'}',
+                          style: UrbText.caption.copyWith(fontWeight: FontWeight.w700),
+                        ),
                     ],
                     // Apoios usam o título da ocorrência como corpo; o link abaixo já o mostra.
                     if (item.body.isNotEmpty && item.body.trim() != occurrenceTitle?.trim()) ...[
@@ -386,6 +428,65 @@ class _ContactDetail extends StatelessWidget {
             const SizedBox(height: 2),
             Text(value, style: UrbText.bodySmall.copyWith(fontWeight: FontWeight.w700)),
           ],
+        ),
+      );
+}
+
+class _ContactMediaPreview extends StatelessWidget {
+  const _ContactMediaPreview({required this.media, required this.onTap});
+
+  final AdministrationContactMedia media;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: UrbColors.blueSoft,
+        borderRadius: BorderRadius.circular(10),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: SizedBox(
+            width: 116,
+            height: 92,
+            child: media.isImage
+                ? Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Image.network(media.url, fit: BoxFit.cover),
+                      Align(
+                        alignment: Alignment.bottomCenter,
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(5),
+                          color: Colors.black.withValues(alpha: 0.58),
+                          child: Text(
+                            media.fileName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: UrbText.caption.copyWith(color: Colors.white),
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                : Padding(
+                    padding: const EdgeInsets.all(9),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const UrbIcon(UrbIcons.camera, size: 24, color: UrbColors.blue),
+                        const SizedBox(height: 7),
+                        Text(
+                          media.fileName,
+                          maxLines: 2,
+                          textAlign: TextAlign.center,
+                          overflow: TextOverflow.ellipsis,
+                          style: UrbText.caption.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
+                  ),
+          ),
         ),
       );
 }
