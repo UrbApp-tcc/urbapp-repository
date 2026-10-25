@@ -182,6 +182,7 @@ class AdministrationCollaborator {
     required this.organizationKind,
     required this.actionsCount,
     required this.demandsCount,
+    required this.occurrenceIds,
     this.avatarUrl,
     this.lastActionAt,
   });
@@ -193,14 +194,18 @@ class AdministrationCollaborator {
   final String organizationKind;
   final int actionsCount;
   final int demandsCount;
+  final Set<int> occurrenceIds;
   final String? avatarUrl;
   final DateTime? lastActionAt;
+
+  String get identityKey => '$organizationKind:$userId';
 
   String get roleLabel => switch (role) {
     'manager' => 'Gestor',
     'agent' => 'Operador',
     'analyst' => 'Consulta',
     'member' => 'Integrante',
+    'councilor' => 'Vereador',
     _ => 'Colaborador',
   };
 }
@@ -718,6 +723,9 @@ class InstitutionalService {
                   raw['organization_kind'] as String? ?? 'administration',
               actionsCount: (raw['actions_count'] as num?)?.toInt() ?? 0,
               demandsCount: (raw['demands_count'] as num?)?.toInt() ?? 0,
+              occurrenceIds: ((raw['occurrence_ids'] as List?) ?? const [])
+                  .map((value) => (value as num).toInt())
+                  .toSet(),
               avatarUrl: raw['avatar_url'] as String?,
               lastActionAt: DateTime.tryParse(
                 raw['last_action_at'] as String? ?? '',

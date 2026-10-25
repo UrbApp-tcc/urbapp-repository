@@ -142,6 +142,18 @@ void main() {
     );
   });
 
+  test('filtra demandas pelas ocorrências vinculadas a uma pessoa', () {
+    final first = _item(_occurrence(id: 30));
+    final second = _item(_occurrence(id: 31));
+
+    final filtered = filterAdministrationDemands(
+      [first, second],
+      linkedOccurrenceIds: {31},
+    );
+
+    expect(filtered.single.occurrence.id, 31);
+  });
+
   test('prioriza reabertura e validação na próxima ação', () {
     expect(
       administrationNextAction(

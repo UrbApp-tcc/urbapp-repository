@@ -55,6 +55,7 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
   int? _agencyId;
   int? _categoryId;
   String? _neighborhood;
+  String? _personKey;
   int? _selectedMapOccurrenceId;
   int _section = 0;
   bool _loading = true;
@@ -239,13 +240,19 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
         agencyId: _agencyId,
         categoryId: _categoryId,
         neighborhood: _neighborhood,
+        linkedOccurrenceIds: _selectedPerson?.occurrenceIds,
       );
+
+  AdministrationCollaborator? get _selectedPerson => _collaborators
+      .where((person) => person.identityKey == _personKey)
+      .firstOrNull;
 
   int get _advancedFilterCount =>
       [
         _agencyId,
         _categoryId,
         _neighborhood,
+        _personKey,
       ].where((value) => value != null).length +
       (_order == AdministrationDemandOrder.attention ? 0 : 1) +
       (_quickFilters.contains(_filter) ? 0 : 1);
@@ -294,6 +301,7 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
       _agencyId = null;
       _categoryId = null;
       _neighborhood = null;
+      _personKey = null;
     });
   }
 
@@ -303,6 +311,7 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
     var neighborhood = _neighborhood;
     var order = _order;
     var situation = _filter;
+    var personKey = _personKey;
     final agencies = <int, String>{
       for (final item in _items)
         if (item.occurrence.agencyId != null &&
@@ -398,6 +407,20 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
                     if (value != null) setSheetState(() => order = value);
                   },
                 ),
+                const SizedBox(height: 14),
+                _FilterDropdown<String>(
+                  label: 'Pessoa vinculada',
+                  value: personKey,
+                  allLabel: 'Todas as pessoas',
+                  entries: [
+                    for (final person in _collaborators)
+                      MapEntry(
+                        person.identityKey,
+                        '${person.name} · ${person.roleLabel}',
+                      ),
+                  ]..sort((a, b) => a.value.compareTo(b.value)),
+                  onChanged: (value) => setSheetState(() => personKey = value),
+                ),
                 const SizedBox(height: 20),
                 UrbButton(
                   label: 'Aplicar filtros',
@@ -417,6 +440,7 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
         _neighborhood = neighborhood;
         _order = order;
         _filter = situation;
+        _personKey = personKey;
       });
     }
   }
@@ -438,7 +462,7 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
                 (0, 'Visão geral'),
                 (1, 'Demandas'),
                 (2, 'Órgãos'),
-                (3, 'Equipe'),
+                (3, 'Pessoas'),
                 (4, 'Previsões'),
                 (5, 'Mapa'),
                 (6, 'Histórico'),
@@ -457,7 +481,7 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
             0 => _buildOverview(),
             1 => _buildQueue(),
             2 => _buildAgencies(),
-            3 => _buildTeam(),
+            3 => _buildPeople(),
             4 => _buildForecasts(),
             5 => _buildOperationalMap(),
             _ => _buildHistory(),
@@ -765,6 +789,7 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
     final summaries = buildAdministrationAgencySummaries(
       _items,
       order: _agencyOrder,
+      administrationName: widget.membership.name,
     );
     return RefreshIndicator(
       onRefresh: _load,
@@ -818,6 +843,7 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
                 onTap: () {
                   setState(() {
                     _agencyId = summaries[index].agencyId;
+                    _personKey = null;
                     _section = 1;
                   });
                 },
@@ -827,30 +853,37 @@ class _AdministrationWorkspaceState extends State<AdministrationWorkspace> {
     );
   }
 
-  Widget _buildTeam() => RefreshIndicator(
+  Widget _buildPeople() => RefreshIndicator(
     onRefresh: _load,
     child: ListView(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 40),
       children: [
-        Text('Equipe da gestão', style: UrbText.h3),
+        Text('Pessoas da cidade', style: UrbText.h3),
         const SizedBox(height: 4),
         Text(
-          'Pessoas vinculadas à Prefeitura e aos órgãos municipais, com a atividade registrada no UrbApp.',
+          'Perfis institucionais da gestão, dos órgãos municipais e do Legislativo vinculados à cidade.',
           style: UrbText.bodySmall,
         ),
         const SizedBox(height: 18),
         if (_collaborators.isEmpty)
           const UrbEmptyState(
             icon: UrbIcons.profile,
-            title: 'Nenhum colaborador vinculado',
+            title: 'Nenhuma pessoa vinculada',
             message:
-                'Os integrantes credenciados da gestão e dos órgãos aparecerão aqui.',
+                'Os perfis institucionais credenciados da cidade aparecerão aqui.',
           )
         else
           for (var index = 0; index < _collaborators.length; index++)
             _CollaboratorRow(
               collaborator: _collaborators[index],
               last: index == _collaborators.length - 1,
+              onTap: () {
+                setState(() {
+                  _personKey = _collaborators[index].identityKey;
+                  _agencyId = null;
+                  _section = 1;
+                });
+              },
             ),
       ],
     ),
@@ -1453,11 +1486,47 @@ class _AgencySummaryRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Text(summary.agencyName, style: UrbText.titleSmall),
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: UrbColors.blueSoft,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: UrbColors.blue.withValues(alpha: 0.16),
+                  ),
+                ),
+                alignment: Alignment.center,
+                child: const UrbIcon(
+                  UrbIcons.building,
+                  size: 21,
+                  color: UrbColors.blue,
+                ),
               ),
-              const UrbIcon(UrbIcons.chevron, size: 15, color: UrbColors.muted),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(summary.agencyName, style: UrbText.titleSmall),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${summary.active} ativas · ${summary.inProgress} em andamento · ${summary.awaitingValidation} em validação',
+                      style: UrbText.caption,
+                    ),
+                  ],
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.only(top: 14),
+                child: UrbIcon(
+                  UrbIcons.chevron,
+                  size: 15,
+                  color: UrbColors.muted,
+                ),
+              ),
             ],
           ),
           if (members.isNotEmpty) ...[
@@ -1490,11 +1559,6 @@ class _AgencySummaryRow extends StatelessWidget {
               ],
             ),
           ],
-          const SizedBox(height: 6),
-          Text(
-            '${summary.active} ativas · ${summary.inProgress} em andamento · ${summary.awaitingValidation} em validação',
-            style: UrbText.caption,
-          ),
           const SizedBox(height: 7),
           Wrap(
             spacing: 6,
@@ -1525,59 +1589,72 @@ class _AgencySummaryRow extends StatelessWidget {
 }
 
 class _CollaboratorRow extends StatelessWidget {
-  const _CollaboratorRow({required this.collaborator, this.last = false});
+  const _CollaboratorRow({
+    required this.collaborator,
+    required this.onTap,
+    this.last = false,
+  });
 
   final AdministrationCollaborator collaborator;
+  final VoidCallback onTap;
   final bool last;
 
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(vertical: 14),
-    decoration: BoxDecoration(
-      border: last
-          ? null
-          : const Border(bottom: BorderSide(color: UrbColors.divider)),
-    ),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        UrbAvatar(
-          name: collaborator.name,
-          imageUrl: collaborator.avatarUrl,
-          size: 42,
-          rounded: false,
-          gradientSeed: collaborator.userId.hashCode,
-        ),
-        const SizedBox(width: 11),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(collaborator.name, style: UrbText.titleSmall),
-              const SizedBox(height: 2),
-              Text(
-                '${collaborator.organizationName} · ${collaborator.roleLabel}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: UrbText.caption,
-              ),
-              const SizedBox(height: 6),
-              Text(
-                '${collaborator.demandsCount} ${collaborator.demandsCount == 1 ? 'demanda movimentada' : 'demandas movimentadas'} · '
-                '${collaborator.actionsCount} ${collaborator.actionsCount == 1 ? 'ação registrada' : 'ações registradas'}',
-                style: UrbText.caption.copyWith(fontWeight: FontWeight.w700),
-              ),
-              if (collaborator.lastActionAt != null) ...[
-                const SizedBox(height: 3),
-                Text(
-                  'Última atuação ${formatRelativeTime(collaborator.lastActionAt!).toLowerCase()}',
-                  style: UrbText.caption.copyWith(color: UrbColors.muted),
-                ),
-              ],
-            ],
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      decoration: BoxDecoration(
+        border: last
+            ? null
+            : const Border(bottom: BorderSide(color: UrbColors.divider)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          UrbAvatar(
+            name: collaborator.name,
+            imageUrl: collaborator.avatarUrl,
+            size: 42,
+            rounded: false,
+            gradientSeed: collaborator.userId.hashCode,
           ),
-        ),
-      ],
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(collaborator.name, style: UrbText.titleSmall),
+                const SizedBox(height: 2),
+                Text(
+                  '${collaborator.organizationName} · ${collaborator.roleLabel}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: UrbText.caption,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '${collaborator.demandsCount} ${collaborator.demandsCount == 1 ? 'demanda vinculada' : 'demandas vinculadas'} · '
+                  '${collaborator.actionsCount} ${collaborator.actionsCount == 1 ? 'ação registrada' : 'ações registradas'}',
+                  style: UrbText.caption.copyWith(fontWeight: FontWeight.w700),
+                ),
+                if (collaborator.lastActionAt != null) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    'Última atuação ${formatRelativeTime(collaborator.lastActionAt!).toLowerCase()}',
+                    style: UrbText.caption.copyWith(color: UrbColors.muted),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          const Padding(
+            padding: EdgeInsets.only(top: 13),
+            child: UrbIcon(UrbIcons.chevron, size: 15, color: UrbColors.muted),
+          ),
+        ],
+      ),
     ),
   );
 }

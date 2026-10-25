@@ -290,6 +290,7 @@ List<AdministrationDemandItem> filterAdministrationDemands(
   int? agencyId,
   int? categoryId,
   String? neighborhood,
+  Set<int>? linkedOccurrenceIds,
   DateTime? now,
 }) {
   final reference = now ?? DateTime.now();
@@ -309,6 +310,10 @@ List<AdministrationDemandItem> filterAdministrationDemands(
     if (agencyId != null && occurrence.agencyId != agencyId) return false;
     if (categoryId != null && occurrence.categoryId != categoryId) return false;
     if (neighborhood != null && occurrence.neighborhood != neighborhood) {
+      return false;
+    }
+    if (linkedOccurrenceIds != null &&
+        !linkedOccurrenceIds.contains(occurrence.id)) {
       return false;
     }
     return switch (filter) {
@@ -375,6 +380,7 @@ List<AdministrationAgencySummary> buildAdministrationAgencySummaries(
   Iterable<AdministrationDemandItem> source, {
   DateTime? now,
   AdministrationAgencyOrder order = AdministrationAgencyOrder.attention,
+  String? administrationName,
 }) {
   final reference = now ?? DateTime.now();
   final groups = <int?, List<AdministrationDemandItem>>{};
@@ -392,7 +398,10 @@ List<AdministrationAgencySummary> buildAdministrationAgencySummaries(
           ..sort((a, b) => b.compareTo(a));
     return AdministrationAgencySummary(
       agencyId: entry.key,
-      agencyName: items.first.occurrence.agencyName ?? 'Sem órgão definido',
+      agencyName:
+          items.first.occurrence.agencyName ??
+          administrationName ??
+          'Gestão municipal',
       active: items.length,
       withoutUpdate: items
           .where((item) => item.context.latestAgencyAction == null)
