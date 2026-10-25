@@ -540,6 +540,7 @@ class AppNotification {
     this.actorKind,
     this.agencyId,
     this.occurrenceTitle,
+    this.payload = const {},
   });
 
   final int id;
@@ -553,11 +554,22 @@ class AppNotification {
   final String? actorKind;
   final int? agencyId;
   final String? occurrenceTitle;
+  final Map<String, dynamic> payload;
 
   bool get isValidation => eventType == 'validation_opened';
   bool get isOfficial => actorKind == 'agency' || actorKind == 'administration';
   bool get isResolved => eventType == 'resolution_confirmed';
   bool get isComment => type == 'occurrence_comment' || type == 'comment_reply';
+  bool get isAdministrationContact => type == 'administration_contact';
+
+  String? get contactKindLabel => _text(payload['contact_kind_label']);
+  String? get contactAdministrationName => _text(payload['administration_name']);
+  String? get contactRequesterName => _text(payload['requester_name']);
+  String? get contactRequesterUsername => _text(payload['requester_username']);
+  String? get contactRequesterBadge => _text(payload['requester_badge_name']);
+  int? get contactRequesterLevel => _intOrNull(payload['requester_level']);
+  String? get contactSubject => _text(payload['request_subject']);
+  String? get contactMessage => _text(payload['request_message']);
 
   AppNotification markRead() => AppNotification(
         id: id,
@@ -571,6 +583,7 @@ class AppNotification {
         actorKind: actorKind,
         agencyId: agencyId,
         occurrenceTitle: occurrenceTitle,
+        payload: payload,
       );
 
   factory AppNotification.fromJson(Map<String, dynamic> json) {
@@ -587,6 +600,7 @@ class AppNotification {
       actorKind: _text(payload['actor_kind']),
       agencyId: _intOrNull(payload['agency_id']),
       occurrenceTitle: _text(payload['occurrence_title']),
+      payload: payload,
     );
   }
 }

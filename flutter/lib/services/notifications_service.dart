@@ -25,6 +25,7 @@ class NotificationsService {
     'level_up',
     'badge_awarded',
     'institutional_alert',
+    'administration_contact',
   ];
 
   RealtimeChannel? _channel;

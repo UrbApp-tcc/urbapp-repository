@@ -17,6 +17,7 @@ import '../../widgets/urb/occurrence_widgets.dart';
 import '../../widgets/urb/urb_components.dart';
 import '../../widgets/urb/urb_icon.dart';
 import '../institutional/workspace_screen.dart';
+import '../institutional/administration_contact_screen.dart';
 import 'achievements_screen.dart';
 import 'history_screens.dart';
 import 'settings_screens.dart';
@@ -163,6 +164,8 @@ class _ProfileScreenState extends State<ProfileScreen> with OccurrenceListSync {
                   _stats(),
                   if (_badges.any((badge) => badge.earned) || _isMe)
                     _achievements(),
+                  if (_isMe && _access.administrations.isNotEmpty)
+                    _administrationContactShortcut(),
                   if (_isMe && _access.hasInstitutionalRole)
                     _workspaceShortcut(),
                 ],
@@ -585,6 +588,33 @@ class _ProfileScreenState extends State<ProfileScreen> with OccurrenceListSync {
         expand: true,
         onPressed: () =>
             Navigator.of(context).push(urbRoute(const WorkspaceScreen())),
+      ),
+    );
+  }
+
+  Widget _administrationContactShortcut() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+      child: UrbButton(
+        label: 'Contatar administradores',
+        icon: UrbIcons.message,
+        tone: UrbButtonTone.outline,
+        expand: true,
+        onPressed: () async {
+          final sent = await Navigator.of(context).push<bool>(
+            urbRoute(
+              AdministrationContactScreen(
+                membership: _access.administrations.first,
+              ),
+            ),
+          );
+          if (sent == true && mounted) {
+            showUrbToast(
+              context,
+              'Pedido enviado aos administradores do UrbApp.',
+            );
+          }
+        },
       ),
     );
   }

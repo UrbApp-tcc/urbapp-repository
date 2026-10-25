@@ -736,6 +736,26 @@ class InstitutionalService {
     }, 'Não foi possível carregar a equipe da gestão municipal.');
   }
 
+  Future<int> createAdministrationContactRequest({
+    required int administrationId,
+    required String kind,
+    required String subject,
+    required String message,
+  }) {
+    return _guard(() async {
+      final result = await _supabase.rpc(
+        'create_administration_contact_request',
+        params: {
+          'target_administration_id': administrationId,
+          'contact_kind': kind,
+          'contact_subject': subject.trim(),
+          'contact_message': message.trim(),
+        },
+      );
+      return (result as num).toInt();
+    }, 'Não foi possível enviar o contato aos administradores.');
+  }
+
   /// Vereadores que acompanham a ocorrência (vários podem acompanhar, spec §35).
   Future<List<OccurrenceFollower>> fetchCouncilorsFollowing(int occurrenceId) {
     return _guard(() async {

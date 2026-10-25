@@ -192,6 +192,33 @@ void main() {
       expect(notification.read, isFalse);
       expect(notification.markRead().read, isTrue);
     });
+
+    test('preserva os detalhes de um contato institucional', () {
+      final notification = AppNotification.fromJson({
+        'id': 2,
+        'type': 'administration_contact',
+        'title': 'Credenciar a Prefeitura',
+        'body': 'Precisamos concluir o credenciamento institucional.',
+        'created_at': '2026-10-24T18:30:00Z',
+        'read_at': null,
+        'payload': {
+          'contact_kind_label': 'Credenciamento institucional',
+          'administration_name': 'Gestão 2025–2028',
+          'requester_name': 'Gestão Sorocaba',
+          'requester_username': 'prefeitura.sorocaba',
+          'requester_badge_name': 'Cidadão Presente',
+          'requester_level': 2,
+          'request_subject': 'Credenciar a Prefeitura',
+          'request_message':
+              'Precisamos concluir o credenciamento institucional.',
+        },
+      });
+
+      expect(notification.isAdministrationContact, isTrue);
+      expect(notification.contactRequesterUsername, 'prefeitura.sorocaba');
+      expect(notification.contactRequesterLevel, 2);
+      expect(notification.markRead().contactRequesterBadge, 'Cidadão Presente');
+    });
   });
 
   group('Formatação', () {

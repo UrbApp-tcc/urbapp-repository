@@ -76,6 +76,10 @@ class _AlertsScreenState extends State<AlertsScreen> {
       _notifications.markRead(item.id);
       setState(() => _items = [for (final value in _items) value.id == item.id ? value.markRead() : value]);
     }
+    if (item.isAdministrationContact) {
+      await _showAdministrationContact(item);
+      return;
+    }
     final occurrenceId = item.occurrenceId;
     if (occurrenceId == null) return;
     final occurrence = _occurrenceById[occurrenceId];
@@ -91,6 +95,51 @@ class _AlertsScreenState extends State<AlertsScreen> {
       anchor: item.isComment
           ? DetailAnchor.comments
           : (item.eventType == 'report_added' ? DetailAnchor.reports : DetailAnchor.top),
+    );
+  }
+
+  Future<void> _showAdministrationContact(AppNotification item) {
+    final username = item.contactRequesterUsername;
+    final requester = [
+      item.contactRequesterName ?? 'Perfil institucional',
+      if (username != null) '@$username',
+    ].join(' · ');
+    final level = item.contactRequesterLevel;
+    final badge = item.contactRequesterBadge;
+    return showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(item.contactSubject ?? item.title),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _ContactDetail(label: 'Tipo de pedido', value: item.contactKindLabel ?? 'Contato institucional'),
+                _ContactDetail(label: 'Gestão solicitante', value: item.contactAdministrationName ?? 'Gestão municipal'),
+                _ContactDetail(label: 'Perfil de contato', value: requester),
+                _ContactDetail(
+                  label: 'Conta',
+                  value: [
+                    if (level != null) 'Nível $level',
+                    badge ?? 'Sem insígnia em destaque',
+                  ].join(' · '),
+                ),
+                _ContactDetail(label: 'Data e hora', value: formatTimelineDate(item.createdAt)),
+                const SizedBox(height: 3),
+                Text('Descrição', style: UrbText.label),
+                const SizedBox(height: 6),
+                Text(item.contactMessage ?? item.body, style: UrbText.bodySmall),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          UrbTextButton('Fechar', onPressed: () => Navigator.of(dialogContext).pop()),
+        ],
+      ),
     );
   }
 
@@ -250,6 +299,28 @@ class _AlertRow extends StatelessWidget {
                         ],
                       ),
                     ],
+                    if (item.isAdministrationContact) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        [
+                          item.contactKindLabel ?? 'Contato institucional',
+                          item.contactAdministrationName ?? 'Gestão municipal',
+                        ].join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: UrbText.caption.copyWith(color: UrbColors.blue, fontWeight: FontWeight.w800),
+                      ),
+                      if (item.contactRequesterName != null)
+                        Text(
+                          [
+                            item.contactRequesterName!,
+                            if (item.contactRequesterUsername != null) '@${item.contactRequesterUsername}',
+                          ].join(' · '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: UrbText.caption,
+                        ),
+                    ],
                     // Apoios usam o título da ocorrência como corpo; o link abaixo já o mostra.
                     if (item.body.isNotEmpty && item.body.trim() != occurrenceTitle?.trim()) ...[
                       const SizedBox(height: 3),
@@ -297,4 +368,24 @@ class _AlertRow extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ContactDetail extends StatelessWidget {
+  const _ContactDetail({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: UrbText.caption),
+            const SizedBox(height: 2),
+            Text(value, style: UrbText.bodySmall.copyWith(fontWeight: FontWeight.w700)),
+          ],
+        ),
+      );
 }
