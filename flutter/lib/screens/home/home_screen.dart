@@ -547,41 +547,67 @@ class _AdministrationSummaryEntry extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final items = [
-      ('${summary.needsAttention}', 'Precisam de atenção'),
-      ('${summary.withoutManagementResponse}', 'Sem manifestação'),
-      (summary.forecastLabel(DateTime.now()), 'Próxima previsão'),
-      ('${summary.prioritized}', 'Priorizadas'),
+      (
+        '${summary.needsAttention}',
+        'Precisam de atenção',
+        const Color(0xFFF0F2FF),
+        const Color(0xFFCAD0FF),
+        UrbColors.blue,
+      ),
+      (
+        '${summary.withoutManagementResponse}',
+        'Sem manifestação',
+        const Color(0xFFFFF7E8),
+        const Color(0xFFF2D9A7),
+        const Color(0xFF9A6400),
+      ),
+      (
+        summary.forecastLabel(DateTime.now()),
+        'Próxima previsão',
+        const Color(0xFFEDF7F4),
+        const Color(0xFFBFDCD3),
+        const Color(0xFF20735E),
+      ),
+      (
+        '${summary.prioritized}',
+        'Priorizadas',
+        const Color(0xFFF7F1FA),
+        const Color(0xFFDDC6E8),
+        const Color(0xFF7D4B91),
+      ),
     ];
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Resumo da atuação', style: UrbText.titleSmall),
-                  Text('Gestão municipal · $cityName', style: UrbText.caption),
-                ],
-              ),
-            ),
-            UrbTextButton('Abrir', onPressed: onOpen),
-          ],
+        Text(
+          'Resumo da atuação',
+          textAlign: TextAlign.center,
+          style: UrbText.titleSmall.copyWith(fontWeight: FontWeight.w800),
         ),
-        const SizedBox(height: 9),
+        const SizedBox(height: 2),
+        Text(
+          'Gestão municipal · $cityName',
+          textAlign: TextAlign.center,
+          style: UrbText.caption,
+        ),
+        const SizedBox(height: 10),
         Row(
           children: [
             for (var index = 0; index < items.length; index++) ...[
               Expanded(
                 child: Material(
-                  color: index == 0
-                      ? UrbColors.blueSoft
-                      : const Color(0xFFF7F8F7),
-                  borderRadius: BorderRadius.circular(11),
+                  color: items[index].$3,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(color: items[index].$4),
+                  ),
+                  clipBehavior: Clip.antiAlias,
                   child: InkWell(
-                    borderRadius: BorderRadius.circular(11),
                     onTap: onOpen,
+                    overlayColor: WidgetStateProperty.resolveWith(
+                      (states) => states.contains(WidgetState.pressed)
+                          ? items[index].$5.withValues(alpha: 0.10)
+                          : Colors.transparent,
+                    ),
                     child: SizedBox(
                       height: 82,
                       child: Padding(
@@ -597,9 +623,7 @@ class _AdministrationSummaryEntry extends StatelessWidget {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: UrbText.h3.copyWith(
-                                color: index == 0
-                                    ? UrbColors.blue
-                                    : UrbColors.navy,
+                                color: items[index].$5,
                               ),
                             ),
                             const Spacer(),
