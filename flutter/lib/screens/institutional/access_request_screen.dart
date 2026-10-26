@@ -14,13 +14,21 @@ import '../../widgets/urb/urb_components.dart';
 import '../../widgets/urb/urb_icon.dart';
 
 class _RequestSummary {
-  const _RequestSummary({required this.kind, required this.name, required this.cityName, required this.status, required this.createdAt});
+  const _RequestSummary({
+    required this.kind,
+    required this.name,
+    required this.cityName,
+    required this.status,
+    required this.createdAt,
+    this.reviewNotes,
+  });
 
   final String kind;
   final String name;
   final String cityName;
   final String status;
   final DateTime createdAt;
+  final String? reviewNotes;
 }
 
 /// Solicitação de perfil institucional (vereador, órgão ou gestão municipal).
@@ -57,7 +65,7 @@ class _AccessRequestScreenState extends State<AccessRequestScreen> {
         AgencyService().fetchOwnAgencyRequests(userId),
         Supabase.instance.client
             .from('councilor_profile_requests')
-            .select('public_name, status, created_at, cities(name)')
+            .select('public_name, status, review_notes, created_at, cities(name)')
             .eq('requester_user_id', userId)
             .order('created_at', ascending: false),
       ]);
@@ -73,6 +81,7 @@ class _AccessRequestScreenState extends State<AccessRequestScreen> {
               cityName: request.cityName,
               status: request.status,
               createdAt: request.createdAt,
+              reviewNotes: request.reviewNotes,
             ),
           for (final request in councilorRequests)
             _RequestSummary(
@@ -81,6 +90,7 @@ class _AccessRequestScreenState extends State<AccessRequestScreen> {
               cityName: asJsonMap(request['cities'])?['name'] as String? ?? '',
               status: request['status'] as String? ?? 'pending',
               createdAt: DateTime.parse(request['created_at'] as String),
+              reviewNotes: request['review_notes'] as String?,
             ),
         ]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
       });
@@ -178,6 +188,10 @@ class _AccessRequestScreenState extends State<AccessRequestScreen> {
               UrbDotRow(
                 title: _requests[index].name,
                 subtitle: '${_requests[index].kind} · ${_requests[index].cityName} · ${formatDate(_requests[index].createdAt)}',
+                note: _requests[index].status == 'rejected' && _requests[index].reviewNotes != null
+                    ? 'Motivo: ${_requests[index].reviewNotes}'
+                    : null,
+                noteColor: UrbColors.danger,
                 trailingText: _statusLabel(_requests[index].status),
                 dotColor: switch (_requests[index].status) {
                   'approved' => UrbColors.success,

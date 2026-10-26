@@ -363,3 +363,44 @@ from (
 where not exists (
   select 1 from public.post_images image where image.post_id = first_post.id
 );
+
+-- Pedidos de perfil institucional para a verificação da administração:
+-- dois aguardando análise e um já rejeitado (aparece no histórico).
+insert into public.councilor_profile_requests (
+  requester_user_id, city_id, public_name, party, mandate_starts_on, mandate_ends_on,
+  institutional_email, proof_summary, proof_links, created_at
+)
+select profile.id, profile.city_id, 'Rafael Nunes', 'PEX', date '2025-01-01', date '2028-12-31',
+       'rafael.nunes@camarasorocaba.sp.gov.br',
+       'Vereador eleito em 2024; diploma emitido pelo TRE-SP e cadastro no portal da Câmara Municipal.',
+       'https://www.camarasorocaba.sp.gov.br/vereadores', now() - interval '2 days'
+from public.profiles profile
+join auth.users account on account.id = profile.id
+where account.email = 'rafael@urbapp.test';
+
+insert into public.agency_profile_requests (
+  requester_user_id, city_id, agency_name, agency_type, request_kind, institutional_email,
+  requester_role, proof_summary, proof_links, created_at
+)
+select profile.id, profile.city_id, 'Secretaria do Meio Ambiente', 'Secretaria', 'agency',
+       'camila.souza@sorocaba.sp.gov.br', 'Assessora técnica',
+       'Servidora lotada na secretaria; portaria de nomeação publicada no Diário Oficial do município.',
+       'https://noticias.sorocaba.sp.gov.br/diario-oficial', now() - interval '1 day'
+from public.profiles profile
+join auth.users account on account.id = profile.id
+where account.email = 'camila@urbapp.test';
+
+insert into public.agency_profile_requests (
+  requester_user_id, city_id, agency_name, agency_type, request_kind, institutional_email,
+  requester_role, proof_summary, status, review_notes, reviewed_at, reviewed_by, created_at
+)
+select profile.id, profile.city_id, 'Prefeitura de Sorocaba', 'Prefeitura Municipal', 'administration',
+       'mariana.lopes@gmail.com', 'Estagiária',
+       'Trabalho na prefeitura e quero acompanhar as demandas do bairro.',
+       'rejected', 'E-mail pessoal e sem documento que comprove o vínculo com a gestão municipal.',
+       now() - interval '5 days',
+       (select account.id from auth.users account where account.email = 'admin@urbapp.test'),
+       now() - interval '6 days'
+from public.profiles profile
+join auth.users account on account.id = profile.id
+where account.email = 'mariana@urbapp.test';

@@ -562,6 +562,10 @@ class AppNotification {
   bool get isComment => type == 'occurrence_comment' || type == 'comment_reply';
   bool get isAdministrationContact => type == 'administration_contact';
 
+  /// Decisão da administração sobre um pedido de perfil institucional.
+  bool get isInstitutionalReview => type == 'institutional_review';
+  bool get isInstitutionalApproval => isInstitutionalReview && payload['decision'] == 'approved';
+
   String? get contactKindLabel => _text(payload['contact_kind_label']);
   String? get contactAdministrationName => _text(payload['administration_name']);
   String? get contactRequesterName => _text(payload['requester_name']);

@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/routes.dart';
 import '../../domain/models.dart';
+import '../../services/institutional_service.dart';
 import '../../services/notifications_service.dart';
 import '../../services/occurrence_service.dart';
 import '../../theme/app_theme.dart';
@@ -11,6 +12,8 @@ import '../../utils/date_formatter.dart';
 import '../../utils/error_formatter.dart';
 import '../../widgets/urb/urb_components.dart';
 import '../../widgets/urb/urb_icon.dart';
+import '../institutional/access_request_screen.dart';
+import '../institutional/workspace_screen.dart';
 
 /// Alertas (sino com badge nos cabeçalhos principais, spec §44.5).
 class AlertsScreen extends StatefulWidget {
@@ -79,6 +82,14 @@ class _AlertsScreenState extends State<AlertsScreen> {
     }
     if (item.isAdministrationContact) {
       await _showAdministrationContact(item);
+      return;
+    }
+    if (item.isInstitutionalReview) {
+      // A aprovação muda os papéis da conta; o cache de acesso é refeito.
+      InstitutionalService.clearCache();
+      await Navigator.of(context).push(urbRoute(
+        item.isInstitutionalApproval ? const WorkspaceScreen() : const AccessRequestScreen(),
+      ));
       return;
     }
     final occurrenceId = item.occurrenceId;
@@ -267,7 +278,7 @@ class _AlertRow extends StatelessWidget {
     final headingColor = !item.read ? UrbColors.navy : (muted ? UrbColors.muted : const Color(0xFF627082));
     final institutionName = item.isOfficial
         ? (item.actorKind == 'administration' ? 'Prefeitura' : institution)
-        : null;
+        : (item.isInstitutionalReview ? 'Administração do UrbApp' : null);
     return Material(
       color: Colors.transparent,
       child: InkWell(

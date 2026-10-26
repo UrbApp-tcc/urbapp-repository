@@ -37,7 +37,9 @@ class NotificationsService {
   /// Contador de não lidos compartilhado pelos sinos dos cabeçalhos.
   static final ValueNotifier<int> unreadCount = ValueNotifier<int>(0);
 
-  static const _visibleTypes = [
+  /// Tipos exibidos na central de Alertas; um tipo novo do backend precisa
+  /// entrar aqui para aparecer.
+  static const visibleTypes = [
     'occurrence_event',
     'occurrence_support',
     'occurrence_comment',
@@ -47,6 +49,7 @@ class NotificationsService {
     'badge_awarded',
     'institutional_alert',
     'administration_contact',
+    'institutional_review',
   ];
 
   RealtimeChannel? _channel;
@@ -59,7 +62,7 @@ class NotificationsService {
           .from('notifications')
           .select('id, type, title, body, payload, read_at, created_at')
           .eq('user_id', userId)
-          .inFilter('type', _visibleTypes)
+          .inFilter('type', visibleTypes)
           .order('created_at', ascending: false)
           .limit(limit);
       final items = (rows as List)
@@ -91,7 +94,7 @@ class NotificationsService {
           .from('notifications')
           .select('id')
           .eq('user_id', userId)
-          .inFilter('type', _visibleTypes)
+          .inFilter('type', visibleTypes)
           .isFilter('read_at', null)
           .count(CountOption.exact);
       unreadCount.value = response.count;
@@ -189,7 +192,7 @@ class NotificationsService {
             value: userId,
           ),
           callback: (payload) {
-            if (_visibleTypes.contains(payload.newRecord['type'])) {
+            if (visibleTypes.contains(payload.newRecord['type'])) {
               unreadCount.value += 1;
             }
           },
