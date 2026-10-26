@@ -82,29 +82,18 @@ class _RankingsScreenState extends State<RankingsScreen> {
       body: RefreshIndicator(
         onRefresh: _load,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
+          padding: const EdgeInsets.fromLTRB(18, 16, 18, 40),
           children: [
-            Text(
-              'Como as cidades resolvem suas ocorrências e quem mais participa em $cityName.',
-              style: UrbText.bodySmall,
-            ),
-            const SizedBox(height: 18),
-            _RankingCard(
-              title: 'Cidades',
-              criterion: 'Taxa de resolução',
-              period: RankingPeriod.all,
-              action: 'Ver ranking de cidades',
-              onAction: () => openCityRanking(context),
-              child: _citiesPreview(),
-            ),
-            const SizedBox(height: 16),
-            _RankingCard(
-              title: 'Cidadãos em $cityName',
-              criterion: 'Pontos de participação',
-              period: RankingPeriod.all,
-              action: 'Ver ranking de cidadãos',
-              onAction: () => openCitizenRanking(context),
-              child: _citizensPreview(),
+            _citiesTile(),
+            const SizedBox(height: 12),
+            _citizensTile(cityName),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Text(
+                'Gestões, órgãos e vereadores não entram em ranking.',
+                style: UrbText.meta.copyWith(fontSize: 12, fontWeight: FontWeight.w600, color: UrbColors.muted),
+              ),
             ),
           ],
         ),
@@ -112,155 +101,200 @@ class _RankingsScreenState extends State<RankingsScreen> {
     );
   }
 
-  Widget _citiesPreview() {
+  /// Bloco lime: as três primeiras cidades e a sua, quando fica de fora.
+  Widget _citiesTile() {
     final rows = _cities;
-    if (_citiesFailed) return _note('Não foi possível carregar o comparativo agora.');
-    if (rows == null) return const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: UrbLoadingView());
-    final top = rows.where((row) => row.qualified).take(3).toList();
-    final mine = rows.where((row) => row.cityId == _city?.id).firstOrNull;
+    final top = rows?.where((row) => row.qualified).take(3).toList() ?? const <CityRankingRow>[];
+    final mine = rows?.where((row) => row.cityId == _city?.id).firstOrNull;
     final mineInTop = mine != null && top.any((row) => row.cityId == mine.cityId);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (top.isEmpty) _note('Ainda não há cidades com amostra suficiente para classificação.'),
-        for (var index = 0; index < top.length; index++)
-          _CityRow(
-            row: top[index],
-            byTime: false,
-            mine: top[index].cityId == _city?.id,
-            last: index == top.length - 1,
-            fraction: top[index].resolutionRate / 100,
-          ),
-        if (mine != null && !mineInTop)
-          _MineStrip(
-            title: 'Sua cidade · ${mine.cityName}',
-            detail: mine.qualified
-                ? '${mine.position}º lugar em taxa de resolução'
-                : 'Sem posição: ${mine.eligible} de ${mine.minimumRequired} ocorrências mínimas',
-            value: '${formatDecimal(mine.resolutionRate)}%',
-          ),
-      ],
+    final Widget content;
+    if (_citiesFailed) {
+      content = _note('Não foi possível carregar o comparativo agora.');
+    } else if (rows == null) {
+      content = const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: UrbLoadingView());
+    } else {
+      content = Column(
+        children: [
+          if (top.isEmpty) _note('Ainda não há cidades com amostra suficiente para classificação.'),
+          for (final row in top) _CityPreviewLine(row: row, mine: row.cityId == _city?.id),
+          if (mine != null && !mineInTop) _CityPreviewLine(row: mine, mine: true),
+        ],
+      );
+    }
+    return _BentoBlock(
+      lime: true,
+      title: 'Cidades',
+      criterion: 'por taxa de resolução confirmada',
+      glyph: const _Bars(),
+      action: 'Ver ranking de cidades',
+      onAction: () => openCityRanking(context),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+        child: content,
+      ),
     );
   }
 
-  Widget _citizensPreview() {
-    if (_city == null) return _note('Escolha uma cidade para ver a participação.');
+  /// Bloco branco: a sua posição em destaque; sem posição, os três primeiros.
+  Widget _citizensTile(String cityName) {
     final entries = _citizens;
-    if (_citizensFailed) return _note('Não foi possível carregar a participação agora.');
-    if (entries == null) return const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: UrbLoadingView());
     final standing = _standing;
     final position = standing?.eligible == true ? standing?.position : null;
-    final mineInTop = entries.any((entry) => entry.profileId == _userId);
-    final leader = entries.isEmpty ? 0 : entries.first.points;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (entries.isEmpty) _note('Os primeiros moradores a participar aparecerão aqui.'),
-        for (var index = 0; index < entries.length; index++)
-          _RankingRow(
-            entry: entries[index],
-            mine: entries[index].profileId == _userId,
-            last: index == entries.length - 1,
-            fraction: leader == 0 ? 0 : entries[index].points / leader,
-          ),
-        if (!mineInTop && position != null)
-          _MineStrip(
-            title: 'Você',
-            detail: '$positionº de ${plural(standing!.participants, 'cidadão', 'cidadãos')}',
-            value: '${formatCount(standing.points)} pts',
-          )
-        else if (!mineInTop && standing != null && standing.eligible && position == null && entries.isNotEmpty)
-          _note('Você ainda não aparece neste ranking.'),
-      ],
-    );
-  }
-
-  Widget _note(String text) => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
-    child: Text(text, style: UrbText.caption.copyWith(color: UrbColors.textSecondary)),
-  );
-}
-
-// -----------------------------------------------------------------------------
-// Peças visuais compartilhadas
-// -----------------------------------------------------------------------------
-
-/// Card de prévia da página Rankings: mesma superfície dos cards de ocorrência,
-/// cabeçalho com critério e período, e a ação como rodapé.
-class _RankingCard extends StatelessWidget {
-  const _RankingCard({
-    required this.title,
-    required this.criterion,
-    required this.period,
-    required this.action,
-    required this.onAction,
-    required this.child,
-  });
-
-  final String title;
-  final String criterion;
-  final RankingPeriod period;
-  final String action;
-  final VoidCallback onAction;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return _CardSurface(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+    final Widget content;
+    if (_city == null) {
+      content = _note('Escolha uma cidade para ver a participação.');
+    } else if (_citizensFailed) {
+      content = _note('Não foi possível carregar a participação agora.');
+    } else if (entries == null) {
+      content = const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: UrbLoadingView());
+    } else if (position != null) {
+      content = Row(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
-            child: Row(
+          Text('$positionº', style: _bigNumber(44)),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(title, style: UrbText.h3),
-                      const SizedBox(height: 2),
-                      Text(criterion, style: UrbText.caption.copyWith(fontSize: 12)),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(color: UrbColors.blueSoft, borderRadius: BorderRadius.circular(7)),
-                  child: Text(
-                    period.label,
-                    style: UrbText.caption.copyWith(color: UrbColors.blue, fontWeight: FontWeight.w800),
-                  ),
+                Text('sua posição', style: UrbText.label.copyWith(fontWeight: FontWeight.w800, color: UrbColors.ink)),
+                Text(
+                  'entre ${plural(standing!.participants, 'cidadão', 'cidadãos')} · ${formatCount(standing.points)} pts',
+                  style: UrbText.meta.copyWith(fontSize: 12, fontWeight: FontWeight.w600, color: UrbColors.muted),
                 ),
               ],
             ),
           ),
+        ],
+      );
+    } else if (entries.isEmpty) {
+      content = _note('Os primeiros moradores a participar aparecerão aqui.');
+    } else {
+      content = Column(
+        children: [
+          for (final entry in entries) _CitizenPreviewLine(entry: entry, mine: entry.profileId == _userId),
+        ],
+      );
+    }
+    return _BentoBlock(
+      lime: false,
+      title: 'Cidadãos em $cityName',
+      criterion: 'por pontos de participação: registros, validações e apoios',
+      action: 'Ver ranking de cidadãos',
+      onAction: () => openCitizenRanking(context),
+      child: content,
+    );
+  }
+
+  Widget _note(String text) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 12),
+    child: Text(text, style: UrbText.caption.copyWith(fontSize: 12, color: UrbColors.textSecondary)),
+  );
+}
+
+TextStyle _bigNumber(double size, {Color color = UrbColors.ink}) => UrbText.display.copyWith(
+  fontSize: size,
+  fontWeight: FontWeight.w800,
+  letterSpacing: -0.05 * size,
+  height: 1.05,
+  color: color,
+);
+
+/// Bloco de prévia da página Rankings: título forte, critério, conteúdo e a
+/// ação como botão no rodapé (navy sobre o lime, contornado sobre o branco).
+class _BentoBlock extends StatelessWidget {
+  const _BentoBlock({
+    required this.lime,
+    required this.title,
+    required this.criterion,
+    required this.action,
+    required this.onAction,
+    required this.child,
+    this.glyph,
+  });
+
+  final bool lime;
+  final String title;
+  final String criterion;
+  final String action;
+  final VoidCallback onAction;
+  final Widget child;
+  final Widget? glyph;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: lime ? UrbColors.lime : Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: lime ? null : Border.all(color: UrbColors.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: UrbText.h2.copyWith(fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -1, color: UrbColors.ink),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      criterion,
+                      style: UrbText.meta.copyWith(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: lime ? const Color(0xFF3E4C2A) : UrbColors.muted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (glyph != null) ...[const SizedBox(width: 12), glyph!],
+            ],
+          ),
+          const SizedBox(height: 16),
           child,
-          const SizedBox(height: 4),
+          const SizedBox(height: 16),
           Semantics(
             button: true,
             label: action,
             excludeSemantics: true,
             onTap: onAction,
-            child: InkWell(
-              onTap: onAction,
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
-                decoration: const BoxDecoration(
-                  border: Border(top: BorderSide(color: UrbColors.divider)),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        action,
-                        style: UrbText.label.copyWith(color: UrbColors.blue, fontWeight: FontWeight.w800),
-                      ),
+            child: Material(
+              color: lime ? UrbColors.navy : Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+                side: lime ? BorderSide.none : const BorderSide(color: UrbColors.line),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: onAction,
+                child: SizedBox(
+                  height: 46,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            action,
+                            style: UrbText.button.copyWith(
+                              fontWeight: FontWeight.w800,
+                              color: lime ? Colors.white : UrbColors.navy,
+                            ),
+                          ),
+                        ),
+                        UrbIcon(UrbIcons.chevron, size: 16, color: lime ? UrbColors.lime : UrbColors.navy, strokeWidth: 2.6),
+                      ],
                     ),
-                    const UrbIcon(UrbIcons.chevron, size: 16, color: UrbColors.blue),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -271,39 +305,144 @@ class _RankingCard extends StatelessWidget {
   }
 }
 
-/// Superfície branca dos cards do UrbApp (borda e sombra dos cards de ocorrência).
-class _CardSurface extends StatelessWidget {
-  const _CardSurface({required this.child});
-
-  final Widget child;
+/// Três barras sólidas navy (o mesmo glifo do bloco de Rankings no hub).
+class _Bars extends StatelessWidget {
+  const _Bars();
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(UrbRadius.lg),
-        border: Border.all(color: const Color(0xFFDFE4E5)),
-        boxShadow: const [BoxShadow(color: Color(0x0A122234), blurRadius: 30, offset: Offset(0, 8))],
+    Widget bar(double height) => Container(
+      width: 12,
+      height: height,
+      decoration: BoxDecoration(color: UrbColors.navy, borderRadius: BorderRadius.circular(4)),
+    );
+    return SizedBox(
+      height: 36,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [bar(22), const SizedBox(width: 4), bar(36), const SizedBox(width: 4), bar(14)],
       ),
-      clipBehavior: Clip.antiAlias,
-      child: child,
     );
   }
 }
 
+class _CityPreviewLine extends StatelessWidget {
+  const _CityPreviewLine({required this.row, required this.mine});
+
+  final CityRankingRow row;
+  final bool mine;
+
+  @override
+  Widget build(BuildContext context) {
+    final position = row.qualified && row.position != null ? '${row.position}º' : '–';
+    return InkWell(
+      onTap: () => openCityTransparency(context, row.cityId),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 11),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 32,
+              child: Text(
+                position,
+                style: UrbText.title.copyWith(fontSize: 15, fontWeight: FontWeight.w800, color: mine ? UrbColors.blue : UrbColors.muted),
+              ),
+            ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text.rich(
+                    TextSpan(
+                      text: row.cityName,
+                      children: [
+                        if (mine) const TextSpan(text: ' · sua cidade', style: TextStyle(color: UrbColors.blue)),
+                      ],
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: UrbText.titleSmall.copyWith(fontWeight: FontWeight.w800, color: UrbColors.ink),
+                  ),
+                  Text(
+                    row.qualified
+                        ? plural(row.eligible, 'ocorrência', 'ocorrências')
+                        : 'Sem posição: ${row.eligible} de ${row.minimumRequired} mínimas',
+                    style: UrbText.meta.copyWith(fontSize: 12, fontWeight: FontWeight.w600, color: UrbColors.muted),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text('${formatDecimal(row.resolutionRate, digits: 0)}%', style: _bigNumber(16)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CitizenPreviewLine extends StatelessWidget {
+  const _CitizenPreviewLine({required this.entry, required this.mine});
+
+  final CitizenRankingEntry entry;
+  final bool mine;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => openUserProfile(context, entry.profileId),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 32,
+              child: Text(
+                '${entry.position}º',
+                style: UrbText.title.copyWith(fontSize: 15, fontWeight: FontWeight.w800, color: UrbColors.muted),
+              ),
+            ),
+            UrbAvatar(name: entry.name, imageUrl: entry.avatarUrl, size: 30, rounded: false, gradientSeed: entry.position),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                mine ? 'Você' : entry.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: UrbText.titleSmall.copyWith(fontWeight: FontWeight.w800, color: UrbColors.ink),
+              ),
+            ),
+            Text('${formatCount(entry.points)} pts', style: UrbText.label.copyWith(fontWeight: FontWeight.w800, color: UrbColors.navy)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Peças visuais compartilhadas
+// -----------------------------------------------------------------------------
+
 /// Situação do usuário (ou da cidade dele) quando ela fica fora da prévia.
 class _MineStrip extends StatelessWidget {
-  const _MineStrip({required this.title, required this.detail, required this.value});
+  const _MineStrip({
+    required this.title,
+    required this.detail,
+    required this.value,
+    this.margin = const EdgeInsets.fromLTRB(12, 8, 12, 6),
+  });
 
   final String title;
   final String detail;
   final String value;
+  final EdgeInsetsGeometry margin;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 6),
+      margin: margin,
       padding: const EdgeInsets.fromLTRB(12, 10, 14, 10),
       decoration: BoxDecoration(
         color: UrbColors.blueSoft,
@@ -356,11 +495,10 @@ class _LimeDot extends StatelessWidget {
 
 /// Barra proporcional ao valor da linha (taxa, tempo ou pontos).
 class _ValueBar extends StatelessWidget {
-  const _ValueBar({required this.fraction, this.color = UrbColors.blue, this.track = const Color(0x174657EF)});
+  const _ValueBar({required this.fraction, this.color = UrbColors.blue});
 
   final double fraction;
   final Color color;
-  final Color track;
 
   @override
   Widget build(BuildContext context) {
@@ -372,7 +510,7 @@ class _ValueBar extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            ColoredBox(color: track),
+            const ColoredBox(color: Color(0x174657EF)),
             FractionallySizedBox(
               alignment: Alignment.centerLeft,
               widthFactor: value == 0 ? 0 : value.clamp(0.03, 1.0),
@@ -428,95 +566,22 @@ class _PositionMark extends StatelessWidget {
   }
 }
 
-/// Destaque azul do topo das listas completas: a situação da sua cidade ou a
-/// sua posição. É o único bloco de cor forte da tela.
-class _Spotlight extends StatelessWidget {
-  const _Spotlight({
-    required this.label,
-    required this.value,
-    required this.valueCaption,
-    required this.side,
-    required this.sideCaption,
-    required this.semanticsLabel,
-    this.progress,
-    this.footnote,
-  });
+/// Grupo branco das listas completas: um só bloco, com fios finos entre as linhas.
+class _ListGroup extends StatelessWidget {
+  const _ListGroup({required this.children});
 
-  final String label;
-  final String value;
-  final String valueCaption;
-  final String side;
-  final String sideCaption;
-  final String semanticsLabel;
-  final double? progress;
-  final String? footnote;
+  final List<Widget> children;
 
   @override
   Widget build(BuildContext context) {
-    final soft = Colors.white.withValues(alpha: 0.78);
-    return Semantics(
-      container: true,
-      label: semanticsLabel,
-      excludeSemantics: true,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
-        decoration: BoxDecoration(color: UrbColors.blue, borderRadius: BorderRadius.circular(UrbRadius.lg)),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                const _LimeDot(),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: UrbText.label.copyWith(color: Colors.white, fontWeight: FontWeight.w800),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        value,
-                        style: UrbText.hero.copyWith(fontSize: 50, letterSpacing: -2.6, height: 1, color: Colors.white),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(valueCaption, style: UrbText.caption.copyWith(fontSize: 12, color: soft)),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(side, style: UrbText.h1.copyWith(color: Colors.white)),
-                    const SizedBox(height: 4),
-                    Text(sideCaption, style: UrbText.caption.copyWith(fontSize: 12, color: soft)),
-                  ],
-                ),
-              ],
-            ),
-            if (progress != null) ...[
-              const SizedBox(height: 16),
-              _ValueBar(fraction: progress!, color: UrbColors.lime, track: Colors.white.withValues(alpha: 0.22)),
-            ],
-            if (footnote != null) ...[
-              SizedBox(height: progress != null ? 8 : 14),
-              Text(footnote!, style: UrbText.caption.copyWith(fontSize: 12, color: Colors.white)),
-            ],
-          ],
-        ),
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(UrbRadius.lg),
+        border: Border.all(color: UrbColors.line),
       ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(children: children),
     );
   }
 }
@@ -574,7 +639,7 @@ class _RankLine extends StatelessWidget {
                 Container(width: 3, color: mine ? UrbColors.lime : Colors.transparent),
                 Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(11, 12, 16, 13),
+                    padding: const EdgeInsets.fromLTRB(11, 11, 16, 11),
                     child: Row(
                       children: [
                         _PositionMark(position),
@@ -657,6 +722,7 @@ class _CityRankingScreenState extends State<CityRankingScreen> {
   bool _hasMore = false;
   bool _loadingMore = false;
   String? _error;
+  bool _showUnranked = false;
 
   @override
   void initState() {
@@ -717,8 +783,9 @@ class _CityRankingScreenState extends State<CityRankingScreen> {
       eyebrow: 'Ranking de cidades',
       title: 'Como este indicador é calculado?',
       intro:
-          'Os indicadores usam só ocorrências únicas de competência municipal. Relatos adicionais, '
-          'duplicatas absorvidas e ocorrências invalidadas pela moderação não contam.',
+          'São indicadores objetivos das ocorrências, sem score composto: não avaliam governos nem agentes '
+          'políticos. Usam só ocorrências únicas de competência municipal; relatos adicionais, duplicatas '
+          'absorvidas e ocorrências invalidadas pela moderação não contam.',
       builder: (_) => _CityRankingInfo(settings: settings),
     );
   }
@@ -735,33 +802,49 @@ class _CityRankingScreenState extends State<CityRankingScreen> {
     return seconds == null || maxSeconds == 0 ? null : seconds / maxSeconds;
   }
 
-  Widget _mySpotlight(CityRankingRow row, int rankedCount) {
+  Widget _myStrip(CityRankingRow row, int rankedCount) {
     final byTime = _indicator == CityIndicator.resolutionTime;
     final value = byTime ? _cityDays(row.medianResolutionSeconds) : '${formatDecimal(row.resolutionRate)}%';
     final sample = byTime ? row.resolved : row.eligible;
-    final sampleNoun = byTime ? 'resoluções' : 'ocorrências';
-    final position = row.qualified ? '${row.position}º' : '—';
-    final sideCaption = !row.qualified
-        ? 'sem posição'
-        : (_hasMore ? 'na classificação' : 'de ${plural(rankedCount, 'cidade', 'cidades')}');
-    final footnote = row.qualified
-        ? (byTime
-              ? 'Mediana de ${plural(row.resolved, 'resolução confirmada', 'resoluções confirmadas')}.'
-              : '${formatCount(row.resolved)} de ${plural(row.eligible, 'ocorrência resolvida', 'ocorrências resolvidas')}.')
-        : '$sample de ${row.minimumRequired} $sampleNoun necessárias para entrar na classificação.';
+    final noun = byTime ? 'resoluções' : 'ocorrências';
+    final detail = row.qualified
+        ? '${row.position}º ${_hasMore ? 'na classificação' : 'de ${plural(rankedCount, 'cidade', 'cidades')}'}'
+        : 'Sem posição · $sample de ${row.minimumRequired} $noun para entrar';
     return Padding(
-      padding: const EdgeInsets.only(top: 16),
-      child: _Spotlight(
-        label: 'Sua cidade · ${row.cityName} · ${row.stateCode}',
+      padding: const EdgeInsets.only(top: 12),
+      child: _MineStrip(
+        margin: EdgeInsets.zero,
+        title: 'Sua cidade · ${row.cityName}',
+        detail: detail,
         value: value,
-        valueCaption: '${_indicator.label.toLowerCase()} · ${_period.label}',
-        side: position,
-        sideCaption: sideCaption,
-        progress: row.qualified || row.minimumRequired == 0 ? null : sample / row.minimumRequired,
-        footnote: footnote,
-        semanticsLabel:
-            'Sua cidade, ${row.cityName}: $value de ${_indicator.label.toLowerCase()}. '
-            '${row.qualified ? 'Posição $position.' : 'Sem posição.'} $footnote',
+      ),
+    );
+  }
+
+  Widget _unrankedToggle(int count) {
+    final label = '${plural(count, 'cidade', 'cidades')} ainda sem amostra mínima';
+    return Semantics(
+      button: true,
+      expanded: _showUnranked,
+      label: label,
+      excludeSemantics: true,
+      onTap: () => setState(() => _showUnranked = !_showUnranked),
+      child: InkWell(
+        onTap: () => setState(() => _showUnranked = !_showUnranked),
+        borderRadius: BorderRadius.circular(UrbRadius.sm),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+          child: Row(
+            children: [
+              Expanded(child: Text(label, style: UrbText.label.copyWith(color: UrbColors.textSecondary))),
+              AnimatedRotation(
+                turns: _showUnranked ? 0.5 : 0,
+                duration: const Duration(milliseconds: 180),
+                child: const UrbIcon(UrbIcons.chevronDown, size: 18, color: UrbColors.muted),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -784,16 +867,8 @@ class _CityRankingScreenState extends State<CityRankingScreen> {
       body: RefreshIndicator(
         onRefresh: _load,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
           children: [
-            Text(_indicator.label, style: UrbText.h1),
-            const SizedBox(height: 6),
-            Text(
-              'Indicadores objetivos das ocorrências municipais, sem score composto. '
-              'Não avalia governos nem agentes políticos.',
-              style: UrbText.bodySmall,
-            ),
-            const SizedBox(height: 16),
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -810,7 +885,7 @@ class _CityRankingScreenState extends State<CityRankingScreen> {
                   ),
               ],
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             Row(
               children: [
                 for (final period in const [RankingPeriod.all, RankingPeriod.month]) ...[
@@ -829,8 +904,8 @@ class _CityRankingScreenState extends State<CityRankingScreen> {
                 UrbTextButton('Como é calculado?', color: UrbColors.muted, onPressed: _showInfo),
               ],
             ),
-            if (mine != null) _mySpotlight(mine, ranked.length),
-            const SizedBox(height: 18),
+            if (mine != null) _myStrip(mine, ranked.length),
+            const SizedBox(height: 16),
             if (_error != null)
               UrbErrorState(message: _error!, onRetry: _load)
             else if (rows == null)
@@ -843,48 +918,37 @@ class _CityRankingScreenState extends State<CityRankingScreen> {
                     : 'Ainda não há ocorrências municipais registradas.',
               )
             else ...[
-              Text('Classificação', style: UrbText.h3),
-              const SizedBox(height: 2),
-              Text(
-                byTime
-                    ? 'Mediana do tempo entre o registro e a resolução confirmada. Menor é melhor.'
-                    : (_period == RankingPeriod.month
-                          ? 'Das ocorrências criadas este mês, quantas já foram resolvidas.'
-                          : 'Das ocorrências criadas desde o início, quantas foram resolvidas.'),
-                style: UrbText.caption.copyWith(fontSize: 12),
+              Padding(
+                padding: const EdgeInsets.only(left: 2, bottom: 8),
+                child: Text(
+                  '${byTime ? 'Mediana do registro à resolução · menor é melhor' : 'Ocorrências resolvidas entre as criadas'}. '
+                  'Indicador objetivo: não avalia governos nem agentes políticos.',
+                  style: UrbText.caption.copyWith(fontSize: 12),
+                ),
               ),
-              const SizedBox(height: 10),
               if (ranked.isEmpty)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   child: Text('Nenhuma cidade atingiu a amostra mínima neste período.', style: UrbText.caption),
                 )
               else
-                _CardSurface(
-                  child: Column(
-                    children: [
-                      for (var index = 0; index < ranked.length; index++)
-                        _CityRow(
-                          row: ranked[index],
-                          byTime: byTime,
-                          mine: ranked[index].cityId == myCityId,
-                          last: index == ranked.length - 1,
-                          fraction: _fraction(ranked[index], maxSeconds),
-                        ),
-                    ],
-                  ),
+                _ListGroup(
+                  children: [
+                    for (var index = 0; index < ranked.length; index++)
+                      _CityRow(
+                        row: ranked[index],
+                        byTime: byTime,
+                        mine: ranked[index].cityId == myCityId,
+                        last: index == ranked.length - 1,
+                      ),
+                  ],
                 ),
               if (unranked.isNotEmpty) ...[
-                const SizedBox(height: 24),
-                Text('Ainda sem posição', style: UrbText.h3),
-                const SizedBox(height: 2),
-                Text(
-                  'Cidades abaixo da amostra mínima. A barra mostra quanto falta para entrar.',
-                  style: UrbText.caption.copyWith(fontSize: 12),
-                ),
                 const SizedBox(height: 10),
-                _CardSurface(
-                  child: Column(
+                _unrankedToggle(unranked.length),
+                if (_showUnranked) ...[
+                  const SizedBox(height: 4),
+                  _ListGroup(
                     children: [
                       for (var index = 0; index < unranked.length; index++)
                         _CityRow(
@@ -896,7 +960,7 @@ class _CityRankingScreenState extends State<CityRankingScreen> {
                         ),
                     ],
                   ),
-                ),
+                ],
               ],
               if (_hasMore)
                 Padding(
@@ -1158,28 +1222,20 @@ class _CitizenRankingScreenState extends State<CitizenRankingScreen> {
     );
   }
 
-  Widget _mySpotlight(ParticipationStanding standing, int position) {
-    final cityName = _city?.name ?? 'sua cidade';
+  Widget _myStrip(ParticipationStanding standing, int position) {
     final toNext = standing.pointsToNext;
-    final leads = position == 1;
-    final footnote = leads
-        ? 'Você lidera a participação em $cityName.'
-        : (toNext != null ? 'Faltam ${plural(toNext, 'ponto', 'pontos')} para subir de posição.' : null);
     final participants = plural(standing.participants, 'cidadão', 'cidadãos');
+    final extra = position == 1
+        ? ' · você lidera'
+        : (toNext != null ? ' · faltam ${plural(toNext, 'ponto', 'pontos')} para subir' : '');
     return Padding(
       key: _spotlightKey,
-      padding: const EdgeInsets.only(top: 16),
-      child: _Spotlight(
-        label: 'Sua posição em $cityName',
-        value: '$positionº',
-        valueCaption: _period == RankingPeriod.month ? 'de $participants · este mês' : 'de $participants',
-        side: formatCount(standing.points),
-        sideCaption: 'pontos',
-        progress: leads || toNext == null ? null : standing.points / (standing.points + toNext),
-        footnote: footnote,
-        semanticsLabel:
-            'Sua posição em $cityName: $positionº de $participants, '
-            '${plural(standing.points, 'ponto', 'pontos')}. ${footnote ?? ''}',
+      padding: const EdgeInsets.only(top: 12),
+      child: _MineStrip(
+        margin: EdgeInsets.zero,
+        title: 'Você · $positionº lugar',
+        detail: 'de $participants$extra',
+        value: '${formatCount(standing.points)} pts',
       ),
     );
   }
@@ -1190,7 +1246,6 @@ class _CitizenRankingScreenState extends State<CitizenRankingScreen> {
     final standing = _standing;
     final myPosition = standing?.eligible == true ? standing?.position : null;
     final showMyPosition = myPosition != null && entries != null && !_myPositionVisible;
-    final leader = entries == null || entries.isEmpty ? 0 : entries.first.points;
     return Scaffold(
       backgroundColor: UrbColors.canvas,
       appBar: const UrbSubscreenHeader(title: 'Ranking de cidadãos'),
@@ -1200,7 +1255,7 @@ class _CitizenRankingScreenState extends State<CitizenRankingScreen> {
             onRefresh: _load,
             child: ListView(
               controller: _scroll,
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 90),
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 90),
               children: [
                 Align(
                   alignment: Alignment.centerLeft,
@@ -1215,17 +1270,22 @@ class _CitizenRankingScreenState extends State<CitizenRankingScreen> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Flexible(child: Text(_city?.name ?? 'Sua cidade', style: UrbText.h1)),
+                          Flexible(child: Text(_city?.name ?? 'Sua cidade', style: UrbText.h3)),
                           const SizedBox(width: 6),
-                          const UrbIcon(UrbIcons.chevronDown, size: 20, color: UrbColors.navy),
+                          const UrbIcon(UrbIcons.chevronDown, size: 18, color: UrbColors.navy),
                         ],
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 6),
-                Text('Cidadãos que mais participam da comunidade', style: UrbText.bodySmall),
-                const SizedBox(height: 14),
+                const SizedBox(height: 2),
+                Text(
+                  entries == null || entries.isEmpty
+                      ? 'Pontos de participação'
+                      : 'Pontos de participação · ${plural(standing?.participants ?? entries.length, 'cidadão', 'cidadãos')}',
+                  style: UrbText.caption.copyWith(fontSize: 12),
+                ),
+                const SizedBox(height: 12),
                 Row(
                   children: [
                     for (final period in _periods) ...[
@@ -1240,9 +1300,11 @@ class _CitizenRankingScreenState extends State<CitizenRankingScreen> {
                       ),
                       const SizedBox(width: 8),
                     ],
+                    const Spacer(),
+                    UrbTextButton('Como funcionam?', color: UrbColors.muted, onPressed: _showPointsInfo),
                   ],
                 ),
-                if (myPosition != null && entries != null) _mySpotlight(standing!, myPosition),
+                if (myPosition != null && entries != null) _myStrip(standing!, myPosition),
                 if (standing != null && !standing.eligible) ...[
                   const SizedBox(height: 12),
                   Text(
@@ -1252,7 +1314,7 @@ class _CitizenRankingScreenState extends State<CitizenRankingScreen> {
                     style: UrbText.caption,
                   ),
                 ],
-                const SizedBox(height: 18),
+                const SizedBox(height: 16),
                 if (_error != null)
                   UrbErrorState(message: _error!, onRetry: _load)
                 else if (entries == null)
@@ -1263,27 +1325,23 @@ class _CitizenRankingScreenState extends State<CitizenRankingScreen> {
                     message: 'Quando os moradores participarem, eles aparecerão aqui.',
                   )
                 else ...[
-                  Text('Classificação', style: UrbText.h3),
-                  const SizedBox(height: 2),
-                  Text(
-                    plural(standing?.participants ?? entries.length, 'cidadão no ranking', 'cidadãos no ranking'),
-                    style: UrbText.caption.copyWith(fontSize: 12),
-                  ),
-                  const SizedBox(height: 10),
-                  _CardSurface(
-                    child: Column(
+                  // Pódio com os três primeiros; a lista segue a partir do 4º.
+                  if (entries.length >= 3) ...[
+                    _Podium(entries: entries.take(3).toList(), userId: _userId, myKey: _myRowKey),
+                    const SizedBox(height: 14),
+                  ],
+                  if (entries.length != 3)
+                    _ListGroup(
                       children: [
-                        for (var index = 0; index < entries.length; index++)
+                        for (var index = entries.length >= 3 ? 3 : 0; index < entries.length; index++)
                           _RankingRow(
                             key: entries[index].profileId == _userId ? _myRowKey : null,
                             entry: entries[index],
                             mine: entries[index].profileId == _userId,
                             last: index == entries.length - 1,
-                            fraction: leader == 0 ? 0 : entries[index].points / leader,
                           ),
                       ],
                     ),
-                  ),
                 ],
                 if (_hasMore)
                   Padding(
@@ -1309,29 +1367,6 @@ class _CitizenRankingScreenState extends State<CitizenRankingScreen> {
                       style: UrbText.caption,
                     ),
                   ),
-                const SizedBox(height: 20),
-                Center(
-                  child: Semantics(
-                    button: true,
-                    label: 'Como funcionam os pontos?',
-                    excludeSemantics: true,
-                    onTap: _showPointsInfo,
-                    child: InkWell(
-                      onTap: _showPointsInfo,
-                      borderRadius: BorderRadius.circular(6),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-                        child: Text(
-                          'Como funcionam os pontos?',
-                          style: UrbText.caption.copyWith(
-                            decoration: TextDecoration.underline,
-                            decorationColor: UrbColors.muted,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
               ],
             ),
           ),
@@ -1354,13 +1389,107 @@ class _CitizenRankingScreenState extends State<CitizenRankingScreen> {
   }
 }
 
+/// Pódio dos três primeiros: o 1º ao centro, mais alto e em lime.
+class _Podium extends StatelessWidget {
+  const _Podium({required this.entries, required this.userId, required this.myKey});
+
+  final List<CitizenRankingEntry> entries;
+  final String? userId;
+  final GlobalKey myKey;
+
+  @override
+  Widget build(BuildContext context) {
+    // Ordem visual: 2º, 1º, 3º.
+    final order = [entries[1], entries[0], entries[2]];
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        for (var index = 0; index < order.length; index++) ...[
+          if (index > 0) const SizedBox(width: 8),
+          Expanded(
+            child: _PodiumSpot(
+              key: order[index].profileId == userId ? myKey : null,
+              entry: order[index],
+              mine: order[index].profileId == userId,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _PodiumSpot extends StatelessWidget {
+  const _PodiumSpot({super.key, required this.entry, required this.mine});
+
+  final CitizenRankingEntry entry;
+  final bool mine;
+
+  @override
+  Widget build(BuildContext context) {
+    final first = entry.position == 1;
+    final height = switch (entry.position) {
+      1 => 84.0,
+      2 => 62.0,
+      _ => 46.0,
+    };
+    return Semantics(
+      button: true,
+      label: '${entry.position}º, ${entry.name}${mine ? ', você' : ''}, ${entry.points} pontos',
+      excludeSemantics: true,
+      onTap: () => openUserProfile(context, entry.profileId),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => openUserProfile(context, entry.profileId),
+        child: Column(
+          children: [
+            UrbAvatar(
+              name: entry.name,
+              imageUrl: entry.avatarUrl,
+              size: first ? 52 : 44,
+              rounded: false,
+              gradientSeed: entry.position,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              mine ? 'Você' : entry.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: UrbText.meta.copyWith(fontSize: 12, fontWeight: FontWeight.w800, color: UrbColors.ink),
+            ),
+            Text(
+              '${formatCount(entry.points)} pts',
+              style: UrbText.meta.copyWith(fontSize: 11, fontWeight: FontWeight.w600, color: UrbColors.muted),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              height: height,
+              alignment: Alignment.topCenter,
+              padding: const EdgeInsets.only(top: 10),
+              decoration: BoxDecoration(
+                color: first ? UrbColors.lime : Colors.white,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(14), bottom: Radius.circular(6)),
+                border: first ? null : Border.all(color: mine ? UrbColors.blue : UrbColors.line),
+              ),
+              child: Text(
+                '${entry.position}',
+                style: UrbText.h2.copyWith(fontSize: 20, fontWeight: FontWeight.w800, color: UrbColors.ink),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _RankingRow extends StatelessWidget {
-  const _RankingRow({super.key, required this.entry, required this.mine, required this.last, this.fraction});
+  const _RankingRow({super.key, required this.entry, required this.mine, required this.last});
 
   final CitizenRankingEntry entry;
   final bool mine;
   final bool last;
-  final double? fraction;
 
   @override
   Widget build(BuildContext context) {
@@ -1386,7 +1515,6 @@ class _RankingRow extends StatelessWidget {
       ),
       value: formatCount(entry.points),
       valueSuffix: ' pts',
-      fraction: fraction,
       mine: mine,
       last: last,
       semanticsLabel: '${entry.position}º, ${entry.name}${mine ? ', você' : ''}, ${entry.points} pontos',

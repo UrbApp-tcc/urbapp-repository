@@ -439,42 +439,30 @@ class _HomeScreenState extends State<HomeScreen> with OccurrenceListSync {
                   )
                 else ...[
                   // Largura total da tela: sai do recuo lateral da lista.
-                  LayoutBuilder(
-                    builder: (context, constraints) => UnconstrainedBox(
-                      constrainedAxis: Axis.vertical,
-                      child: SizedBox(
-                        width: constraints.maxWidth + 36,
-                        child: FeaturedOccurrenceCard(
-                          fullBleed: true,
-                          occurrence: featured,
-                          reporters: _reportersFor == featured.id
-                              ? _featuredReporters
-                              : const [],
-                          distanceKm: _session.distanceTo(featured),
-                          onOpen: () => _open(featured),
-                          onReports: () =>
-                              _open(featured, DetailAnchor.reports),
-                          onComments: () =>
-                              _open(featured, DetailAnchor.comments),
-                          onSupport: () =>
-                              _session.toggleSupport(context, featured),
-                          onFollow: () =>
-                              _session.toggleFollow(context, featured),
-                          onShare: () => _session.share(context, featured),
-                          councilorStatus:
-                              _councilorFollowings[featured.id]?.status,
-                          onCouncilorAction:
-                              _access.isCouncilor &&
-                                  featured.cityId ==
-                                      _access.councilor?.cityId &&
-                                  (!featured.status.isFinal ||
-                                      _councilorFollowings.containsKey(
-                                        featured.id,
-                                      ))
-                              ? () => _councilorAction(featured)
-                              : null,
-                        ),
-                      ),
+                  FullBleed(
+                    child: FeaturedOccurrenceCard(
+                      fullBleed: true,
+                      occurrence: featured,
+                      reporters: _reportersFor == featured.id
+                          ? _featuredReporters
+                          : const [],
+                      distanceKm: _session.distanceTo(featured),
+                      onOpen: () => _open(featured),
+                      onReports: () => _open(featured, DetailAnchor.reports),
+                      onComments: () => _open(featured, DetailAnchor.comments),
+                      onSupport: () =>
+                          _session.toggleSupport(context, featured),
+                      onFollow: () => _session.toggleFollow(context, featured),
+                      onShare: () => _session.share(context, featured),
+                      councilorStatus:
+                          _councilorFollowings[featured.id]?.status,
+                      onCouncilorAction:
+                          _access.isCouncilor &&
+                              featured.cityId == _access.councilor?.cityId &&
+                              (!featured.status.isFinal ||
+                                  _councilorFollowings.containsKey(featured.id))
+                          ? () => _councilorAction(featured)
+                          : null,
                     ),
                   ),
                   if (rest.isNotEmpty) ...[

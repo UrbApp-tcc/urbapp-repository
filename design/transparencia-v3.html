@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transparência v3</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue: #4657EF; --navy: #11233D; --ink: #0A1930; --lime: #C7FF4D;
+    --canvas: #F9FAF5; --line: #DCE2E8; --muted: #728093; --faint: #B4BDC9;
+    --seg: #ECEFE8; --navy2: #22385A;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #E4E7E0; font-family: Manrope, system-ui, sans-serif; color: var(--ink); padding: 40px 32px 80px; }
+  h1.board { font-size: 22px; font-weight: 800; letter-spacing: -0.03em; margin-bottom: 6px; }
+  p.board { font-size: 14px; color: #4B5868; margin-bottom: 28px; max-width: 760px; line-height: 20px; }
+  .group { margin-bottom: 48px; }
+  .group > h2 { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #4B5868; margin-bottom: 14px; }
+  .row { display: flex; gap: 40px; flex-wrap: wrap; align-items: flex-start; }
+  .cap { font-size: 13px; font-weight: 700; color: #4B5868; margin-top: 10px; max-width: 375px; line-height: 18px; }
+
+  /* Telefone */
+  .phone { width: 375px; height: 812px; background: var(--canvas); border-radius: 28px; overflow: hidden; display: flex; flex-direction: column; position: relative; box-shadow: 0 1px 0 rgba(0,0,0,.04), 0 18px 40px -24px rgba(17,35,61,.35); }
+  .phone.tall { height: auto; min-height: 812px; padding-bottom: 28px; }
+  .scroll { display: flex; flex-direction: column; flex: 1; }
+
+  /* Topo de subtela */
+  .top { display: flex; align-items: center; justify-content: space-between; padding: 52px 18px 14px; }
+  .back { width: 42px; height: 42px; border-radius: 13px; border: 1px solid var(--line); background: #fff; display: flex; align-items: center; justify-content: center; }
+  .top .t { font-size: 14px; font-weight: 800; color: var(--navy); }
+  .top .sp { width: 42px; }
+  .pad { padding: 0 18px; }
+
+  /* Bloco herói */
+  .hero { border-radius: 22px; padding: 18px; height: 200px; display: flex; flex-direction: column; justify-content: space-between; }
+  .hero.navy { background: var(--navy); }
+  .hero.blue { background: var(--blue); }
+  .hero.white { background: #fff; border: 1px solid var(--line); }
+  .hero .head { display: flex; justify-content: space-between; align-items: flex-start; }
+  .hero .name { font-size: 26px; font-weight: 800; letter-spacing: -0.045em; line-height: 29px; }
+  .hero .l2 { font-size: 15px; font-weight: 700; line-height: 18px; margin-top: 4px; }
+  .hero .l3 { font-size: 13px; font-weight: 600; line-height: 16px; margin-top: 4px; }
+
+  .mono { width: 46px; height: 46px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 17px; letter-spacing: -0.03em; flex-shrink: 0; }
+  .avatar { width: 56px; height: 56px; border-radius: 28px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 19px; letter-spacing: -0.03em; flex-shrink: 0; }
+
+  .pill { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 5px 10px; font-size: 11px; font-weight: 800; line-height: 14px; white-space: nowrap; }
+  .pill.lime { background: var(--lime); color: var(--navy); }
+  .pill.dark { background: var(--navy2); color: #fff; }
+  .pill.ghost { background: #F1F3EE; color: var(--muted); border: 1px solid var(--line); }
+  .pill.green { background: #E3F4E7; color: #1E7D3B; }
+  .pill.blue { background: #F2F3FF; color: var(--blue); }
+
+  /* Abas segmentadas */
+  .seg { display: flex; background: var(--seg); border-radius: 14px; padding: 4px; margin-top: 18px; }
+  .seg div { flex: 1; height: 36px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: var(--muted); border-radius: 11px; border: 1px solid transparent; }
+  .seg div.on { background: #fff; border-color: var(--line); color: var(--ink); font-weight: 800; }
+
+  .body { display: flex; flex-direction: column; gap: 10px; padding: 16px 18px 24px; }
+  .prov { display: flex; align-items: center; gap: 6px; padding: 0 2px 2px; font-size: 12px; font-weight: 700; color: var(--muted); line-height: 16px; }
+  .prov .u { width: 14px; height: 14px; border-radius: 5px; background: var(--blue); color: #fff; font-size: 9px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+  .prov .o { width: 14px; height: 14px; border-radius: 7px; background: var(--navy); display: flex; align-items: center; justify-content: center; }
+
+  /* Blocos */
+  .tiles { display: flex; gap: 10px; }
+  .tile { flex: 1; min-width: 0; border-radius: 22px; padding: 16px; background: #fff; border: 1px solid var(--line); display: flex; flex-direction: column; justify-content: space-between; }
+  .tile.h200 { height: 200px; }
+  .tile.h170 { height: 170px; }
+  .tile.lime { background: var(--lime); border-color: var(--lime); }
+  .tile.navy { background: var(--navy); border-color: var(--navy); color: #fff; }
+  .tile.soft { background: #F1F3EE; border-color: #F1F3EE; }
+  .big { font-size: 40px; font-weight: 800; letter-spacing: -0.05em; line-height: 42px; }
+  .big.faint { color: var(--faint); }
+  .lbl { font-size: 13px; font-weight: 800; line-height: 16px; }
+  .sub { font-size: 12px; font-weight: 600; line-height: 16px; color: var(--muted); }
+  .lime .sub { color: #3E4C2A; }
+  .navy .sub { color: #AEB9CF; }
+  .wide { border-radius: 22px; background: #fff; border: 1px solid var(--line); padding: 0 16px; height: 84px; display: flex; align-items: center; gap: 14px; }
+  .wide .n { font-size: 30px; font-weight: 800; letter-spacing: -0.05em; line-height: 36px; white-space: nowrap; }
+  .wide .n.sm { font-size: 22px; }
+  .dots { display: flex; gap: 4px; }
+  .dots i { width: 12px; height: 12px; border-radius: 6px; background: var(--line); display: block; }
+  .dots i.b { background: var(--blue); } .dots i.n { background: var(--navy); }
+
+  /* Linha do tempo oficial */
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 22px; padding: 16px; }
+  .occ { display: flex; align-items: center; gap: 10px; padding-bottom: 14px; border-bottom: 1px solid #EEF1F3; }
+  .thumb { width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0; background: linear-gradient(135deg, #5B7088, #2C3E55); }
+  .occ .tt { font-size: 14px; font-weight: 800; line-height: 18px; }
+  .chev { margin-left: auto; flex-shrink: 0; }
+  .steps { display: flex; flex-direction: column; padding-top: 14px; }
+  .step { display: flex; gap: 12px; }
+  .step .rail { display: flex; flex-direction: column; align-items: center; width: 22px; flex-shrink: 0; }
+  .step .dot { width: 22px; height: 22px; border-radius: 11px; background: var(--navy); display: flex; align-items: center; justify-content: center; }
+  .step .dot.cur { background: var(--lime); box-shadow: inset 0 0 0 2px var(--navy); }
+  .step .ln { width: 2px; flex: 1; background: var(--navy); min-height: 14px; }
+  .step .ln.dash { background: repeating-linear-gradient(var(--faint) 0 4px, transparent 4px 8px); }
+  .step .dot.next { background: #fff; border: 2px dashed var(--faint); }
+  .step .txt { padding-bottom: 14px; }
+  .step .s1 { font-size: 14px; font-weight: 800; line-height: 22px; }
+  .step .s2 { font-size: 12px; font-weight: 600; color: var(--muted); line-height: 16px; }
+  .note { display: flex; gap: 10px; align-items: flex-start; background: #F1F3EE; border-radius: 18px; padding: 14px 16px; font-size: 13px; font-weight: 700; line-height: 18px; color: #3B4858; }
+
+  /* Lista de vereadores */
+  .search { display: flex; align-items: center; gap: 10px; height: 46px; border-radius: 14px; background: #fff; border: 1px solid var(--line); padding: 0 14px; font-size: 14px; font-weight: 600; color: var(--muted); }
+  .person { display: flex; align-items: center; gap: 14px; background: #fff; border: 1px solid var(--line); border-radius: 22px; padding: 14px 16px; }
+  .person .nm { font-size: 16px; font-weight: 800; letter-spacing: -0.02em; line-height: 20px; }
+  .person .meta { font-size: 12px; font-weight: 600; color: var(--muted); line-height: 16px; margin-top: 2px; }
+  .person .stats { display: flex; gap: 14px; margin-top: 10px; }
+  .person .stats b { font-size: 15px; font-weight: 800; letter-spacing: -0.02em; }
+  .person .stats span { font-size: 12px; font-weight: 600; color: var(--muted); }
+
+  /* Ações do vereador */
+  .act { display: flex; gap: 12px; padding: 14px 0; border-top: 1px solid #EEF1F3; }
+  .act:first-of-type { border-top: 0; padding-top: 4px; }
+  .act .ic { width: 36px; height: 36px; border-radius: 11px; background: var(--navy); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .act .a1 { font-size: 14px; font-weight: 800; line-height: 18px; }
+  .act .a2 { font-size: 12px; font-weight: 600; color: var(--muted); line-height: 16px; margin-top: 3px; }
+  .act .a3 { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+  .sectitle { display: flex; justify-content: space-between; align-items: baseline; padding: 14px 2px 2px; }
+  .sectitle b { font-size: 17px; font-weight: 800; letter-spacing: -0.03em; }
+  .sectitle span { font-size: 12px; font-weight: 700; color: var(--muted); }
+
+  /* Indicadores */
+  .bars { display: flex; flex-direction: column; gap: 12px; }
+  .bar .bt { display: flex; justify-content: space-between; font-size: 13px; font-weight: 700; line-height: 16px; margin-bottom: 6px; }
+  .bar .bt span { color: var(--muted); font-weight: 700; }
+  .bar .tr { height: 10px; border-radius: 5px; background: #EEF1F3; overflow: hidden; }
+  .bar .tr i { display: block; height: 100%; border-radius: 5px; background: var(--navy); }
+  .stack { display: flex; height: 14px; border-radius: 7px; overflow: hidden; gap: 3px; }
+  .stack i { display: block; height: 100%; border-radius: 3px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 12px; }
+  .legend div { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: #3B4858; }
+  .legend i { width: 10px; height: 10px; border-radius: 3px; display: block; }
+  .months { display: flex; align-items: flex-end; gap: 10px; height: 92px; margin-top: 14px; }
+  .months .m { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .months .col { width: 100%; border-radius: 8px; background: var(--blue); }
+  .months .col.z { background: #EEF1F3; }
+  .months span { font-size: 11px; font-weight: 700; color: var(--muted); }
+
+  /* Rankings */
+  .rk { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid #EEF1F3; }
+  .rk:first-child { border-top: 0; }
+  .rk .pos { width: 28px; font-size: 15px; font-weight: 800; color: var(--muted); flex-shrink: 0; }
+  .rk .cn { font-size: 14px; font-weight: 800; line-height: 18px; }
+  .rk .cs { font-size: 12px; font-weight: 600; color: var(--muted); line-height: 16px; }
+  .rk .pct { margin-left: auto; font-size: 16px; font-weight: 800; letter-spacing: -0.03em; }
+  .rk.me { background: var(--lime); border-radius: 14px; border-top: 0; padding: 12px; margin: 2px -8px; }
+  .rk.me .pos, .rk.me .cs { color: #3E4C2A; }
+  .cta { display: flex; align-items: center; justify-content: space-between; height: 46px; border-radius: 14px; padding: 0 16px; font-size: 14px; font-weight: 800; }
+  .cta.dark { background: var(--navy); color: #fff; }
+  .cta.light { background: #fff; color: var(--navy); border: 1px solid var(--line); }
+  .chips { display: flex; gap: 8px; }
+  .chip { height: 34px; padding: 0 14px; border-radius: 999px; display: flex; align-items: center; font-size: 13px; font-weight: 800; border: 1px solid var(--line); background: #fff; color: #3B4858; }
+  .chip.on { background: var(--navy); border-color: var(--navy); color: #fff; }
+  .podium { display: flex; align-items: flex-end; gap: 8px; height: 190px; padding-top: 8px; }
+  .podium .p { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .podium .blk { width: 100%; border-radius: 14px 14px 6px 6px; display: flex; align-items: flex-start; justify-content: center; padding-top: 10px; font-size: 20px; font-weight: 800; }
+  .podium .pn { font-size: 12px; font-weight: 800; text-align: center; line-height: 15px; }
+</style>
+</head>
+<body>
+
+<h1 class="board">UrbApp · Transparência v3 — telas para aprovação</h1>
+<p class="board">Mesma linguagem do hub e da Gestão aprovados: blocos de 22px, número grande, título forte, um único momento de cor por tela. Dados reais de Sorocaba, exceto onde a legenda diz "ilustrativo".</p>
+
+<!-- =========================================================== ÓRGÃO -->
+<section class="group">
+  <h2>1 · Perfil do órgão</h2>
+  <div class="row">
+
+    <!-- Órgão · Indicadores -->
+    <div>
+      <div class="phone">
+        <div class="top"><div class="back"><svg width="18" height="18" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="#11233D" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="t">Órgão</div><div class="sp"></div></div>
+        <div class="pad">
+          <div class="hero blue">
+            <div class="head">
+              <div class="mono" style="background:#fff;color:var(--blue)">SA</div>
+              <span class="pill lime"><svg width="12" height="12" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5" fill="none" stroke="#11233D" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Participante</span>
+            </div>
+            <div>
+              <div class="name" style="color:#fff">SAAE Sorocaba</div>
+              <div class="l2" style="color:#fff">Água, esgoto e drenagem</div>
+              <div class="l3" style="color:#D3D8FF">Vinculado à Prefeitura de Sorocaba</div>
+            </div>
+          </div>
+          <div class="seg"><div class="on">Indicadores</div><div style="flex:1.4">Atualizações oficiais</div></div>
+        </div>
+        <div class="body">
+          <div class="prov"><span class="u">U</span>Calculado pelo UrbApp</div>
+          <div class="tiles">
+            <div class="tile h200">
+              <div class="dots"><i class="b"></i></div>
+              <div><div class="big">1</div><div class="lbl">atribuída ao órgão</div><div class="sub">em andamento</div></div>
+            </div>
+            <div class="tile h200 lime">
+              <svg width="40" height="36" viewBox="0 0 40 36"><path d="M8 0h24a8 8 0 0 1 8 8v12a8 8 0 0 1-8 8H18l-9 8v-8H8a8 8 0 0 1-8-8V8a8 8 0 0 1 8-8Z" fill="#11233D"/><path d="m12 14 5 5 11-10" fill="none" stroke="#C7FF4D" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <div><div class="big">100%</div><div class="lbl">com resposta oficial</div><div class="sub">1 de 1 ocorrência</div></div>
+            </div>
+          </div>
+          <div class="wide"><div class="n" style="color:var(--faint)">0</div><div><div class="lbl">resoluções confirmadas por vizinhos</div><div class="sub">Nenhuma conclusão informada ainda</div></div></div>
+          <div class="wide"><div class="n sm">&lt; 1 dia</div><div><div class="lbl">até assumir a ocorrência</div><div class="sub">Mediana desde o registro</div></div></div>
+        </div>
+      </div>
+      <div class="cap">Indicadores · o que o UrbApp calcula a partir das ocorrências vinculadas ao órgão.</div>
+    </div>
+
+    <!-- Órgão · Atualizações oficiais -->
+    <div>
+      <div class="phone">
+        <div class="top"><div class="back"><svg width="18" height="18" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="#11233D" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="t">Órgão</div><div class="sp"></div></div>
+        <div class="pad">
+          <div class="hero blue">
+            <div class="head">
+              <div class="mono" style="background:#fff;color:var(--blue)">SA</div>
+              <span class="pill lime"><svg width="12" height="12" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5" fill="none" stroke="#11233D" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Participante</span>
+            </div>
+            <div>
+              <div class="name" style="color:#fff">SAAE Sorocaba</div>
+              <div class="l2" style="color:#fff">Água, esgoto e drenagem</div>
+              <div class="l3" style="color:#D3D8FF">Vinculado à Prefeitura de Sorocaba</div>
+            </div>
+          </div>
+          <div class="seg"><div>Indicadores</div><div class="on" style="flex:1.4">Atualizações oficiais</div></div>
+        </div>
+        <div class="body">
+          <div class="prov"><span class="o"><svg width="9" height="9" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5" fill="none" stroke="#C7FF4D" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Publicado oficialmente pelo SAAE</div>
+          <div class="card">
+            <div class="occ">
+              <div class="thumb"></div>
+              <div><div class="tt">Alagamento recorrente na Av. Dom Aguirre</div><div class="sub">Drenagem · Centro</div></div>
+              <svg class="chev" width="16" height="16" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7" fill="none" stroke="#728093" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <div class="steps">
+              <div class="step"><div class="rail"><div class="dot"><svg width="11" height="11" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5" fill="none" stroke="#C7FF4D" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="ln"></div></div><div class="txt"><div class="s1">Recebida</div><div class="s2">6 out</div></div></div>
+              <div class="step"><div class="rail"><div class="dot"><svg width="11" height="11" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5" fill="none" stroke="#C7FF4D" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="ln"></div></div><div class="txt"><div class="s1">Agendada</div><div class="s2">6 out</div></div></div>
+              <div class="step"><div class="rail"><div class="dot cur"></div><div class="ln dash"></div></div><div class="txt"><div class="s1">Em execução</div><div class="s2">6 out · atualização mais recente</div></div></div>
+              <div class="step"><div class="rail"><div class="dot next"></div></div><div class="txt" style="padding-bottom:0"><div class="s1" style="color:var(--muted)">Confirmação dos vizinhos</div><div class="s2">Só ela marca a ocorrência como resolvida</div></div></div>
+            </div>
+          </div>
+          <div class="note"><svg width="18" height="18" viewBox="0 0 24 24" style="flex-shrink:0;margin-top:0"><circle cx="12" cy="12" r="10" fill="#11233D"/><path d="M12 7.5v6M12 16.5v.5" stroke="#C7FF4D" stroke-width="2.6" stroke-linecap="round"/></svg>Informar conclusão não resolve: os vizinhos confirmam ou rejeitam.</div>
+        </div>
+      </div>
+      <div class="cap">Atualizações oficiais · agrupadas por ocorrência, como uma linha do tempo. O último passo é sempre dos vizinhos.</div>
+    </div>
+
+    <!-- Órgão não reivindicado -->
+    <div>
+      <div class="phone">
+        <div class="top"><div class="back"><svg width="18" height="18" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="#11233D" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="t">Órgão</div><div class="sp"></div></div>
+        <div class="pad">
+          <div class="hero white">
+            <div class="head">
+              <div class="mono" style="background:#FFC93C;color:var(--navy)">IP</div>
+              <span class="pill ghost">Não reivindicado</span>
+            </div>
+            <div>
+              <div class="name" style="color:var(--ink)">Iluminação Pública</div>
+              <div class="l2" style="color:var(--blue)">Postes e iluminação de vias</div>
+              <div class="l3" style="color:var(--muted)">Vinculado à Prefeitura de Sorocaba</div>
+            </div>
+          </div>
+          <div class="seg"><div>Indicadores</div><div class="on" style="flex:1.4">Atualizações oficiais</div></div>
+        </div>
+        <div class="body">
+          <div class="tile soft" style="height:auto;gap:14px;justify-content:flex-start;padding:20px 18px">
+            <svg width="44" height="44" viewBox="0 0 44 44"><rect width="44" height="44" rx="14" fill="#fff"/><path d="M15 21v-4a7 7 0 0 1 14 0" fill="none" stroke="#B4BDC9" stroke-width="3.2" stroke-linecap="round"/><rect x="12" y="21" width="20" height="14" rx="4" fill="#B4BDC9"/></svg>
+            <div>
+              <div style="font-size:18px;font-weight:800;letter-spacing:-0.03em;line-height:22px">Perfil institucional ainda não reivindicado</div>
+              <div style="font-size:13px;font-weight:600;color:#4B5868;line-height:19px;margin-top:8px">Este órgão ainda não publica no UrbApp. As ocorrências continuam vinculadas a ele, e os indicadores seguem calculados pelo UrbApp.</div>
+            </div>
+          </div>
+          <div class="wide"><div class="n">1</div><div><div class="lbl">ocorrência sob responsabilidade</div><div class="sub">Aberta, sem resposta oficial</div></div><svg class="chev" width="16" height="16" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7" fill="none" stroke="#728093" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <div class="sub" style="padding:4px 4px 0;line-height:18px">Trabalha no órgão? A adesão é feita pela Prefeitura, que confirma o vínculo institucional.</div>
+        </div>
+      </div>
+      <div class="cap">Não reivindicado · a mesma página, em branco, sem cor de destaque. Explica a ausência em vez de mostrar zeros.</div>
+    </div>
+
+  </div>
+</section>
+
+<!-- =========================================================== VEREADORES -->
+<section class="group">
+  <h2>2 · Vereadores</h2>
+  <div class="row">
+
+    <!-- Lista -->
+    <div>
+      <div class="phone">
+        <div class="top"><div class="back"><svg width="18" height="18" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="#11233D" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="t">Vereadores</div><div class="sp"></div></div>
+        <div class="body" style="padding-top:4px">
+          <div style="padding:0 2px 6px">
+            <div style="font-size:30px;font-weight:800;letter-spacing:-0.05em;line-height:34px">Câmara de<br>Sorocaba</div>
+            <div class="sub" style="font-size:13px;line-height:19px;margin-top:8px">Perfis verificados no UrbApp. Mostramos só o que cada perfil registrou, sem notas nem classificação.</div>
+          </div>
+          <div class="search"><svg width="18" height="18" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" fill="none" stroke="#728093" stroke-width="2.4"/><path d="m20 20-4-4" stroke="#728093" stroke-width="2.4" stroke-linecap="round"/></svg>Buscar por nome ou partido</div>
+          <div class="person">
+            <div class="avatar" style="background:var(--blue);color:#fff">AS</div>
+            <div style="flex:1;min-width:0">
+              <div style="display:flex;align-items:center;gap:6px"><div class="nm">Ana Souza</div><svg width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#11233D"/><path d="m7 12.5 3.5 3.5L17 9" fill="none" stroke="#C7FF4D" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+              <div class="meta">PSD · Mandato 2025–2028</div>
+              <div class="stats"><div><b>3</b> <span>acompanhadas</span></div><div><b>2</b> <span>ações</span></div></div>
+            </div>
+            <svg class="chev" width="16" height="16" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7" fill="none" stroke="#728093" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div class="note" style="margin-top:6px;background:transparent;border:1px dashed var(--line);color:var(--muted);font-weight:600">Outros vereadores aparecem aqui quando verificarem o perfil. Acompanhar uma demanda é opcional e não substitui a validação dos vizinhos.</div>
+        </div>
+      </div>
+      <div class="cap">Lista · busca + cartões com fatos (acompanhadas, ações). Ordem alfabética, nunca por desempenho.</div>
+    </div>
+
+    <!-- Perfil -->
+    <div>
+      <div class="phone tall">
+        <div class="top"><div class="back"><svg width="18" height="18" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="#11233D" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="t">Vereador</div><div class="sp"></div></div>
+        <div class="pad">
+          <div class="hero navy" style="height:auto;gap:22px">
+            <div class="head">
+              <div class="avatar" style="background:var(--lime);color:var(--navy)">AS</div>
+              <span class="pill dark"><svg width="12" height="12" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5" fill="none" stroke="#C7FF4D" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Perfil verificado</span>
+            </div>
+            <div>
+              <div class="name" style="color:#fff">Ana Souza</div>
+              <div class="l2" style="color:var(--lime)">PSD · Mandato 2025–2028</div>
+              <div class="l3" style="color:#AEB9CF">Câmara Municipal de Sorocaba</div>
+            </div>
+          </div>
+        </div>
+        <div class="body">
+          <div class="prov"><span class="u">U</span>Calculado pelo UrbApp a partir das ações registradas</div>
+          <div class="tiles">
+            <div class="tile h170">
+              <div class="dots"><i class="n"></i><i class="n"></i><i class="n"></i></div>
+              <div><div class="big">3</div><div class="lbl">demandas acompanhadas</div><div class="sub">2 aguardando resposta</div></div>
+            </div>
+            <div class="tile h170">
+              <svg width="34" height="34" viewBox="0 0 34 34"><rect width="34" height="34" rx="11" fill="#4657EF"/><path d="M10 11h14M10 17h14M10 23h9" stroke="#fff" stroke-width="2.8" stroke-linecap="round"/></svg>
+              <div><div class="big">2</div><div class="lbl">ações registradas</div><div class="sub">1 cobrança · 1 ofício</div></div>
+            </div>
+          </div>
+          <div class="wide"><div class="n" style="color:var(--faint)">0</div><div><div class="lbl">demandas acompanhadas que chegaram à resolução</div><div class="sub">Com ação registrada antes da confirmação</div></div></div>
+
+          <div class="sectitle"><b>Ações registradas</b><span>2</span></div>
+          <div class="card" style="padding:12px 16px">
+            <div class="act">
+              <div class="ic"><svg width="18" height="18" viewBox="0 0 24 24"><path d="M12 3v10M12 17v.5" stroke="#C7FF4D" stroke-width="3" stroke-linecap="round"/><circle cx="12" cy="12" r="10" fill="none" stroke="#C7FF4D" stroke-width="2.2" opacity="0"/></svg></div>
+              <div style="flex:1;min-width:0">
+                <div class="a1">Cobrança junto ao SAAE</div>
+                <div class="a2">Alagamento recorrente na Av. Dom Aguirre</div>
+                <div class="a3"><span class="pill blue">Aguardando resposta</span></div>
+              </div>
+            </div>
+            <div class="act">
+              <div class="ic"><svg width="18" height="18" viewBox="0 0 24 24"><path d="M4 6h16v12H4z" fill="none" stroke="#C7FF4D" stroke-width="2.4" stroke-linejoin="round"/><path d="m4 7 8 6 8-6" fill="none" stroke="#C7FF4D" stroke-width="2.4" stroke-linejoin="round"/></svg></div>
+              <div style="flex:1;min-width:0">
+                <div class="a1">Ofício à Secretaria de Obras</div>
+                <div class="a2">Buraco na Rua Humberto de Campos</div>
+                <div class="a3"><span class="pill blue">Aguardando resposta</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="note" style="margin-top:4px"><svg width="18" height="18" viewBox="0 0 24 24" style="flex-shrink:0"><circle cx="12" cy="12" r="10" fill="#11233D"/><path d="M12 7.5v6M12 16.5v.5" stroke="#C7FF4D" stroke-width="2.6" stroke-linecap="round"/></svg>Sem nota ou classificação. Acompanhar e cobrar não resolvem: quem confirma a resolução são os vizinhos.</div>
+        </div>
+      </div>
+      <div class="cap">Perfil · iniciais no lugar de foto, só fatos. A métrica de resolução usa a frase da especificação, nunca "resolveu". (Título da 2ª ocorrência ilustrativo.)</div>
+    </div>
+
+  </div>
+</section>
+
+<!-- =========================================================== INDICADORES -->
+<section class="group">
+  <h2>3 · Panorama da cidade (indicadores)</h2>
+  <div class="row">
+    <div>
+      <div class="phone tall">
+        <div class="top"><div class="back"><svg width="18" height="18" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="#11233D" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="t">Panorama da cidade</div><div class="sp"></div></div>
+        <div class="body" style="padding-top:4px">
+          <div class="tile" style="height:auto;padding:20px 18px;gap:18px">
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <div>
+                <div style="font-size:52px;font-weight:800;letter-spacing:-0.06em;line-height:54px">1<span style="color:var(--faint)"> de 7</span></div>
+                <div class="lbl" style="font-size:15px;margin-top:6px">ocorrências resolvidas</div>
+                <div class="sub">confirmadas por vizinhos · Sorocaba</div>
+              </div>
+              <svg width="88" height="88" viewBox="0 0 96 96"><circle cx="48" cy="48" r="36" fill="none" stroke="#E3E7E8" stroke-width="16"/><circle cx="48" cy="48" r="36" fill="none" stroke="#11233D" stroke-width="16" stroke-dasharray="29.5 196.7" transform="rotate(-90 48 48)"/><circle cx="48" cy="48" r="36" fill="none" stroke="#4657EF" stroke-width="16" stroke-dasharray="29.5 196.7" stroke-dashoffset="-32.3" transform="rotate(-90 48 48)"/></svg>
+            </div>
+            <div>
+              <div class="stack"><i style="flex:1;background:var(--navy)"></i><i style="flex:1;background:var(--blue)"></i><i style="flex:5;background:#E3E7E8"></i></div>
+              <div class="legend">
+                <div><i style="background:var(--navy)"></i>1 resolvida</div>
+                <div><i style="background:var(--blue)"></i>1 em andamento</div>
+                <div><i style="background:#C9D0D8"></i>5 abertas</div>
+                <div><i style="background:#fff;border:1.5px solid #C9D0D8"></i>0 aguardando validação</div>
+              </div>
+            </div>
+          </div>
+          <div class="tiles">
+            <div class="tile h170 lime">
+              <svg width="36" height="36" viewBox="0 0 36 36"><circle cx="18" cy="18" r="18" fill="#11233D"/><path d="M18 9v9l6 4" fill="none" stroke="#C7FF4D" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <div><div class="big" style="font-size:34px">&lt; 1 dia</div><div class="lbl">até a resolução</div><div class="sub">Mediana das resolvidas</div></div>
+            </div>
+            <div class="tile h170">
+              <div class="dots"><i class="b"></i><i></i></div>
+              <div><div class="big">0</div><div class="lbl">reabertas</div><div class="sub">após conclusão rejeitada</div></div>
+            </div>
+          </div>
+
+          <div class="sectitle"><b>Por categoria</b><span>7 ocorrências</span></div>
+          <div class="card bars">
+            <div class="bar"><div class="bt">Vias e calçadas<span>3</span></div><div class="tr"><i style="width:100%"></i></div></div>
+            <div class="bar"><div class="bt">Limpeza urbana<span>2</span></div><div class="tr"><i style="width:66%"></i></div></div>
+            <div class="bar"><div class="bt">Drenagem<span>1</span></div><div class="tr"><i style="width:33%"></i></div></div>
+            <div class="bar"><div class="bt">Iluminação<span>1</span></div><div class="tr"><i style="width:33%"></i></div></div>
+          </div>
+
+          <div class="sectitle"><b>Registros por mês</b><span>últimos 6</span></div>
+          <div class="card">
+            <div class="months">
+              <div class="m"><div class="col z" style="height:6px"></div><span>mai</span></div>
+              <div class="m"><div class="col z" style="height:6px"></div><span>jun</span></div>
+              <div class="m"><div class="col" style="height:18px"></div><span>jul</span></div>
+              <div class="m"><div class="col" style="height:36px"></div><span>ago</span></div>
+              <div class="m"><div class="col" style="height:18px"></div><span>set</span></div>
+              <div class="m"><div class="col" style="height:54px;background:var(--navy)"></div><span style="color:var(--ink)">out</span></div>
+            </div>
+          </div>
+
+          <div class="sectitle"><b>Bairros com mais registros</b><span></span></div>
+          <div class="card" style="padding:6px 16px">
+            <div class="rk"><div class="pos">1</div><div><div class="cn">Centro</div><div class="cs">3 registradas · 1 resolvida</div></div></div>
+            <div class="rk"><div class="pos">2</div><div><div class="cn">Jardim Vergueiro</div><div class="cs">2 registradas</div></div></div>
+            <div class="rk"><div class="pos">3</div><div><div class="cn">Vila Hortência</div><div class="cs">2 registradas</div></div></div>
+          </div>
+          <div class="prov" style="padding-top:6px"><span class="u">U</span>Tudo nesta página é calculado pelo UrbApp</div>
+        </div>
+      </div>
+      <div class="cap">Panorama · abre pelo bloco "Panorama da cidade" do hub. Mesmo número e mesmo anel, agora com o detalhe. Categorias, meses e bairros ilustrativos.</div>
+    </div>
+  </div>
+</section>
+
+<!-- =========================================================== RANKINGS -->
+<section class="group">
+  <h2>4 · Rankings</h2>
+  <div class="row">
+
+    <!-- Rankings hub -->
+    <div>
+      <div class="phone">
+        <div class="top"><div class="back"><svg width="18" height="18" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="#11233D" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="t">Rankings</div><div class="sp"></div></div>
+        <div class="body" style="padding-top:4px;gap:12px">
+          <div class="tile lime" style="height:auto;gap:16px;padding:18px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start">
+              <div><div style="font-size:24px;font-weight:800;letter-spacing:-0.04em;line-height:28px">Cidades</div><div class="sub" style="margin-top:2px">por taxa de resolução confirmada</div></div>
+              <svg width="44" height="36" viewBox="0 0 44 36"><rect x="0" y="14" width="12" height="22" rx="4" fill="#11233D"/><rect x="16" y="0" width="12" height="36" rx="4" fill="#11233D"/><rect x="32" y="22" width="12" height="14" rx="4" fill="#11233D"/></svg>
+            </div>
+            <div style="background:#fff;border-radius:16px;padding:4px 14px">
+              <div class="rk"><div class="pos">1º</div><div><div class="cn">Votorantim</div><div class="cs">12 ocorrências</div></div><div class="pct">42%</div></div>
+              <div class="rk"><div class="pos">2º</div><div><div class="cn">Itu</div><div class="cs">9 ocorrências</div></div><div class="pct">33%</div></div>
+              <div class="rk"><div class="pos" style="color:var(--blue)">5º</div><div><div class="cn">Sorocaba <span style="color:var(--blue)">· sua cidade</span></div><div class="cs">7 ocorrências</div></div><div class="pct">14%</div></div>
+            </div>
+            <div class="cta dark">Ver ranking de cidades<svg width="16" height="16" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7" fill="none" stroke="#C7FF4D" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          </div>
+          <div class="tile" style="height:auto;gap:16px;padding:18px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start">
+              <div><div style="font-size:24px;font-weight:800;letter-spacing:-0.04em;line-height:28px">Cidadãos em Sorocaba</div><div class="sub" style="margin-top:2px">por participação: registros, validações e apoios</div></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px">
+              <div style="font-size:44px;font-weight:800;letter-spacing:-0.05em;line-height:46px">4º</div>
+              <div><div class="lbl">sua posição</div><div class="sub">entre 18 cidadãos · 120 XP</div></div>
+            </div>
+            <div class="cta light">Ver ranking de cidadãos<svg width="16" height="16" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7" fill="none" stroke="#11233D" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          </div>
+          <div class="sub" style="padding:2px 4px;line-height:18px">Gestões, órgãos e vereadores não entram em ranking.</div>
+        </div>
+      </div>
+      <div class="cap">Rankings · Cidades acima de Cidadãos, sem abas (mantém os contratos de teste). Números ilustrativos.</div>
+    </div>
+
+    <!-- Ranking de cidadãos -->
+    <div>
+      <div class="phone">
+        <div class="top"><div class="back"><svg width="18" height="18" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="#11233D" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="t">Cidadãos em Sorocaba</div><div class="sp"></div></div>
+        <div class="body" style="padding-top:4px;gap:14px">
+          <div class="chips"><div class="chip on">Geral</div><div class="chip">Este mês</div></div>
+          <div class="podium">
+            <div class="p"><div class="avatar" style="width:44px;height:44px;font-size:15px;background:#DCE2E8;color:var(--navy)">MR</div><div class="pn">Marina R.</div><div class="blk" style="height:62px;background:#fff;border:1px solid var(--line)">2</div></div>
+            <div class="p"><div class="avatar" style="width:52px;height:52px;font-size:17px;background:var(--blue);color:#fff">JL</div><div class="pn">João L.</div><div class="blk" style="height:84px;background:var(--lime)">1</div></div>
+            <div class="p"><div class="avatar" style="width:44px;height:44px;font-size:15px;background:var(--navy);color:#fff">CP</div><div class="pn">Carla P.</div><div class="blk" style="height:46px;background:#fff;border:1px solid var(--line)">3</div></div>
+          </div>
+          <div class="card" style="padding:4px 16px">
+            <div class="rk me"><div class="pos">4º</div><div><div class="cn">Você</div><div class="cs">120 XP · 5 validações</div></div></div>
+            <div class="rk"><div class="pos">5º</div><div><div class="cn">Rafael T.</div><div class="cs">110 XP</div></div></div>
+            <div class="rk"><div class="pos">6º</div><div><div class="cn">Beatriz A.</div><div class="cs">95 XP</div></div></div>
+            <div class="rk"><div class="pos">7º</div><div><div class="cn">Lucas M.</div><div class="cs">80 XP</div></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="cap">Ranking de cidadãos · chips Geral (primeiro, selecionado) e Este mês, pódio e "você" destacado em lime. Nomes ilustrativos.</div>
+    </div>
+
+  </div>
+</section>
+
+</body>
+</html>

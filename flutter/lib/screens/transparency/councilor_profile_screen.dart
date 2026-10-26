@@ -1,18 +1,19 @@
 import 'package:flutter/material.dart';
 
+import '../../app/app_session.dart';
+import '../../app/routes.dart';
 import '../../domain/labels.dart';
-import '../../domain/models.dart';
-import '../../services/institutional_service.dart';
-import '../../services/occurrence_service.dart';
 import '../../services/transparency_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/error_formatter.dart';
 import '../../widgets/urb/urb_components.dart';
+import '../../widgets/urb/urb_icon.dart';
 import 'activity_list.dart';
-import 'transparency_widgets.dart';
+import 'transparency_kit.dart';
 
-/// Perfil público de vereador: atividade factual, sem nota, score ou ranking.
-/// Usa "demandas acompanhadas que chegaram à resolução" (spec §3.4, §35).
+/// Perfil público de vereador (spec §3.4, §13, §35, §44.6): só fatos, sem
+/// notas nem classificação. Acompanhar ou cobrar não resolve; a métrica de
+/// resolução usa a frase da especificação e exige ação anterior à resolução.
 class CouncilorProfileScreen extends StatefulWidget {
   const CouncilorProfileScreen({super.key, required this.councilorProfileId});
 
@@ -26,11 +27,9 @@ class _CouncilorProfileScreenState extends State<CouncilorProfileScreen> {
   final _service = TransparencyService();
 
   CouncilorProfile? _profile;
-  String _cityName = '';
-  List<(CouncilorFollowingItem, Occurrence)> _followings = const [];
   List<InstitutionalActivity> _activity = const [];
-  bool _loading = true;
   String? _error;
+  bool _loading = true;
 
   @override
   void initState() {
@@ -41,29 +40,16 @@ class _CouncilorProfileScreenState extends State<CouncilorProfileScreen> {
   Future<void> _load() async {
     setState(() => _error = null);
     try {
-      final profile = await _service.fetchCouncilor(widget.councilorProfileId);
-      if (profile == null) {
-        if (mounted) setState(() => _error = 'Perfil de vereador não encontrado.');
-        return;
-      }
       final results = await Future.wait<dynamic>([
-        InstitutionalService().fetchCouncilorFollowings(profile.id, activeOnly: true),
-        _service.fetchCouncilorActivity(profile.id),
-        OccurrenceService().fetchCities(),
+        _service.fetchCouncilor(widget.councilorProfileId),
+        _service.fetchCouncilorActivity(widget.councilorProfileId, limit: 20).then(attachOccurrences),
       ]);
-      final followings = results[0] as List<CouncilorFollowingItem>;
-      final occurrences = await OccurrenceService().fetchByIds(followings.map((item) => item.occurrenceId));
-      final byId = {for (final occurrence in occurrences) occurrence.id: occurrence};
-      final activity = await attachOccurrences(results[1] as List<InstitutionalActivity>);
       if (!mounted) return;
+      final profile = results[0] as CouncilorProfile?;
       setState(() {
         _profile = profile;
-        _cityName = (results[2] as List<CityOption>).where((city) => city.id == profile.cityId).firstOrNull?.name ?? '';
-        _followings = [
-          for (final item in followings)
-            if (byId[item.occurrenceId] != null) (item, byId[item.occurrenceId]!),
-        ];
-        _activity = activity;
+        _activity = results[1] as List<InstitutionalActivity>;
+        if (profile == null) _error = 'Perfil não encontrado.';
       });
     } catch (error) {
       if (mounted) setState(() => _error = friendlyError(error));
@@ -75,97 +61,169 @@ class _CouncilorProfileScreenState extends State<CouncilorProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final profile = _profile;
-    return PublicProfileScaffold(
-      body: profile == null
-          ? (_loading ? const UrbLoadingView() : UrbErrorState(message: _error ?? '', onRetry: _load))
+    return Scaffold(
+      backgroundColor: UrbColors.canvas,
+      appBar: const UrbSubscreenHeader(title: 'Vereador'),
+      body: _error != null
+          ? UrbErrorState(message: _error!, onRetry: _load)
+          : _loading || profile == null
+          ? const UrbLoadingView()
           : RefreshIndicator(
               onRefresh: _load,
               child: ListView(
-                padding: const EdgeInsets.only(bottom: 40),
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 32),
                 children: [
-                  PublicIdentity(
-                    mark: PersonAvatar(name: profile.publicName, seed: profile.id, size: 80),
-                    title: profile.publicName,
-                    lines: [
-                      'Vereador(a) de $_cityName',
-                      [profile.mandateLabel, if (profile.party != null) profile.party!].where((part) => part.isNotEmpty).join(' · '),
-                    ],
-                    verificationLabel: 'Perfil verificado no UrbApp',
-                    verified: profile.status.isVerified,
-                  ),
-                  TransSection(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const DataSourceNote('Atividade registrada na plataforma'),
-                        UrbStatRow(
-                          big: true,
-                          items: [
-                            UrbStatItem(formatCount(profile.followedOpen), pluralWord(profile.followedOpen, 'demanda em acompanhamento', 'demandas em acompanhamento')),
-                            UrbStatItem(formatCount(profile.registeredActions), pluralWord(profile.registeredActions, 'ação registrada', 'ações registradas')),
-                            UrbStatItem(formatCount(profile.awaitingResponse), 'aguardando retorno'),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: UrbColors.line),
-                          ),
-                          child: Text.rich(
-                            TextSpan(children: [
-                              TextSpan(
-                                text: '${profile.reachedResolution} ',
-                                style: const TextStyle(color: UrbColors.navy, fontWeight: FontWeight.w800),
-                              ),
-                              const TextSpan(text: 'demandas acompanhadas que chegaram à resolução'),
-                            ]),
-                            style: UrbText.meta.copyWith(fontWeight: FontWeight.w500),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          'Conta apenas acompanhamentos com ação concreta registrada antes da resolução confirmada pela comunidade. '
-                          'O indicador não atribui a solução ao vereador. '
-                          '${plural(profile.followed, 'demanda acompanhada', 'demandas acompanhadas')} no total · ${plural(profile.endedWithoutResolution, 'encerrada', 'encerradas')} sem resolução.',
-                          style: UrbText.caption,
-                        ),
-                      ],
+                  _hero(profile),
+                  const SizedBox(height: 16),
+                  const Provenance.calculated('Calculado pelo UrbApp a partir das ações registradas'),
+                  const SizedBox(height: 8),
+                  _stats(profile),
+                  SectionTitle('Ações registradas', trailing: _activity.isEmpty ? null : '${_activity.length}'),
+                  const SizedBox(height: 6),
+                  if (_activity.isEmpty)
+                    const SoftEmpty(
+                      title: 'Nenhuma ação registrada',
+                      message: 'Cobranças, ofícios e encaminhamentos registrados aparecem aqui, ligados à ocorrência.',
+                    )
+                  else
+                    BentoCard(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      child: Column(
+                        children: [
+                          for (var index = 0; index < _activity.length; index++)
+                            _ActionRow(item: _activity[index], last: index == _activity.length - 1),
+                        ],
+                      ),
                     ),
-                  ),
-                  TransSection(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const TransEyebrow('Demandas em acompanhamento'),
-                        if (_followings.isEmpty)
-                          Text('Nenhuma demanda em acompanhamento no momento.', style: UrbText.caption)
-                        else
-                          for (var index = 0; index < _followings.length; index++)
-                            RelatedOccurrenceRow(
-                              occurrence: _followings[index].$2,
-                              note: '↳ ${_followings[index].$1.lastActionType != null ? councilorActionLabels[_followings[index].$1.lastActionType] : councilorFollowingStatusLabels[_followings[index].$1.status]}',
-                              last: index == _followings.length - 1,
-                            ),
-                      ],
-                    ),
-                  ),
-                  TransSection(
-                    last: true,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const TransEyebrow('Atuação recente'),
-                        ActivityList(items: _activity, labels: councilorActionLabels),
-                      ],
-                    ),
+                  const SizedBox(height: 10),
+                  const RuleNote(
+                    'Sem nota ou classificação. Acompanhar e cobrar não resolvem: quem confirma a resolução são os vizinhos.',
                   ),
                 ],
               ),
             ),
+    );
+  }
+
+  Widget _hero(CouncilorProfile profile) {
+    final city = AppSession.instance.cities.where((item) => item.id == profile.cityId).firstOrNull;
+    final line2 = [?profile.party, if (profile.mandateLabel.isNotEmpty) profile.mandateLabel].join(' · ');
+    return IdentityHero(
+      tone: TileTone.navy,
+      leading: InitialsAvatar(name: profile.publicName, background: UrbColors.lime, foreground: UrbColors.navy),
+      badge: profile.status.isVerified
+          ? const TilePill('Perfil verificado', tone: PillTone.dark, check: true)
+          : const TilePill('Não reivindicado', tone: PillTone.dark),
+      name: profile.publicName,
+      line2: line2.isEmpty ? null : line2,
+      line3: city == null ? null : 'Câmara Municipal de ${city.name}',
+    );
+  }
+
+  Widget _stats(CouncilorProfile profile) {
+    final actionParts = [
+      if (profile.chargeActions > 0) plural(profile.chargeActions, 'cobrança', 'cobranças'),
+      if (profile.officialLetters > 0) plural(profile.officialLetters, 'ofício', 'ofícios'),
+      if (profile.forwardingActions > 0) plural(profile.forwardingActions, 'encaminhamento', 'encaminhamentos'),
+    ];
+    return Column(
+      children: [
+        TilePair(
+          left: StatTile(
+            height: 176,
+            glyph: DotsGlyph(
+              colors: [
+                for (var index = 0; index < profile.followed.clamp(1, 6); index++)
+                  profile.followed == 0 ? UrbColors.line : UrbColors.navy,
+              ],
+            ),
+            stat: TileStat(
+              value: formatCount(profile.followed),
+              faintValue: profile.followed == 0,
+              title: pluralWord(profile.followed, 'demanda acompanhada', 'demandas acompanhadas'),
+              subtitle: profile.awaitingResponse == 0 ? null : '${profile.awaitingResponse} aguardando resposta',
+            ),
+          ),
+          right: StatTile(
+            height: 176,
+            glyph: Container(
+              width: 34,
+              height: 34,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(color: UrbColors.blue, borderRadius: BorderRadius.circular(11)),
+              child: const UrbIcon(UrbIcons.list, size: 18, color: Colors.white, strokeWidth: 2.6),
+            ),
+            stat: TileStat(
+              value: formatCount(profile.registeredActions),
+              faintValue: profile.registeredActions == 0,
+              title: pluralWord(profile.registeredActions, 'ação registrada', 'ações registradas'),
+              subtitle: actionParts.isEmpty ? null : actionParts.join(' · '),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        WideStat(
+          value: formatCount(profile.reachedResolution),
+          faintValue: profile.reachedResolution == 0,
+          title: 'Demandas acompanhadas que chegaram à resolução',
+          subtitle: 'Com ação registrada antes da confirmação',
+        ),
+      ],
+    );
+  }
+}
+
+class _ActionRow extends StatelessWidget {
+  const _ActionRow({required this.item, required this.last});
+
+  final InstitutionalActivity item;
+  final bool last;
+
+  @override
+  Widget build(BuildContext context) {
+    final occurrence = item.occurrence;
+    final description = item.description.trim();
+    return InkWell(
+      onTap: () => openOccurrence(context, occurrenceId: item.occurrenceId, initial: occurrence),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          border: last ? null : const Border(bottom: BorderSide(color: UrbColors.divider)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ActionGlyph(councilorActionIcon(item.actionType)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    councilorActionLabels[item.actionType] ?? 'Ação registrada',
+                    style: UrbText.titleSmall.copyWith(fontWeight: FontWeight.w800, height: 1.28),
+                  ),
+                  if (occurrence != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      occurrence.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: tileSubtitleStyle(UrbColors.blue).copyWith(fontWeight: FontWeight.w700),
+                    ),
+                  ],
+                  if (description.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Text(description, maxLines: 2, overflow: TextOverflow.ellipsis, style: tileSubtitleStyle()),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(dayMonth(item.createdAt), style: tileSubtitleStyle().copyWith(fontWeight: FontWeight.w700)),
+          ],
+        ),
+      ),
     );
   }
 }

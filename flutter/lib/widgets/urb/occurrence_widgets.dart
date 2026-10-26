@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../../domain/labels.dart';
 import '../../domain/models.dart';
@@ -211,12 +212,59 @@ class FullBleed extends StatelessWidget {
   final double bleed;
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) => UnconstrainedBox(
-      constrainedAxis: Axis.vertical,
-      child: SizedBox(width: constraints.maxWidth + bleed * 2, child: child),
-    ),
-  );
+  Widget build(BuildContext context) => _Bleed(bleed: bleed, child: child);
+}
+
+/// O transbordo lateral é intencional: o filho é medido mais largo e deslocado
+/// para a esquerda, sem acionar o aviso de overflow do modo debug (que o
+/// UnconstrainedBox pintava por cima das linhas).
+class _Bleed extends SingleChildRenderObjectWidget {
+  const _Bleed({required this.bleed, super.child});
+
+  final double bleed;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) => _RenderBleed(bleed);
+
+  @override
+  void updateRenderObject(BuildContext context, _RenderBleed renderObject) => renderObject.bleed = bleed;
+}
+
+class _RenderBleed extends RenderShiftedBox {
+  _RenderBleed(this._bleed) : super(null);
+
+  double _bleed;
+  set bleed(double value) {
+    if (value == _bleed) return;
+    _bleed = value;
+    markNeedsLayout();
+  }
+
+  @override
+  void performLayout() {
+    final child = this.child;
+    if (child == null) {
+      size = constraints.smallest;
+      return;
+    }
+    assert(constraints.hasBoundedWidth, 'FullBleed precisa de largura limitada.');
+    child.layout(_childConstraints(constraints), parentUsesSize: true);
+    (child.parentData! as BoxParentData).offset = Offset(-_bleed, 0);
+    size = constraints.constrain(Size(constraints.maxWidth, child.size.height));
+  }
+
+  BoxConstraints _childConstraints(BoxConstraints constraints) {
+    final width = constraints.maxWidth + _bleed * 2;
+    return constraints.copyWith(minWidth: width, maxWidth: width);
+  }
+
+  @override
+  Size computeDryLayout(covariant BoxConstraints constraints) {
+    final child = this.child;
+    if (child == null) return constraints.smallest;
+    final childSize = child.getDryLayout(_childConstraints(constraints));
+    return constraints.constrain(Size(constraints.maxWidth, childSize.height));
+  }
 }
 
 /// Linha de ocorrência do feed e da busca, corrida como um feed: sem caixa em
