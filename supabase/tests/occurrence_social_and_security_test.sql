@@ -334,15 +334,15 @@ select lives_ok(
 
 select pg_temp.act_as('10000000-0000-0000-0000-000000000005');
 select lives_ok(
-  $$select public.register_institutional_action((select id from refs where key = 'occurrence'),
-     'forwarding', 'Encaminhada ao órgão B.', (select id from refs where key = 'agency_b'), null, null)$$,
+  $$select public.register_institutional_action_as((select id from refs where key = 'occurrence'),
+     'forwarding', 'Encaminhada ao órgão B.', 'administration', (select id from refs where key = 'agency_b'), null, null)$$,
   'a gestão reencaminha a ocorrência ao órgão competente'
 );
 
 select pg_temp.act_as('10000000-0000-0000-0000-000000000004');
 select lives_ok(
-  $$select public.register_institutional_action((select id from refs where key = 'occurrence'),
-     'received', 'Recebimento confirmado pela equipe.', null, null, null)$$,
+  $$select public.register_institutional_action_as((select id from refs where key = 'occurrence'),
+     'received', 'Recebimento confirmado pela equipe.', 'agency', null, null, null)$$,
   'o órgão confirma recebimento'
 );
 select is(
@@ -376,8 +376,8 @@ select is(
 );
 
 select lives_ok(
-  $$select public.register_institutional_action((select id from refs where key = 'occurrence'),
-     'conclusion', 'Lâmpada substituída.', null, null, null)$$,
+  $$select public.register_institutional_action_as((select id from refs where key = 'occurrence'),
+     'conclusion', 'Lâmpada substituída.', 'agency', null, null, null)$$,
   'o órgão informa conclusão'
 );
 select is(
@@ -386,8 +386,8 @@ select is(
   'a conclusão institucional abre validação comunitária e não resolve sozinha'
 );
 select lives_ok(
-  $$select public.register_institutional_action((select id from refs where key = 'occurrence'),
-     'conclusion', 'Reforço da conclusão informada.', null, null, null)$$,
+  $$select public.register_institutional_action_as((select id from refs where key = 'occurrence'),
+     'conclusion', 'Reforço da conclusão informada.', 'agency', null, null, null)$$,
   'uma conclusão repetida durante o ciclo é registrada sem abrir outro ciclo'
 );
 

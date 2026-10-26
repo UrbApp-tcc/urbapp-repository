@@ -59,6 +59,7 @@ class AgencyProfileRequest {
     this.proofLinks,
     required this.status,
     required this.createdAt,
+    this.reviewNotes,
   });
 
   final int id;
@@ -73,6 +74,9 @@ class AgencyProfileRequest {
   final String? proofLinks;
   final String status;
   final DateTime createdAt;
+
+  /// Observação da administração; numa rejeição, o motivo informado.
+  final String? reviewNotes;
 }
 
 class AgencyService {
@@ -199,6 +203,7 @@ class AgencyService {
             proof_summary,
             proof_links,
             status,
+            review_notes,
             created_at,
             cities(name)
           ''')
@@ -220,6 +225,7 @@ class AgencyService {
           proofLinks: item['proof_links'] as String?,
           status: item['status'] as String,
           createdAt: DateTime.parse(item['created_at'] as String),
+          reviewNotes: item['review_notes'] as String?,
         );
       }).toList();
     } on PostgrestException catch (error) {

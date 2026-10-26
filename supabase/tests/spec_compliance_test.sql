@@ -350,7 +350,7 @@ select ok(
     'Ofício enviado ao órgão de iluminação.', null) > 0,
   '§35 vereadora A registra ação concreta (ofício)');
 select throws_ok(
-  $$select public.register_institutional_action((select id from refs where key = 'o3'), 'priority', 'Vereadora tentando priorizar como gestão.', null, null, null)$$,
+  $$select public.register_institutional_action_as((select id from refs where key = 'o3'), 'priority', 'Vereadora tentando priorizar como gestão.', 'administration', null, null, null)$$,
   '42501', null,
   '§14 vereador não registra ação oficial do Executivo');
 
@@ -361,14 +361,14 @@ select ok((select id > 0 from refs where key = 'following_b'),
 
 select pg_temp.act_as('50000000-0000-0000-0000-000000000002');
 select throws_ok(
-  $$select public.register_institutional_action((select id from refs where key = 'o3'), 'priority', 'Cidadão tentando priorizar.', null, null, null)$$,
+  $$select public.register_institutional_action_as((select id from refs where key = 'o3'), 'priority', 'Cidadão tentando priorizar.', 'administration', null, null, null)$$,
   '42501', null,
   '§3.2 cidadão não marca prioridade administrativa');
 
 select pg_temp.act_as('50000000-0000-0000-0000-000000000010');
 select ok(
-  public.register_institutional_action((select id from refs where key = 'o3'), 'priority',
-    'Prioridade reconhecida pela gestão municipal.', null, null, null) > 0,
+  public.register_institutional_action_as((select id from refs where key = 'o3'), 'priority',
+    'Prioridade reconhecida pela gestão municipal.', 'administration', null, null, null) > 0,
   '§15 a gestão registra prioridade administrativa');
 select is(
   (select status::text from public.occurrences where id = (select id from refs where key = 'o3')),
@@ -376,15 +376,15 @@ select is(
 
 select pg_temp.act_as('50000000-0000-0000-0000-000000000009');
 select ok(
-  public.register_institutional_action((select id from refs where key = 'o3'), 'scheduled',
-    'Serviço programado.', null, now() + interval '2 days', null) > 0,
+  public.register_institutional_action_as((select id from refs where key = 'o3'), 'scheduled',
+    'Serviço programado.', 'agency', null, now() + interval '2 days', null) > 0,
   '§3.3 o órgão informa programação do serviço');
 select is(
   (select status::text from public.occurrences where id = (select id from refs where key = 'o3')),
   'in_progress', '§31 programação de serviço coloca a ocorrência EM_ANDAMENTO');
 select ok(
-  public.register_institutional_action((select id from refs where key = 'o3'), 'conclusion',
-    'Órgão informa serviço concluído.', null, null, null) > 0,
+  public.register_institutional_action_as((select id from refs where key = 'o3'), 'conclusion',
+    'Órgão informa serviço concluído.', 'agency', null, null, null) > 0,
   '§3.3 o órgão informa conclusão');
 select is(
   (select status::text from public.occurrences where id = (select id from refs where key = 'o3')),

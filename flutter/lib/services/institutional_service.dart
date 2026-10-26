@@ -2,6 +2,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../domain/models.dart';
+import '../logic/institutional_review_rules.dart';
 import '../utils/error_formatter.dart';
 
 class InstitutionalMembership {
@@ -355,6 +356,9 @@ class ModerationQueueItem {
   final DateTime createdAt;
 }
 
+/// Pedido de perfil institucional na fila da administração, com os dados de
+/// quem pediu e o contexto para a decisão (spec §19). `kind` segue o backend:
+/// `agency`, `administration` ou `councilor`.
 class InstitutionalVerificationRequest {
   const InstitutionalVerificationRequest({
     required this.id,
@@ -364,15 +368,97 @@ class InstitutionalVerificationRequest {
     required this.institutionalEmail,
     required this.proofSummary,
     required this.createdAt,
+    this.status = 'pending',
+    this.agencyType,
+    this.requesterRole,
+    this.party,
+    this.mandateStartsOn,
+    this.mandateEndsOn,
+    this.proofLinks,
+    this.requesterName,
+    this.requesterUsername,
+    this.requesterAccountEmail,
+    this.requesterSince,
+    this.previousRequests = 0,
+    this.previousRejections = 0,
+    this.existingProfileStatus,
+    this.reviewedAt,
+    this.reviewerName,
+    this.reviewNotes,
   });
+
+  factory InstitutionalVerificationRequest.fromJson(Map<String, dynamic> json) {
+    DateTime? date(Object? value) => value is String ? DateTime.tryParse(value) : null;
+    String? text(Object? value) {
+      final trimmed = (value as String?)?.trim();
+      return trimmed == null || trimmed.isEmpty ? null : trimmed;
+    }
+
+    return InstitutionalVerificationRequest(
+      id: (json['request_id'] as num).toInt(),
+      kind: json['request_type'] as String? ?? 'agency',
+      status: json['status'] as String? ?? 'pending',
+      name: json['display_name'] as String? ?? '',
+      cityName: json['city_name'] as String? ?? 'Cidade',
+      agencyType: text(json['agency_type']),
+      requesterRole: text(json['requester_role']),
+      party: text(json['party']),
+      mandateStartsOn: date(json['mandate_starts_on']),
+      mandateEndsOn: date(json['mandate_ends_on']),
+      institutionalEmail: json['institutional_email'] as String? ?? '',
+      proofSummary: json['proof_summary'] as String? ?? '',
+      proofLinks: text(json['proof_links']),
+      requesterName: text(json['requester_name']),
+      requesterUsername: text(json['requester_username']),
+      requesterAccountEmail: text(json['requester_account_email']),
+      requesterSince: date(json['requester_since']),
+      previousRequests: (json['previous_requests'] as num?)?.toInt() ?? 0,
+      previousRejections: (json['previous_rejections'] as num?)?.toInt() ?? 0,
+      existingProfileStatus: text(json['existing_profile_status']),
+      createdAt: date(json['created_at']) ?? DateTime.now(),
+      reviewedAt: date(json['reviewed_at']),
+      reviewerName: text(json['reviewer_name']),
+      reviewNotes: text(json['review_notes']),
+    );
+  }
 
   final int id;
   final String kind;
+  final String status;
   final String name;
   final String cityName;
+  final String? agencyType;
+  final String? requesterRole;
+  final String? party;
+  final DateTime? mandateStartsOn;
+  final DateTime? mandateEndsOn;
   final String institutionalEmail;
   final String proofSummary;
+  final String? proofLinks;
+  final String? requesterName;
+  final String? requesterUsername;
+  final String? requesterAccountEmail;
+  final DateTime? requesterSince;
+  final int previousRequests;
+  final int previousRejections;
+
+  /// Situação atual do perfil pedido: `unclaimed`, `verified`, `participant`
+  /// ou nulo quando ainda não existe (ex.: órgão novo).
+  final String? existingProfileStatus;
   final DateTime createdAt;
+  final DateTime? reviewedAt;
+  final String? reviewerName;
+  final String? reviewNotes;
+
+  bool get isPending => status == 'pending';
+  bool get isApproved => status == 'approved';
+  bool get isCouncilor => kind == 'councilor';
+
+  /// Links de comprovação informados (um por linha, vírgula ou espaço).
+  List<String> get proofLinkList => [
+        for (final part in (proofLinks ?? '').split(RegExp(r'[\s,;]+')))
+          if (part.trim().isNotEmpty) part.trim(),
+      ];
 }
 
 class InstitutionalService {
@@ -1215,77 +1301,37 @@ class InstitutionalService {
     }, 'Não foi possível concluir a moderação.');
   }
 
+  /// Fila da administração: pendentes (mais antigos primeiro) ou histórico
+  /// de decisões (mais recentes primeiro). Só administradores consultam.
   Future<List<InstitutionalVerificationRequest>>
-  fetchInstitutionalVerificationQueue() async {
-    try {
-      final responses = await Future.wait<dynamic>([
-        _supabase
-            .from('agency_profile_requests')
-            .select(
-              'id, agency_name, request_kind, institutional_email, proof_summary, created_at, cities(name)',
-            )
-            .eq('status', 'pending')
-            .order('created_at', ascending: true),
-        _supabase
-            .from('councilor_profile_requests')
-            .select(
-              'id, public_name, institutional_email, proof_summary, created_at, cities(name)',
-            )
-            .eq('status', 'pending')
-            .order('created_at', ascending: true),
-      ]);
-
-      final requests = <InstitutionalVerificationRequest>[];
-      for (final raw in responses[0] as List<dynamic>) {
-        final item = raw as Map<String, dynamic>;
-        requests.add(
-          InstitutionalVerificationRequest(
-            id: (item['id'] as num).toInt(),
-            kind: item['request_kind'] as String? ?? 'agency',
-            name: item['agency_name'] as String,
-            cityName:
-                (item['cities'] as Map<String, dynamic>?)?['name'] as String? ??
-                'Cidade',
-            institutionalEmail: item['institutional_email'] as String,
-            proofSummary: item['proof_summary'] as String,
-            createdAt: DateTime.parse(item['created_at'] as String),
-          ),
-        );
-      }
-      for (final raw in responses[1] as List<dynamic>) {
-        final item = raw as Map<String, dynamic>;
-        requests.add(
-          InstitutionalVerificationRequest(
-            id: (item['id'] as num).toInt(),
-            kind: 'councilor',
-            name: item['public_name'] as String,
-            cityName:
-                (item['cities'] as Map<String, dynamic>?)?['name'] as String? ??
-                'Cidade',
-            institutionalEmail: item['institutional_email'] as String,
-            proofSummary: item['proof_summary'] as String,
-            createdAt: DateTime.parse(item['created_at'] as String),
-          ),
-        );
-      }
-      requests.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-      return requests;
-    } on PostgrestException catch (error) {
-      throw Exception(
-        'Erro ao carregar verificações institucionais: ${error.message}',
+  fetchInstitutionalVerificationQueue({bool reviewed = false}) {
+    return _guard(() async {
+      final rows = await _supabase.rpc(
+        'get_institutional_verification_requests',
+        params: {'review_status': reviewed ? 'reviewed' : 'pending'},
       );
-    }
+      return [
+        for (final row in rows as List<dynamic>)
+          InstitutionalVerificationRequest.fromJson(
+            row as Map<String, dynamic>,
+          ),
+      ];
+    }, 'Não foi possível carregar as verificações institucionais.');
   }
 
+  /// Aprova ou rejeita o pedido. A rejeição exige motivo, enviado ao
+  /// solicitante; o backend repete as regras (inclusive a de autoaprovação).
   Future<void> reviewInstitutionalRequest({
     required InstitutionalVerificationRequest request,
     required bool approve,
     required String notes,
-  }) async {
-    final function = request.kind != 'councilor'
-        ? 'review_agency_profile_request'
-        : 'review_councilor_profile_request';
-    try {
+  }) {
+    final reasonError = approve ? null : validateRejectionReason(notes);
+    if (reasonError != null) return Future.error(Exception(reasonError));
+    final function = request.isCouncilor
+        ? 'review_councilor_profile_request'
+        : 'review_agency_profile_request';
+    return _guard(() async {
       await _supabase.rpc(
         function,
         params: {
@@ -1294,9 +1340,7 @@ class InstitutionalService {
           'notes': notes.trim().isEmpty ? null : notes.trim(),
         },
       );
-    } on PostgrestException catch (error) {
-      throw Exception('Erro ao revisar solicitação: ${error.message}');
-    }
+    }, 'Não foi possível concluir a verificação.');
   }
 
   Future<void> configureValidation({
