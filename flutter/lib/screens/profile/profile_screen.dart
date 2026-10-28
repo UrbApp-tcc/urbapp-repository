@@ -57,6 +57,9 @@ class _ProfileScreenState extends State<ProfileScreen> with OccurrenceListSync {
   /// institucional no lugar da gamificação de cidadão.
   bool get _isCouncilorMe => _isMe && _access.isCouncilor;
 
+  /// Perfil privado de outra pessoa: o banco só entrega nome, usuário e foto.
+  bool _isPrivateToMe(UserProfile profile) => !_isMe && !profile.isPublic;
+
   @override
   void initState() {
     super.initState();
@@ -160,10 +163,12 @@ class _ProfileScreenState extends State<ProfileScreen> with OccurrenceListSync {
                 if (_isCouncilorMe) ...[
                   _councilorIdentity(),
                 ] else ...[
-                  _level(profile),
-                  _stats(),
-                  if (_badges.any((badge) => badge.earned) || _isMe)
-                    _achievements(),
+                  if (!_isPrivateToMe(profile)) ...[
+                    _level(profile),
+                    _stats(),
+                    if (_badges.any((badge) => badge.earned) || _isMe)
+                      _achievements(),
+                  ],
                   if (_isMe && _access.administrations.isNotEmpty)
                     _administrationContactShortcut(),
                   if (_isMe && _access.hasInstitutionalRole)
@@ -289,23 +294,25 @@ class _ProfileScreenState extends State<ProfileScreen> with OccurrenceListSync {
             textAlign: TextAlign.center,
             style: UrbText.h2.copyWith(color: UrbColors.navy),
           ),
-          const SizedBox(height: 5),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const UrbIcon(
-                UrbIcons.location,
-                size: 12,
-                color: UrbColors.muted,
-              ),
-              const SizedBox(width: 4),
-              Text(
-                profile.cityLabel,
-                style: UrbText.meta.copyWith(fontWeight: FontWeight.w500),
-              ),
-            ],
-          ),
-          if (profile.biography != null) ...[
+          if (!_isPrivateToMe(profile)) ...[
+            const SizedBox(height: 5),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const UrbIcon(
+                  UrbIcons.location,
+                  size: 12,
+                  color: UrbColors.muted,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  profile.cityLabel,
+                  style: UrbText.meta.copyWith(fontWeight: FontWeight.w500),
+                ),
+              ],
+            ),
+          ],
+          if (profile.biography != null && !_isPrivateToMe(profile)) ...[
             const SizedBox(height: 10),
             Text(
               profile.biography!,

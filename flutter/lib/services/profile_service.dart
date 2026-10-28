@@ -167,7 +167,7 @@ class ProfileService {
             .select('id, full_name, username, biography, avatar_url, city_id, is_public, current_xp, '
                 'current_points, featured_badge_id, created_at, cities(name, state)')
             .eq('id', profileId)
-            .single(),
+            .maybeSingle(),
         _fetchLevels(),
         _supabase.from('profile_followers').select('follower_id').eq('followed_id', profileId).count(CountOption.exact),
         viewer == null || viewer == profileId
@@ -179,6 +179,34 @@ class ProfileService {
                 .eq('followed_id', profileId)
                 .maybeSingle(),
       ]);
+      final levels = responses[1] as List<LevelThreshold>;
+      final followersCount = (responses[2] as PostgrestResponse).count;
+      final isFollowedByMe = responses[3] != null;
+      if (responses[0] == null) {
+        // Perfil privado de outra pessoa: o banco só entrega a identificação básica.
+        final card = asJsonMap(await _supabase.rpc('get_profile_card', params: {'target_profile_id': profileId}));
+        if (card == null) throw Exception('Perfil não encontrado.');
+        final cardName = (card['full_name'] as String?)?.trim();
+        final cardUsername = (card['username'] as String?)?.trim() ?? 'cidadao';
+        return UserProfile(
+          id: card['id'] as String,
+          fullName: cardName == null || cardName.isEmpty ? cardUsername : cardName,
+          username: cardUsername,
+          biography: null,
+          avatarUrl: card['avatar_url'] as String?,
+          cityId: null,
+          cityName: null,
+          cityState: null,
+          isPublic: false,
+          currentXp: 0,
+          currentPoints: 0,
+          levelProgress: calculateLevelProgress(0, levels),
+          featuredBadgeId: null,
+          createdAt: null,
+          followersCount: followersCount,
+          isFollowedByMe: isFollowedByMe,
+        );
+      }
       final row = Map<String, dynamic>.from(responses[0] as Map);
       final city = asJsonMap(row['cities']);
       final xp = (row['current_xp'] as num?)?.toInt() ?? 0;
@@ -196,11 +224,11 @@ class ProfileService {
         isPublic: row['is_public'] != false,
         currentXp: xp,
         currentPoints: (row['current_points'] as num?)?.toInt() ?? 0,
-        levelProgress: calculateLevelProgress(xp, responses[1] as List<LevelThreshold>),
+        levelProgress: calculateLevelProgress(xp, levels),
         featuredBadgeId: (row['featured_badge_id'] as num?)?.toInt(),
         createdAt: DateTime.tryParse(row['created_at'] as String? ?? ''),
-        followersCount: (responses[2] as PostgrestResponse).count,
-        isFollowedByMe: responses[3] != null,
+        followersCount: followersCount,
+        isFollowedByMe: isFollowedByMe,
       );
     }, 'Não foi possível carregar o perfil.');
   }
